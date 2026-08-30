@@ -1,4 +1,7 @@
 import { DeviceLibrary } from "../core/DeviceLibrary";
+import { DeviceHistory } from "../core/history/DeviceHistory";
+import { patchesEqual } from "../core/history/HistoryAction";
+import type { DeviceStatePatch } from "../core/history/HistoryAction";
 import { Toast } from "./Toast";
 import { NexusAdapter } from "../nexus/NexusAdapter";
 import { BindingManager } from "../core/BindingManager";
@@ -23,6 +26,7 @@ export class DeviceLibraryUI {
     private container!: HTMLElement;
     private nexusAdapter?: NexusAdapter;
     private bindingManager?: BindingManager;
+    private history?: DeviceHistory;
     private instrumentResultArea?: HTMLElement;
 
     constructor(
@@ -30,13 +34,30 @@ export class DeviceLibraryUI {
         onDeviceChanged: () => void,
         onPresetLoad?: () => void,
         nexusAdapter?: NexusAdapter,
-        bindingManager?: BindingManager
+        bindingManager?: BindingManager,
+        history?: DeviceHistory
     ) {
         this.deviceLibrary = deviceLibrary;
         this.onDeviceChanged = onDeviceChanged;
         this.onPresetLoad = onPresetLoad;
         this.nexusAdapter = nexusAdapter;
         this.bindingManager = bindingManager;
+        this.history = history;
+    }
+
+    /** Structural snapshot of the current device (device-scope actions). */
+    private currentPatch(): DeviceStatePatch | null {
+        if (!this.history) return null;
+        const device = this.deviceLibrary.currentDevice;
+        return device ? this.history.captureDeviceState(device) : null;
+    }
+
+    /** Record ONE device-scope action, only when the snapshot actually changed. */
+    private recordDeviceAction(type: string, before: DeviceStatePatch | null, after: DeviceStatePatch | null) {
+        if (!this.history || !before || !after || patchesEqual(before, after)) return;
+        const device = this.deviceLibrary.currentDevice;
+        if (!device) return;
+        this.history.record({ type, scope: "device", deviceId: device.id, before, after });
     }
 
     public render(parent: HTMLElement) {
@@ -134,8 +155,11 @@ export class DeviceLibraryUI {
                 Toast.show("Enter a preset name.", "error");
                 return;
             }
+            const before = this.currentPatch();
             device.savePreset(name);
             this.deviceLibrary.saveCurrentDevice();
+            const after = this.currentPatch();
+            this.recordDeviceAction("preset.save", before, after);
             Toast.show(`Preset "${name}" saved.`, "success");
             this.render(this.container);
         };
@@ -176,8 +200,11 @@ export class DeviceLibraryUI {
                     const finish = () => {
                         const name = input.value.trim();
                         if (name && name !== preset.name) {
+                            const before = this.currentPatch();
                             preset.name = name;
                             this.deviceLibrary.saveCurrentDevice();
+                            const after = this.currentPatch();
+                            this.recordDeviceAction("preset.rename", before, after);
                             Toast.show("Preset renamed.", "success");
                         }
                         this.render(this.container);
@@ -197,8 +224,11 @@ export class DeviceLibraryUI {
                 loadBtn.title = "Apply this preset to the device (§20)";
                 loadBtn.onclick = (e) => {
                     e.stopPropagation();
+                    const before = this.currentPatch();
                     device.loadPreset(preset.id);
                     this.deviceLibrary.saveCurrentDevice();
+                    const after = this.currentPatch();
+                    this.recordDeviceAction("preset.load", before, after);
                     // Push restored values to Nexus ONLY for controls connected
                     // to the current project; DISCONNECTED controls stay local.
                     this.onPresetLoad?.();
@@ -212,8 +242,11 @@ export class DeviceLibraryUI {
                 delBtn.title = "Delete preset";
                 delBtn.onclick = (e) => {
                     e.stopPropagation();
+                    const before = this.currentPatch();
                     device.deletePreset(preset.id);
                     this.deviceLibrary.saveCurrentDevice();
+                    const after = this.currentPatch();
+                    this.recordDeviceAction("preset.delete", before, after);
                     Toast.show(`Preset "${preset.name}" deleted.`, "info");
                     this.render(this.container);
                 };
@@ -395,7 +428,13 @@ export class DeviceLibraryUI {
             Toast.show("No binding manager available.", "error");
             return;
         }
+        // Device-scope undo: the import writes binding definitions onto Metatron
+        // controls (external target-project changes and ActiveBindings are out
+        // of scope for undo). Only recorded when the device state changed.
+        const before = this.currentPatch();
         const outcome = await importInstrumentFromLibrary(libraryId, doc, this.bindingManager);
+        const after = this.currentPatch();
+        this.recordDeviceAction("instrument.import", before, after);
         this.instrumentResultArea?.appendChild(renderInstrumentImportOutcome(outcome));
         if (outcome.ok) {
             Toast.show("Instrument preset imported — chain restored and verified.", "success");
@@ -438,8 +477,13 @@ export class DeviceLibraryUI {
 
     private createNewDevice() {
         const count = this.deviceLibrary.listDevices().length;
+        const before = this.history?.captureLibraryState();
         this.deviceLibrary.createNewDevice(count === 0 ? "My Device" : `My Device ${count + 1}`);
         this.deviceLibrary.saveCurrentDevice();
+        const after = this.history?.captureLibraryState();
+        if (this.history && before && after && !patchesEqual(before, after)) {
+            this.history.record({ type: "device.create", scope: "library", deviceId: null, before, after });
+        }
         Toast.show("New empty device created (§20).", "success");
         this.onDeviceChanged();
     }
@@ -470,8 +514,11 @@ export class DeviceLibraryUI {
 
         const finish = () => {
             const name = input.value.trim();
-            if (name) {
+            if (name && name !== device.name) {
+                const before = this.currentPatch();
                 this.deviceLibrary.renameCurrentDevice(name);
+                const after = this.currentPatch();
+                this.recordDeviceAction("device.rename", before, after);
                 Toast.show("Device renamed.", "success");
             }
             this.onDeviceChanged();
@@ -502,6 +549,7 @@ export class DeviceLibraryUI {
         yes.innerText = "Delete";
         yes.style.marginLeft = "8px";
         yes.onclick = () => {
+            const before = this.history?.captureLibraryState();
             const wasActive = this.isActiveDevice(device.id);
             this.deviceLibrary.deleteDevice(device.id);
             if (wasActive) {
@@ -509,6 +557,10 @@ export class DeviceLibraryUI {
                 if (remaining.length > 0) {
                     this.deviceLibrary.loadDevice(remaining[0].id);
                 }
+            }
+            const after = this.history?.captureLibraryState();
+            if (this.history && before && after && !patchesEqual(before, after)) {
+                this.history.record({ type: "device.delete", scope: "library", deviceId: null, before, after });
             }
             Toast.show(`Device "${device.name}" deleted.`, "info");
             this.onDeviceChanged();

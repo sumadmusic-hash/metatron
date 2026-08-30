@@ -10,6 +10,9 @@ import { NexusLearn, LearnTimeoutError, LearnCancelledError } from "../../nexus/
 import { createNexusValueMapping, mapNexusToNormalized } from "../../nexus/NexusValueMapping";
 import { MidiLearn, MidiLearnTimeoutError } from "../../midi/MidiLearn";
 import { computeControlLayout, CONTROL_MIN_SIZE, contrastTextColor } from "../geometry";
+import { DeviceHistory } from "../../core/history/DeviceHistory";
+import { patchesEqual } from "../../core/history/HistoryAction";
+import type { DeviceStatePatch } from "../../core/history/HistoryAction";
 
 const SNAP = 20;
 const DRAG_THRESHOLD = 4;
@@ -39,6 +42,13 @@ interface DragInfo {
     captured: boolean;
     /** true once the model was modified during this gesture. */
     moved: boolean;
+
+    /** Structural snapshot captured at gesture start; restored on Escape and
+     *  compared against the end-state to commit exactly ONE history action. */
+    before?: DeviceStatePatch;
+    /** true when the gesture was aborted (Escape): the start state was
+     *  restored and NO history action may be committed. */
+    aborted?: boolean;
 }
 
 /**
@@ -70,13 +80,22 @@ export class EditorUI {
     private midiLearningId: string | null = null;
     private midiHandler?: (channel: number, cc: number, value: number) => void;
 
-    constructor(deviceLibrary: DeviceLibrary, nexusAdapter?: NexusAdapter, bindingManager?: BindingManager, midiAccess?: MidiAccess, midiMapping?: MidiMapping, midiHandler?: (channel: number, cc: number, value: number) => void) {
+    // Session-scoped undo/redo (C1). Transient by design — never persisted.
+    private history?: DeviceHistory;
+
+    // Color-picker gesture coalescing: one sweep of the picker = ONE history
+    // action (before captured on first input, action committed on change).
+    private colorGestureKey: string | null = null;
+    private colorGestureBefore: DeviceStatePatch | null = null;
+
+    constructor(deviceLibrary: DeviceLibrary, nexusAdapter?: NexusAdapter, bindingManager?: BindingManager, midiAccess?: MidiAccess, midiMapping?: MidiMapping, midiHandler?: (channel: number, cc: number, value: number) => void, history?: DeviceHistory) {
         this.deviceLibrary = deviceLibrary;
         this.nexusAdapter = nexusAdapter;
         this.bindingManager = bindingManager;
         this.midiAccess = midiAccess;
         this.midiMapping = midiMapping;
         this.midiHandler = midiHandler;
+        this.history = history;
         this.midiLearn = midiAccess ? new MidiLearn(midiAccess) : null;
     }
 
@@ -189,6 +208,8 @@ export class EditorUI {
             return;
         }
 
+        const before = this.history?.captureDeviceState(device);
+
         // Starting placement only — the canvas is a free layout editor (§9/§10).
         // A soft diagonal stagger avoids a rigid grid; the user repositions
         // controls freely afterwards using drag + grid snapping.
@@ -199,6 +220,12 @@ export class EditorUI {
         const c = new Control(type, type === "knob" ? "Knob" : "Switch", { x, y });
         device.addControl(c);
         this.deviceLibrary.saveCurrentDevice();
+
+        const after = this.history?.captureDeviceState(device);
+        if (this.history && before && after && !patchesEqual(before, after)) {
+            this.history.record({ type: "control.add", scope: "device", deviceId: device.id, before, after });
+        }
+
         this.selectedControlId = c.id;
         this.selectedGroupId = null;
         this.render(this.container.parentElement!);
@@ -207,6 +234,9 @@ export class EditorUI {
     private addGroup() {
         const device = this.deviceLibrary.currentDevice;
         if (!device) return;
+
+        const before = this.history?.captureDeviceState(device);
+
         const count = device.groups.size;
         const group = new Group(
             "Group",
@@ -215,6 +245,12 @@ export class EditorUI {
         );
         device.addGroup(group);
         this.deviceLibrary.saveCurrentDevice();
+
+        const after = this.history?.captureDeviceState(device);
+        if (this.history && before && after && !patchesEqual(before, after)) {
+            this.history.record({ type: "group.add", scope: "device", deviceId: device.id, before, after });
+        }
+
         this.selectedGroupId = group.id;
         this.selectedControlId = null;
         this.render(this.container.parentElement!);
@@ -225,8 +261,13 @@ export class EditorUI {
         if (!device) return;
 
         if (this.selectedControlId) {
+            const before = this.history?.captureDeviceState(device);
             device.removeControl(this.selectedControlId); // soft delete/archive
             Toast.show("Control archived (soft-delete): preset references stay valid (§44).", "info");
+            const after = this.history?.captureDeviceState(device);
+            if (this.history && before && after && !patchesEqual(before, after)) {
+                this.history.record({ type: "control.archive", scope: "device", deviceId: device.id, before, after });
+            }
             this.selectedControlId = null;
             this.deviceLibrary.saveCurrentDevice();
             this.render(this.container.parentElement!);
@@ -239,7 +280,12 @@ export class EditorUI {
                     "info"
                 );
             }
+            const before = this.history?.captureDeviceState(device);
             device.removeGroup(id);
+            const after = this.history?.captureDeviceState(device);
+            if (this.history && before && after && !patchesEqual(before, after)) {
+                this.history.record({ type: "group.delete", scope: "device", deviceId: device.id, before, after });
+            }
             this.selectedGroupId = null;
             this.deviceLibrary.saveCurrentDevice();
             this.render(this.container.parentElement!);
@@ -328,10 +374,32 @@ export class EditorUI {
         colorInput.value = control.visualDefinition?.color || "#333333";
         colorInput.title = "Visual area color (§13)";
         colorInput.addEventListener("input", (e) => {
+            const value = (e.target as HTMLInputElement).value;
+            // Coalesce one color-picker sweep into a single history action:
+            // `before` is captured on the FIRST input of the gesture, committed
+            // on `change` (picker commit). Model + DOM update live as before.
+            const key = `ctl:${control.id}`;
+            if (this.colorGestureKey !== key || this.colorGestureBefore === null) {
+                this.colorGestureKey = key;
+                const device = this.deviceLibrary.currentDevice;
+                this.colorGestureBefore = this.history && device ? this.history.captureDeviceState(device) : null;
+            }
             control.visualDefinition = control.visualDefinition || {};
-            control.visualDefinition.color = (e.target as HTMLInputElement).value;
+            control.visualDefinition.color = value;
             visualArea.style.background = control.visualDefinition.color;
             this.deviceLibrary.saveCurrentDevice();
+        });
+        colorInput.addEventListener("change", () => {
+            const device = this.deviceLibrary.currentDevice;
+            const key = `ctl:${control.id}`;
+            if (this.history && device && this.colorGestureKey === key && this.colorGestureBefore) {
+                const after = this.history.captureDeviceState(device);
+                if (!patchesEqual(this.colorGestureBefore, after)) {
+                    this.history.record({ type: "control.color", scope: "device", deviceId: device.id, before: this.colorGestureBefore, after });
+                }
+            }
+            this.colorGestureKey = null;
+            this.colorGestureBefore = null;
         });
         tools.appendChild(colorInput);
 
@@ -389,7 +457,13 @@ export class EditorUI {
             membership.appendChild(opt);
         });
         membership.onchange = () => {
-            this.deviceLibrary.currentDevice!.setControlGroup(control.id, membership.value || undefined);
+            const device = this.deviceLibrary.currentDevice!;
+            const before = this.history?.captureDeviceState(device);
+            device.setControlGroup(control.id, membership.value || undefined);
+            const after = this.history?.captureDeviceState(device);
+            if (this.history && before && after && !patchesEqual(before, after)) {
+                this.history.record({ type: "control.membership", scope: "device", deviceId: device.id, before, after });
+            }
             this.deviceLibrary.saveCurrentDevice();
             this.render(this.container.parentElement!);
         };
@@ -517,11 +591,30 @@ export class EditorUI {
         colorInput.className = "group-color-input";
         colorInput.value = group.color;
         colorInput.addEventListener("input", (e) => {
-            group.color = (e.target as HTMLInputElement).value;
+            const value = (e.target as HTMLInputElement).value;
+            const key = `grp:${group.id}`;
+            if (this.colorGestureKey !== key || this.colorGestureBefore === null) {
+                this.colorGestureKey = key;
+                const device = this.deviceLibrary.currentDevice;
+                this.colorGestureBefore = this.history && device ? this.history.captureDeviceState(device) : null;
+            }
+            group.color = value;
             label.style.background = group.color;
             label.style.color = contrastTextColor(group.color);
             fill.style.background = this.hexToRgba(group.color, 0.12);
             this.deviceLibrary.saveCurrentDevice();
+        });
+        colorInput.addEventListener("change", () => {
+            const device = this.deviceLibrary.currentDevice;
+            const key = `grp:${group.id}`;
+            if (this.history && device && this.colorGestureKey === key && this.colorGestureBefore) {
+                const after = this.history.captureDeviceState(device);
+                if (!patchesEqual(this.colorGestureBefore, after)) {
+                    this.history.record({ type: "group.color", scope: "device", deviceId: device.id, before: this.colorGestureBefore, after });
+                }
+            }
+            this.colorGestureKey = null;
+            this.colorGestureBefore = null;
         });
         el.appendChild(colorInput);
 
@@ -602,6 +695,13 @@ export class EditorUI {
             active: false,
             captured: false,
             moved: false,
+            // The pre-gesture structural state. Exactly ONE history action is
+            // committed at the end of the gesture; Escape restores this state
+            // and commits nothing.
+            before: this.history && this.deviceLibrary.currentDevice
+                ? this.history.captureDeviceState(this.deviceLibrary.currentDevice)
+                : undefined,
+            aborted: false,
         };
 
         // Pointer capture is deliberately NOT taken here: capturing on
@@ -609,6 +709,7 @@ export class EditorUI {
         // to this element, so double-clicking a Group/Control name label would
         // never reach the label and rename would silently break. Capture is
         // taken lazily in handlePointerMove once a real drag starts.
+        document.addEventListener("keydown", this.handleDragKeydown);
         document.addEventListener("pointermove", this.handlePointerMove);
         document.addEventListener("pointerup", this.handlePointerEnd);
         document.addEventListener("pointercancel", this.handlePointerEnd);
@@ -629,6 +730,25 @@ export class EditorUI {
         }
 
         this.applyDrag(drag, dx, dy);
+    };
+
+    /**
+     * Escape aborts a started drag: the model is restored to the pre-gesture
+     * structural state, persisted, and NO history action is committed. A
+     * sub-threshold gesture (nothing changed yet) just ends the gesture.
+     */
+    private handleDragKeydown = (e: KeyboardEvent) => {
+        if (e.key !== "Escape") return;
+        const drag = this.drag;
+        if (!drag) return;
+        const device = this.deviceLibrary.currentDevice;
+        if (drag.moved && drag.before && device) {
+            if (this.history) this.history.restoreDeviceState(device, drag.before);
+            this.deviceLibrary.saveCurrentDevice();
+        }
+        drag.aborted = true;
+        this.endDrag();
+        this.render(this.container.parentElement!);
     };
 
     /** Takes pointer capture for an actually-started drag, if supported. */
@@ -692,6 +812,19 @@ export class EditorUI {
         const drag = this.drag;
         if (!drag) return;
 
+        // Commit exactly ONE history action for a fully completed gesture
+        // (started + moved + not aborted). The state is snapshotted around the
+        // gesture; identical start/end (grid-snapped no-op) commits nothing.
+        if (drag.moved && !drag.aborted && drag.before && this.history) {
+            const device = this.deviceLibrary.currentDevice;
+            if (device) {
+                const after = this.history.captureDeviceState(device);
+                if (!patchesEqual(drag.before, after)) {
+                    this.history.record({ type: drag.type, scope: "device", deviceId: device.id, before: drag.before, after });
+                }
+            }
+        }
+
         if (drag.moved) {
             // The final position is now the model's source of truth and is
             // persisted so an immediate re-render / reload keeps it (§10).
@@ -706,6 +839,7 @@ export class EditorUI {
             }
         }
 
+        document.removeEventListener("keydown", this.handleDragKeydown);
         document.removeEventListener("pointermove", this.handlePointerMove);
         document.removeEventListener("pointerup", this.handlePointerEnd);
         document.removeEventListener("pointercancel", this.handlePointerEnd);
@@ -731,8 +865,21 @@ export class EditorUI {
         input.style.cssText = "width:120px;max-width:100%;box-sizing:border-box;background:#111;color:#fff;border:1px solid var(--accent-color);outline:none;font-size:11px;text-align:center;";
         const save = () => {
             const name = input.value.trim();
-            if (name) {
+            if (name && name !== target.name) {
+                const device = this.deviceLibrary.currentDevice!;
+                const before = this.history?.captureDeviceState(device);
                 target.name = name;
+                const after = this.history?.captureDeviceState(device);
+                if (this.history && before && after && !patchesEqual(before, after)) {
+                    const isGroupRename = target instanceof Group;
+                    this.history.record({
+                        type: isGroupRename ? "group.rename" : "control.rename",
+                        scope: "device",
+                        deviceId: device.id,
+                        before,
+                        after,
+                    });
+                }
                 this.deviceLibrary.saveCurrentDevice();
             }
             label.innerText = target.name;

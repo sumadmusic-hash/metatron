@@ -3,6 +3,7 @@ import { NexusAdapter } from "../nexus/NexusAdapter";
 import { MidiAccess } from "../midi/MidiAccess";
 import { MidiMapping } from "../midi/MidiMapping";
 import { BindingManager } from "../core/BindingManager";
+import { DeviceHistory } from "../core/history/DeviceHistory";
 import { EditorUI } from "./editor/EditorUI";
 import { SurfaceUI } from "./surface/SurfaceUI";
 import { DeviceLibraryUI } from "./DeviceLibraryUI";
@@ -18,6 +19,10 @@ export class AppUI {
 
     private currentMode: "EDIT" | "USE" = "EDIT";
     private libraryOpen = true;
+
+    private history: DeviceHistory;
+    private undoBtn?: HTMLButtonElement;
+    private redoBtn?: HTMLButtonElement;
 
     private editorUI: EditorUI;
     private surfaceUI: SurfaceUI;
@@ -37,6 +42,10 @@ export class AppUI {
         this.nexusAdapter = nexusAdapter;
         this.midiAccess = midiAccess;
         this.bindingManager = bindingManager ?? new BindingManager(this.deviceLibrary.currentDevice ?? this.deviceLibrary.createNewDevice("My Device"));
+
+        // Session-scoped undo/redo (C1). Transient by design — no persistence.
+        this.history = new DeviceHistory(this.deviceLibrary);
+        this.history.onChange = () => this.syncHistoryButtons();
 
         const device = this.deviceLibrary.currentDevice;
         if (device) {
@@ -80,15 +89,56 @@ export class AppUI {
             this.bindingManager,
             this.midiAccess,
             this.midiMapping,
-            midiHandler
+            midiHandler,
+            this.history
         );
         this.libraryUI = new DeviceLibraryUI(
             this.deviceLibrary,
             () => this.onDeviceChanged(),
             () => this.onPresetLoad(),
             this.nexusAdapter,
-            this.bindingManager
+            this.bindingManager,
+            this.history
         );
+
+        window.addEventListener("keydown", this.handleKeydown);
+    }
+
+    /**
+     * Keyboard undo/redo: Cmd/Ctrl+Z (undo), Shift+Cmd/Ctrl+Z and Ctrl+Y
+     * (redo). Text editing keeps its native undo: the shortcuts are ignored
+     * while an INPUT/TEXTAREA/contenteditable element has focus.
+     */
+    private handleKeydown = (e: KeyboardEvent) => {
+        const mod = e.metaKey || e.ctrlKey;
+        if (!mod) return;
+        const active = document.activeElement;
+        if (
+            active &&
+            (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || (active as HTMLElement).isContentEditable)
+        ) {
+            return;
+        }
+        const key = e.key.toLowerCase();
+        if (key === "z") {
+            e.preventDefault();
+            this.performUndoRedo(e.shiftKey ? "redo" : "undo");
+        } else if (key === "y") {
+            e.preventDefault();
+            this.performUndoRedo("redo");
+        }
+    };
+
+    private performUndoRedo(action: "undo" | "redo") {
+        const ok = action === "undo" ? this.history.undo() : this.history.redo();
+        if (ok) this.onDeviceChanged();
+        this.syncHistoryButtons();
+    }
+
+    /** Refresh the undo/redo button enable state without a full re-render. */
+    private syncHistoryButtons() {
+        if (this.undoBtn) this.undoBtn.disabled = !this.history.canUndo;
+        if (this.redoBtn) this.redoBtn.disabled = !this.history.canRedo;
     }
 
     private applyValueToDevice(controlId: string, value: number) {
@@ -216,6 +266,26 @@ export class AppUI {
         connectionContainer.appendChild(connectionStatus);
         
         toolbar.appendChild(connectionContainer);
+
+        const undoBtn = document.createElement("button");
+        undoBtn.id = "history-undo";
+        undoBtn.className = "btn";
+        undoBtn.innerText = "Undo";
+        undoBtn.title = "Undo last action (Cmd/Ctrl+Z)";
+        undoBtn.onclick = () => this.performUndoRedo("undo");
+        this.undoBtn = undoBtn;
+
+        const redoBtn = document.createElement("button");
+        redoBtn.id = "history-redo";
+        redoBtn.className = "btn";
+        redoBtn.innerText = "Redo";
+        redoBtn.title = "Redo last undone action (Shift+Cmd/Ctrl+Z)";
+        redoBtn.onclick = () => this.performUndoRedo("redo");
+        this.redoBtn = redoBtn;
+
+        this.syncHistoryButtons();
+        toolbar.appendChild(undoBtn);
+        toolbar.appendChild(redoBtn);
 
         const modeToggle = document.createElement("button");
         modeToggle.className = "btn primary";
