@@ -1,5 +1,16 @@
 import { DeviceLibrary } from "../core/DeviceLibrary";
 import { Toast } from "./Toast";
+import { NexusAdapter } from "../nexus/NexusAdapter";
+import { BindingManager } from "../core/BindingManager";
+import { InstrumentPresetLibrary } from "../persistence/InstrumentPresetLibrary";
+import {
+    exportInstrumentToLibrary,
+    importInstrumentFromLibrary,
+} from "../integration/InstrumentPresetIntegration";
+import {
+    renderInstrumentExportOutcome,
+    renderInstrumentImportOutcome,
+} from "./instrument/InstrumentResultView";
 
 /**
  * Device Library UI (spec §47, §48): New / Open / Save / Rename / Delete
@@ -10,15 +21,22 @@ export class DeviceLibraryUI {
     private onDeviceChanged: () => void;
     private onPresetLoad?: () => void;
     private container!: HTMLElement;
+    private nexusAdapter?: NexusAdapter;
+    private bindingManager?: BindingManager;
+    private instrumentResultArea?: HTMLElement;
 
     constructor(
         deviceLibrary: DeviceLibrary,
         onDeviceChanged: () => void,
-        onPresetLoad?: () => void
+        onPresetLoad?: () => void,
+        nexusAdapter?: NexusAdapter,
+        bindingManager?: BindingManager
     ) {
         this.deviceLibrary = deviceLibrary;
         this.onDeviceChanged = onDeviceChanged;
         this.onPresetLoad = onPresetLoad;
+        this.nexusAdapter = nexusAdapter;
+        this.bindingManager = bindingManager;
     }
 
     public render(parent: HTMLElement) {
@@ -76,6 +94,9 @@ export class DeviceLibraryUI {
 
         // Presets section for the active device (§6 Presets, §20 "Save Load/Delete")
         this.renderPresets(panel);
+
+        // Instrument presets — export/import of the full chain+device state (P1/P2/P3)
+        this.renderInstrumentPresets(panel);
 
         // Clear pending confirm bar when re-rendering
         this.clearConfirm();
@@ -203,6 +224,180 @@ export class DeviceLibraryUI {
                 row.appendChild(delBtn);
                 panel.appendChild(row);
             });
+        }
+    }
+
+    /**
+     * Instrument presets (P1 export / P2 import / P3 result display).
+     * SOURCE (export) = the connected project, read-only; TARGET (import) =
+     * the connected project, mutated ONLY via the import engine after explicit
+     * user confirmation. No root/entity id input, no name search.
+     */
+    private renderInstrumentPresets(panel: HTMLElement) {
+        const device = this.deviceLibrary.currentDevice;
+        if (!device) return;
+
+        const h3 = document.createElement("h3");
+        h3.style.marginTop = "20px";
+        h3.innerText = "INSTRUMENT PRESETS";
+        panel.appendChild(h3);
+
+        const exportRow = document.createElement("div");
+        exportRow.style.display = "flex";
+        exportRow.style.gap = "6px";
+
+        const input = document.createElement("input");
+        input.className = "text-input";
+        input.placeholder = "Instrument preset name";
+        input.value = device.name;
+        input.style.flex = "1";
+        input.style.padding = "5px 8px";
+        input.style.fontSize = "12px";
+        input.title = "Name stored as the envelope name (v0.1)";
+
+        const exportBtn = document.createElement("button");
+        exportBtn.className = "btn small";
+        exportBtn.innerText = "Export";
+        exportBtn.title = "Capture the connected project chain + this device's bound controls (SOURCE is read-only)";
+        exportBtn.onclick = () => void this.runInstrumentExport(input.value.trim() || device.name);
+        exportRow.appendChild(input);
+        exportRow.appendChild(exportBtn);
+        panel.appendChild(exportRow);
+
+        const emptyHint = "Connected project = SOURCE for export, TARGET for import. Connect first.";
+        const hint = document.createElement("div");
+        hint.style.cssText = "color:var(--text-secondary);font-size:11px;padding:6px 2px;";
+        hint.innerText = emptyHint;
+        panel.appendChild(hint);
+
+        const list = InstrumentPresetLibrary.list();
+        if (list.length === 0) {
+            const empty = document.createElement("div");
+            empty.style.cssText = "color:var(--text-secondary);font-size:12px;padding:8px 4px;";
+            empty.innerText = "No instrument presets yet.";
+            panel.appendChild(empty);
+        } else {
+            list.sort((a, b) => b.createdAt - a.createdAt).forEach((entry) => {
+                const row = document.createElement("div");
+                row.className = "preset-list-item";
+
+                const label = document.createElement("span");
+                label.innerText = `${entry.name} (${entry.deviceId})`;
+                label.style.flex = "1";
+                label.style.overflow = "hidden";
+                label.style.textOverflow = "ellipsis";
+                label.style.whiteSpace = "nowrap";
+                label.title = `${entry.name} · device ${entry.deviceId} · created ${new Date(entry.createdAt).toLocaleString()}`;
+
+                const importBtn = document.createElement("button");
+                importBtn.className = "mini-btn";
+                importBtn.innerText = "Import";
+                importBtn.title = "Import into the connected TARGET project (creates devices/cables — confirmed first)";
+                importBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    this.confirmInstrumentImport(entry);
+                };
+
+                const delBtn = document.createElement("button");
+                delBtn.className = "mini-btn";
+                delBtn.innerText = "✕";
+                delBtn.title = "Delete this instrument preset from the library";
+                delBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    InstrumentPresetLibrary.delete(entry.id);
+                    Toast.show(`Instrument preset "${entry.name}" deleted.`, "info");
+                    this.render(this.container);
+                };
+
+                row.appendChild(label);
+                row.appendChild(importBtn);
+                row.appendChild(delBtn);
+                panel.appendChild(row);
+            });
+        }
+
+        const resultArea = document.createElement("div");
+        panel.appendChild(resultArea);
+        this.instrumentResultArea = resultArea;
+    }
+
+    private async runInstrumentExport(name: string) {
+        this.instrumentResultArea?.lastElementChild?.remove();
+        const device = this.deviceLibrary.currentDevice;
+        if (!device) {
+            Toast.show("No active device to export.", "error");
+            return;
+        }
+        if (!this.nexusAdapter?.document) {
+            Toast.show("Connect to an Audiotool project first — the connected project is the SOURCE.", "error");
+            return;
+        }
+        if (!this.bindingManager) {
+            Toast.show("No binding manager available.", "error");
+            return;
+        }
+        const outcome = await exportInstrumentToLibrary(this.nexusAdapter.document, device, this.bindingManager, name);
+        if (outcome.ok) {
+            Toast.show(`Instrument preset "${name}" exported (${outcome.entry!.id}).`, "success");
+            this.render(this.container);
+            this.instrumentResultArea?.appendChild(renderInstrumentExportOutcome(outcome));
+        } else {
+            Toast.show("Instrument preset export failed.", "error");
+            this.instrumentResultArea?.appendChild(renderInstrumentExportOutcome(outcome));
+        }
+    }
+
+    /** Confirmation before mutating the connected project (P2 gate). */
+    private confirmInstrumentImport(entry: { id: string; name: string }) {
+        this.render(this.container); // clear pending bars
+        const bar = document.createElement("div");
+        bar.className = "confirm-bar danger";
+        bar.style.top = "100px";
+        bar.style.left = "50%";
+        bar.style.transform = "translateX(-50%)";
+
+        const label = document.createElement("span");
+        label.innerText = `Import "${entry.name}" into the connected project? This creates devices and cables there.`;
+        bar.appendChild(label);
+
+        const yes = document.createElement("button");
+        yes.className = "btn small";
+        yes.innerText = "Import";
+        yes.style.marginLeft = "8px";
+        yes.onclick = () => {
+            bar.remove();
+            void this.runInstrumentImport(entry.id);
+        };
+        bar.appendChild(yes);
+
+        const no = document.createElement("button");
+        no.className = "btn small";
+        no.innerText = "Cancel";
+        no.onclick = () => bar.remove();
+        bar.appendChild(no);
+
+        document.body.appendChild(bar);
+    }
+
+    private async runInstrumentImport(libraryId: string) {
+        this.instrumentResultArea?.lastElementChild?.remove();
+        const doc = this.nexusAdapter?.document;
+        if (!doc) {
+            Toast.show("Connect to the TARGET project first — import clones into the connected project.", "error");
+            return;
+        }
+        if (!this.bindingManager) {
+            Toast.show("No binding manager available.", "error");
+            return;
+        }
+        const outcome = await importInstrumentFromLibrary(libraryId, doc, this.bindingManager);
+        this.instrumentResultArea?.appendChild(renderInstrumentImportOutcome(outcome));
+        if (outcome.ok) {
+            Toast.show("Instrument preset imported — chain restored and verified.", "success");
+        } else if (outcome.import) {
+            Toast.show("Instrument preset import FAILED — no success, see report.", "error");
+        } else {
+            Toast.show(outcome.errors?.[0] ?? "Instrument preset import failed.", "error");
         }
     }
 

@@ -82,7 +82,13 @@ export class AppUI {
             this.midiMapping,
             midiHandler
         );
-        this.libraryUI = new DeviceLibraryUI(this.deviceLibrary, () => this.onDeviceChanged(), () => this.onPresetLoad());
+        this.libraryUI = new DeviceLibraryUI(
+            this.deviceLibrary,
+            () => this.onDeviceChanged(),
+            () => this.onPresetLoad(),
+            this.nexusAdapter,
+            this.bindingManager
+        );
     }
 
     private applyValueToDevice(controlId: string, value: number) {
