@@ -100,6 +100,11 @@ export class EditorUI {
     }
 
     public render(parent: HTMLElement) {
+        // Every color-picker gesture dies with its DOM elements: the canvas is
+        // being rebuilt, so the next gesture must capture a fresh baseline
+        // (never reuse one from a gesture that was destroyed mid-flight).
+        this.clearColorGesture();
+
         this.container = document.createElement("div");
         this.container.className = this.snapEnabled ? "editor-canvas" : "editor-canvas editor-canvas--nogrid";
 
@@ -401,6 +406,12 @@ export class EditorUI {
             this.colorGestureKey = null;
             this.colorGestureBefore = null;
         });
+        colorInput.addEventListener("blur", () => {
+            // Picker dismissed without a committed `change` (cancel path): the
+            // gesture is dead — drop its baseline so a LATER gesture on this
+            // control re-captures the real start state instead of this stale one.
+            this.clearColorGesture(`ctl:${control.id}`);
+        });
         tools.appendChild(colorInput);
 
         const del = document.createElement("button");
@@ -616,6 +627,9 @@ export class EditorUI {
             this.colorGestureKey = null;
             this.colorGestureBefore = null;
         });
+        colorInput.addEventListener("blur", () => {
+            this.clearColorGesture(`grp:${group.id}`);
+        });
         el.appendChild(colorInput);
 
         // Resize handle
@@ -660,6 +674,20 @@ export class EditorUI {
     }
 
     // ---------- drag ----------
+
+    /**
+     * Discard a pending color-picker gesture baseline. With `forKey` set, only
+     * the gesture belonging to that element is cleared, so a commit on one
+     * control never damages another. `change` already resets the key; a
+     * follow-up `blur` then no-ops — and a lone `blur` (cancel) clears the
+     * stale baseline so a later gesture re-captures its real start state.
+     */
+    private clearColorGesture(forKey?: string) {
+        if (forKey === undefined || this.colorGestureKey === forKey) {
+            this.colorGestureKey = null;
+            this.colorGestureBefore = null;
+        }
+    }
 
     /**
      * Starts (or restarts) the single drag gesture. Any previously active

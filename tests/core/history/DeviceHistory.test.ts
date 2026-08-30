@@ -431,3 +431,111 @@ describe("DeviceHistory — remaining C1 semantic guarantees", () => {
         expect(patch.controls[a.id].value).toBe(1.0);
     });
 });
+
+describe("DeviceHistory — race-safe import record (follow-up B)", () => {
+
+    it("discards an import action when the active device changed during the async mutation", () => {
+        const lib = new DeviceLibrary();
+        const x = lib.createNewDevice("X");
+        const xa = addKnob(x, "XA", 100, 100);
+        lib.saveCurrentDevice();
+        const y = lib.createNewDevice("Y");
+        const yb = addKnob(y, "YB", 200, 200);
+        lib.saveCurrentDevice();
+        lib.loadDevice(x.id);
+
+        const history = new DeviceHistory(lib);
+        const xLive = lib.currentDevice!;
+        const xaLive = xLive.getControl(xa.id)!;
+        const before = history.captureDeviceState(xLive);
+        xaLive.position = { x: 400, y: 400 };
+        const after = history.captureDeviceState(xLive);
+
+        // The import finished, but the user switched to Y while it ran.
+        lib.loadDevice(y.id);
+        history.recordDeviceAction("instrument.import", xLive, before, after);
+
+        // No action under Y, nothing undoable, Y untouched, X stays as-is.
+        expect(history.undoLength).toBe(0);
+        expect(history.canUndo).toBe(false);
+        expect(history.undo()).toBe(false);
+        expect(lib.currentDevice!.getControl(yb.id)!.position).toEqual({ x: 200, y: 200 });
+        expect(xLive.getControl(xa.id)!.position).toEqual({ x: 400, y: 400 });
+    });
+
+    it("records the import action normally while the target device is still active", () => {
+        const lib = new DeviceLibrary();
+        const x = lib.createNewDevice("X");
+        const xa = addKnob(x, "XA", 100, 100);
+        lib.saveCurrentDevice();
+        lib.loadDevice(x.id);
+
+        const history = new DeviceHistory(lib);
+        const xLive = lib.currentDevice!;
+        const xaLive = xLive.getControl(xa.id)!;
+        const before = history.captureDeviceState(xLive);
+        xaLive.position = { x: 300, y: 300 };
+        const after = history.captureDeviceState(xLive);
+
+        history.recordDeviceAction("instrument.import", xLive, before, after);
+        expect(history.undoLength).toBe(1);
+        expect(history.undo()).toBe(true);
+        expect(xLive.getControl(xa.id)!.position).toEqual({ x: 100, y: 100 });
+        expect(history.redo()).toBe(true);
+        expect(xLive.getControl(xa.id)!.position).toEqual({ x: 300, y: 300 });
+    });
+});
+
+describe("DeviceHistory — per-device executability (follow-up C)", () => {
+
+    it("canUndo/canRedoOnCurrentDevice follow which device the top action targets", () => {
+        const lib = new DeviceLibrary();
+        const x = lib.createNewDevice("X");
+        const xa = addKnob(x, "XA", 100, 100);
+        lib.saveCurrentDevice();
+        const y = lib.createNewDevice("Y");
+        lib.saveCurrentDevice();
+        lib.loadDevice(x.id);
+
+        const history = new DeviceHistory(lib);
+        const xLive = lib.currentDevice!;
+        const xaLive = xLive.getControl(xa.id)!;
+        const before = history.captureDeviceState(xLive);
+        xaLive.position = { x: 500, y: 500 };
+        const after = history.captureDeviceState(xLive);
+        history.record({ type: "control.move", scope: "device", deviceId: xLive.id, before, after });
+
+        expect(history.canUndo).toBe(true);
+        expect(history.canUndoOnCurrentDevice).toBe(true); // X active
+
+        lib.loadDevice(y.id);
+        expect(history.canUndoOnCurrentDevice).toBe(false); // top action targets X
+        expect(history.canUndo).toBe(true); // action itself kept
+
+        lib.loadDevice(x.id);
+        expect(history.canUndoOnCurrentDevice).toBe(true); // back on X
+        expect(history.undo()).toBe(true);
+        expect(history.canRedoOnCurrentDevice).toBe(true);
+
+        lib.loadDevice(y.id);
+        expect(history.canRedoOnCurrentDevice).toBe(false); // redo also targets X
+        expect(history.canRedo).toBe(true);
+    });
+
+    it("library-scope actions are always executable regardless of the active device", () => {
+        const lib = new DeviceLibrary();
+        lib.createNewDevice("A");
+        lib.saveCurrentDevice();
+        const history = new DeviceHistory(lib);
+        const before = history.captureLibraryState();
+        lib.createNewDevice("B");
+        lib.saveCurrentDevice();
+        const after = history.captureLibraryState();
+        history.record({ type: "device.create", scope: "library", deviceId: null, before, after });
+
+        expect(history.canUndoOnCurrentDevice).toBe(true);
+        expect(history.undo()).toBe(true);
+        expect(history.canRedoOnCurrentDevice).toBe(true);
+        expect(history.redo()).toBe(true);
+    });
+});

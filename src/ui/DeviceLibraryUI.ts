@@ -2,6 +2,7 @@ import { DeviceLibrary } from "../core/DeviceLibrary";
 import { DeviceHistory } from "../core/history/DeviceHistory";
 import { patchesEqual } from "../core/history/HistoryAction";
 import type { DeviceStatePatch } from "../core/history/HistoryAction";
+import type { Device } from "../core/model/Device";
 import { Toast } from "./Toast";
 import { NexusAdapter } from "../nexus/NexusAdapter";
 import { BindingManager } from "../core/BindingManager";
@@ -45,19 +46,19 @@ export class DeviceLibraryUI {
         this.history = history;
     }
 
-    /** Structural snapshot of the current device (device-scope actions). */
-    private currentPatch(): DeviceStatePatch | null {
+    /** Structural snapshot of the given device (device-scope actions). The
+     *  device is passed explicitly so an async caller can capture its context
+     *  BEFORE `await`: the history must never infer the target afterwards. */
+    private currentPatch(device: Device): DeviceStatePatch | null {
         if (!this.history) return null;
-        const device = this.deviceLibrary.currentDevice;
-        return device ? this.history.captureDeviceState(device) : null;
+        return this.history.captureDeviceState(device);
     }
 
-    /** Record ONE device-scope action, only when the snapshot actually changed. */
-    private recordDeviceAction(type: string, before: DeviceStatePatch | null, after: DeviceStatePatch | null) {
-        if (!this.history || !before || !after || patchesEqual(before, after)) return;
-        const device = this.deviceLibrary.currentDevice;
-        if (!device) return;
-        this.history.record({ type, scope: "device", deviceId: device.id, before, after });
+    /** Record ONE device-scope action for the given device, only when the
+     *  snapshot actually changed and the device is still the active one (the
+     *  history layer discards an action whose device switched mid-flight). */
+    private recordDeviceAction(type: string, device: Device, before: DeviceStatePatch | null, after: DeviceStatePatch | null) {
+        this.history?.recordDeviceAction(type, device, before, after);
     }
 
     public render(parent: HTMLElement) {
@@ -155,11 +156,11 @@ export class DeviceLibraryUI {
                 Toast.show("Enter a preset name.", "error");
                 return;
             }
-            const before = this.currentPatch();
+            const before = this.currentPatch(device);
             device.savePreset(name);
             this.deviceLibrary.saveCurrentDevice();
-            const after = this.currentPatch();
-            this.recordDeviceAction("preset.save", before, after);
+            const after = this.currentPatch(device);
+            this.recordDeviceAction("preset.save", device, before, after);
             Toast.show(`Preset "${name}" saved.`, "success");
             this.render(this.container);
         };
@@ -200,11 +201,11 @@ export class DeviceLibraryUI {
                     const finish = () => {
                         const name = input.value.trim();
                         if (name && name !== preset.name) {
-                            const before = this.currentPatch();
+                            const before = this.currentPatch(device);
                             preset.name = name;
                             this.deviceLibrary.saveCurrentDevice();
-                            const after = this.currentPatch();
-                            this.recordDeviceAction("preset.rename", before, after);
+                            const after = this.currentPatch(device);
+                            this.recordDeviceAction("preset.rename", device, before, after);
                             Toast.show("Preset renamed.", "success");
                         }
                         this.render(this.container);
@@ -224,11 +225,11 @@ export class DeviceLibraryUI {
                 loadBtn.title = "Apply this preset to the device (§20)";
                 loadBtn.onclick = (e) => {
                     e.stopPropagation();
-                    const before = this.currentPatch();
+                    const before = this.currentPatch(device);
                     device.loadPreset(preset.id);
                     this.deviceLibrary.saveCurrentDevice();
-                    const after = this.currentPatch();
-                    this.recordDeviceAction("preset.load", before, after);
+                    const after = this.currentPatch(device);
+                    this.recordDeviceAction("preset.load", device, before, after);
                     // Push restored values to Nexus ONLY for controls connected
                     // to the current project; DISCONNECTED controls stay local.
                     this.onPresetLoad?.();
@@ -242,11 +243,11 @@ export class DeviceLibraryUI {
                 delBtn.title = "Delete preset";
                 delBtn.onclick = (e) => {
                     e.stopPropagation();
-                    const before = this.currentPatch();
+                    const before = this.currentPatch(device);
                     device.deletePreset(preset.id);
                     this.deviceLibrary.saveCurrentDevice();
-                    const after = this.currentPatch();
-                    this.recordDeviceAction("preset.delete", before, after);
+                    const after = this.currentPatch(device);
+                    this.recordDeviceAction("preset.delete", device, before, after);
                     Toast.show(`Preset "${preset.name}" deleted.`, "info");
                     this.render(this.container);
                 };
@@ -431,10 +432,15 @@ export class DeviceLibraryUI {
         // Device-scope undo: the import writes binding definitions onto Metatron
         // controls (external target-project changes and ActiveBindings are out
         // of scope for undo). Only recorded when the device state changed.
-        const before = this.currentPatch();
+        // The target device is pinned BEFORE the await: `recordDeviceAction`
+        // (history layer) discards the action if the user switched devices in
+        // the meantime — the state of device X is never tagged as device Y.
+        const device = this.deviceLibrary.currentDevice;
+        if (!device) return;
+        const before = this.currentPatch(device);
         const outcome = await importInstrumentFromLibrary(libraryId, doc, this.bindingManager);
-        const after = this.currentPatch();
-        this.recordDeviceAction("instrument.import", before, after);
+        const after = this.currentPatch(device);
+        this.recordDeviceAction("instrument.import", device, before, after);
         this.instrumentResultArea?.appendChild(renderInstrumentImportOutcome(outcome));
         if (outcome.ok) {
             Toast.show("Instrument preset imported — chain restored and verified.", "success");
@@ -515,10 +521,10 @@ export class DeviceLibraryUI {
         const finish = () => {
             const name = input.value.trim();
             if (name && name !== device.name) {
-                const before = this.currentPatch();
+                const before = this.currentPatch(device);
                 this.deviceLibrary.renameCurrentDevice(name);
-                const after = this.currentPatch();
-                this.recordDeviceAction("device.rename", before, after);
+                const after = this.currentPatch(device);
+                this.recordDeviceAction("device.rename", device, before, after);
                 Toast.show("Device renamed.", "success");
             }
             this.onDeviceChanged();

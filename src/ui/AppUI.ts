@@ -135,10 +135,13 @@ export class AppUI {
         this.syncHistoryButtons();
     }
 
-    /** Refresh the undo/redo button enable state without a full re-render. */
+    /** Refresh the undo/redo button enable state without a full re-render.
+     *  The buttons reflect only actions that could ACTUALLY run on the current
+     *  device (a device-scope action for another device is never suggested as
+     *  executable here). */
     private syncHistoryButtons() {
-        if (this.undoBtn) this.undoBtn.disabled = !this.history.canUndo;
-        if (this.redoBtn) this.redoBtn.disabled = !this.history.canRedo;
+        if (this.undoBtn) this.undoBtn.disabled = !this.history.canUndoOnCurrentDevice;
+        if (this.redoBtn) this.redoBtn.disabled = !this.history.canRedoOnCurrentDevice;
     }
 
     private applyValueToDevice(controlId: string, value: number) {

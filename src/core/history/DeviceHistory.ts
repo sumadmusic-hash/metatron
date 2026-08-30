@@ -185,6 +185,26 @@ export class DeviceHistory {
         return this.redoStack.length > 0;
     }
 
+    /** Whether the top undo action could be APPLIED to the CURRENT active
+     *  device. Library-scope actions are always runnable; a device-scope
+     *  action is only runnable while its target device is active. Used by the
+     *  UI so it never suggests an undo/redo that `undo()`/`redo()` would
+     *  refuse on the active device (mismatch guard). */
+    public get canUndoOnCurrentDevice(): boolean {
+        return this.isRunnableOnCurrent(this.undoStack[this.undoStack.length - 1]);
+    }
+
+    public get canRedoOnCurrentDevice(): boolean {
+        return this.isRunnableOnCurrent(this.redoStack[this.redoStack.length - 1]);
+    }
+
+    private isRunnableOnCurrent(action: HistoryAction | undefined): boolean {
+        if (!action) return false;
+        if (action.scope === "library") return true;
+        const device = this.library.currentDevice;
+        return !!device && action.deviceId === device.id;
+    }
+
     public get undoLength(): number {
         return this.undoStack.length;
     }
@@ -246,6 +266,23 @@ export class DeviceHistory {
             this.undoStack.shift();
         }
         this.onChange?.();
+    }
+
+    /** Device-scope record used by the async import path. The device captured
+     *  at the START of the mutating operation is passed in explicitly: the
+     *  action is committed ONLY while that device is still active. If the user
+     *  switched devices while the mutation was in flight, the action is
+     *  discarded — the state of device X is NEVER tagged as an action for
+     *  device Y. No heuristics: a strict identity check. */
+    public recordDeviceAction(
+        type: string,
+        device: Device,
+        before: DeviceStatePatch | null,
+        after: DeviceStatePatch | null,
+    ): void {
+        if (!before || !after || patchesEqual(before, after)) return;
+        if (this.library.currentDevice?.id !== device.id) return;
+        this.record({ type, scope: "device", deviceId: device.id, before, after });
     }
 
     public undo(): boolean {

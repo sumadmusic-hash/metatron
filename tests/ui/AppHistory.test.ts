@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { Device } from "../../src/core/model/Device";
 import { Control } from "../../src/core/model/Control";
+import { Group } from "../../src/core/model/Group";
 import { DeviceLibrary } from "../../src/core/DeviceLibrary";
 import { NexusAdapter } from "../../src/nexus/NexusAdapter";
 import { MidiAccess } from "../../src/midi/MidiAccess";
@@ -171,5 +172,122 @@ describe("AppUI — history toolbar (C1)", () => {
         expect(undoBtn(root).disabled).toBe(true);
         expect(redoBtn(root).disabled).toBe(true);
         expect(a.value).toBe(1.0);
+    });
+});
+
+describe("C1 follow-up FIX A — color-picker cancel never leaks a stale gesture baseline", () => {
+
+    it("a canceled control color gesture cannot poison the next gesture's undo baseline", () => {
+        const device = new Device("T");
+        const a = addKnob(device, "A", 100, 100);
+        const { root } = mountApp(device);
+
+        const swatch = root.querySelector<HTMLInputElement>(`[data-ctl-id="${a.id}"] .color-swatch`)!;
+        expect(swatch.value).toBe("#333333"); // default
+
+        // Gesture 1: user scrubs the picker, then dismisses it WITHOUT a
+        // committed `change` (cancel path). Color is live-updated, nothing recorded.
+        swatch.value = "#ff0000";
+        swatch.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(a.visualDefinition.color).toBe("#ff0000");
+        swatch.dispatchEvent(new Event("blur", { bubbles: true }));
+        expect(undoBtn(root).disabled).toBe(true); // no action yet
+
+        // Gesture 2: a real commit starting from the CURRENT color (#ff0000).
+        // Without the fix, the abandoned gesture-1 baseline (#333333) would
+        // be reused, so undo would jump back further than it should.
+        swatch.value = "#00ff00";
+        swatch.dispatchEvent(new Event("input", { bubbles: true }));
+        swatch.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(a.visualDefinition.color).toBe("#00ff00");
+        expect(undoBtn(root).disabled).toBe(false); // exactly ONE action
+
+        // Undo must restore gesture-2's own baseline — never the stale #333333.
+        undoBtn(root).click();
+        expect(a.visualDefinition.color).toBe("#ff0000");
+    });
+
+    it("a canceled GROUP color gesture also clears its baseline", () => {
+        const device = new Device("T");
+        const g = new Group("G", { x: 100, y: 100 }, { width: 240, height: 180 });
+        device.addGroup(g);
+        const { root } = mountApp(device);
+
+        const picker = root.querySelector<HTMLInputElement>(`[data-grp-id="${g.id}"] .group-color-input`)!;
+        picker.value = "#ff0000";
+        picker.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(g.color).toBe("#ff0000");
+        picker.dispatchEvent(new Event("blur", { bubbles: true }));
+
+        picker.value = "#00ff00";
+        picker.dispatchEvent(new Event("input", { bubbles: true }));
+        picker.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(g.color).toBe("#00ff00");
+        expect(undoBtn(root).disabled).toBe(false);
+
+        undoBtn(root).click();
+        expect(g.color).toBe("#ff0000");
+    });
+
+    it("a full color picker sweep remains a SINGLE history action (coalescing intact)", () => {
+        const device = new Device("T");
+        const a = addKnob(device, "A", 100, 100);
+        const { root } = mountApp(device);
+
+        const swatch = root.querySelector<HTMLInputElement>(`[data-ctl-id="${a.id}"] .color-swatch`)!;
+
+        swatch.value = "#aaaaaa";
+        swatch.dispatchEvent(new Event("input", { bubbles: true }));
+        swatch.value = "#bbbbbb";
+        swatch.dispatchEvent(new Event("input", { bubbles: true }));
+        swatch.value = "#cccccc";
+        swatch.dispatchEvent(new Event("input", { bubbles: true }));
+        swatch.dispatchEvent(new Event("change", { bubbles: true }));
+        swatch.dispatchEvent(new Event("blur", { bubbles: true })); // blur after commit is a no-op
+
+        expect(undoBtn(root).disabled).toBe(false); // exactly ONE action
+        undoBtn(root).click();
+        expect(a.visualDefinition).toEqual({}); // pre-gesture state restored exactly
+        redoBtn(root).click();
+        expect(a.visualDefinition.color).toBe("#cccccc");
+    });
+});
+
+describe("C1 follow-up FIX C — toolbar reflects per-device undo executability", () => {
+
+    it("undo/redo buttons never suggest an action that is only executable on another device", () => {
+        const lib = new DeviceLibrary();
+        const a = lib.createNewDevice("A");
+        const a1 = addKnob(a, "A1", 100, 100);
+        lib.saveCurrentDevice();
+        const b = lib.createNewDevice("B");
+        addKnob(b, "B1", 200, 200);
+        lib.saveCurrentDevice();
+        lib.loadDevice(a.id); // open A fresh from storage
+
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        const app = new AppUI(root, lib, new NexusAdapter(), new MidiAccess(), new BindingManager(lib.currentDevice!));
+        app.render();
+
+        const aLive = lib.currentDevice!;
+        const a1Live = aLive.getControl(a1.id)!;
+        dragKnob(root, a1Live.id); // one device-scope action on A
+        expect(a1Live.position).toEqual({ x: 140, y: 160 });
+        expect(undoBtn(root).disabled).toBe(false);
+        expect(redoBtn(root).disabled).toBe(true);
+
+        // Switch to B: the top action targets A → NOT executable here.
+        lib.loadDevice(b.id);
+        app.render();
+        expect(undoBtn(root).disabled).toBe(true);
+        expect(redoBtn(root).disabled).toBe(true);
+
+        // Back on A → the same undo becomes available again and really runs.
+        lib.loadDevice(a.id);
+        app.render();
+        expect(undoBtn(root).disabled).toBe(false);
+        undoBtn(root).click();
+        expect(lib.currentDevice!.getControl(a1.id)!.position).toEqual({ x: 100, y: 100 });
     });
 });
