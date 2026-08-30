@@ -28,15 +28,24 @@ import type { RawCable } from "../../src/nexus/ChainLive";
  * integration layer only. The 370-test baseline must stay green next to these.
  */
 
-// Minimal localStorage shim (pattern of tests/core/DeviceLibrary.test.ts).
+// Shared backing store so a ThrowingStorage (setItem-only) still sees the data
+// written through a previous healthy FakeStorage — writes fail, reads don't.
+const localStorageStore = new Map<string, string>();
 class FakeStorage implements Storage {
-    private store = new Map<string, string>();
-    get length(): number { return this.store.size; }
-    clear(): void { this.store.clear(); }
-    getItem(key: string): string | null { return this.store.get(key) ?? null; }
-    key(index: number): string | null { return Array.from(this.store.keys())[index] ?? null; }
-    removeItem(key: string): void { this.store.delete(key); }
-    setItem(key: string, value: string): void { this.store.set(key, value); }
+    get length(): number { return localStorageStore.size; }
+    clear(): void { localStorageStore.clear(); }
+    getItem(key: string): string | null { return localStorageStore.get(key) ?? null; }
+    key(index: number): string | null { return Array.from(localStorageStore.keys())[index] ?? null; }
+    removeItem(key: string): void { localStorageStore.delete(key); }
+    setItem(key: string, value: string): void { localStorageStore.set(key, value); }
+}
+
+/** localStorage whose writes always fail (quota/private-mode simulation).
+ *  Reads still work — the persistence failure is isolated to setItem. */
+class ThrowingStorage extends FakeStorage {
+    override setItem(): void {
+        throw new Error("QuotaExceededError");
+    }
 }
 
 function freshDoc() {
@@ -119,7 +128,9 @@ describe("P4 — Instrument Preset integration (deterministic root selection)", 
 
 describe("P4 — Instrument Preset integration (library persistence, D1)", () => {
     beforeEach(() => {
-        (globalThis as any).localStorage = new FakeStorage();
+        const storage = new FakeStorage();
+        storage.clear();
+        (globalThis as any).localStorage = storage;
     });
 
     async function exportFixture() {
@@ -241,5 +252,53 @@ describe("P4 — Instrument Preset integration (library persistence, D1)", () =>
         const outcome = await exportInstrumentToLibrary(doc, device, new BindingManager(device), "Empty");
         expect(outcome.ok).toBe(false);
         expect(outcome.errors?.[0]).toMatch(/no bound control/);
+    });
+
+    it("F1 save: storage write failure returns ok:false, never a fake success", async () => {
+        const { doc, pulv } = await makeSource();
+        const { device, cutoffId } = makeDevice();
+        const bm = new BindingManager(device);
+        bindCutoff(bm, pulv, cutoffId);
+        const normal = await exportInstrumentToLibrary(doc, device, bm, "P");
+        expect(normal.ok).toBe(true);
+        if (!normal.ok || !normal.preset) throw new Error("fixture export failed");
+        const countBefore = InstrumentPresetLibrary.list().length;
+        expect(countBefore).toBe(1);
+
+        (globalThis as any).localStorage = new ThrowingStorage();
+        const saved = InstrumentPresetLibrary.save(normal.preset);
+        expect(saved.ok).toBe(false);
+        if (saved.ok) throw new Error("expected failure");
+        expect(saved.errors?.[0]).toMatch(/persist/i);
+        // The failed save must not have persisted anything (store unchanged).
+        expect(InstrumentPresetLibrary.list().length).toBe(countBefore);
+    });
+
+    it("F1 export: orchestration reports NOT ok:true when persistence fails", async () => {
+        const { doc, pulv } = await makeSource();
+        const { device, cutoffId } = makeDevice();
+        const bm = new BindingManager(device);
+        bindCutoff(bm, pulv, cutoffId);
+        (globalThis as any).localStorage = new ThrowingStorage();
+
+        const outcome = await exportInstrumentToLibrary(doc, device, bm, "P");
+        expect(outcome.ok).toBe(false);
+        expect(outcome.entry).toBeUndefined();
+        expect(outcome.preset).toBeUndefined();
+        expect(outcome.errors?.[0]).toMatch(/persist/i);
+        expect(InstrumentPresetLibrary.list().length).toBe(0);
+    });
+
+    it("F1 delete: normal delete works, storage write failure returns false", async () => {
+        const { entry } = await exportFixture();
+        expect(InstrumentPresetLibrary.delete(entry.id)).toBe(true);
+        expect(InstrumentPresetLibrary.list().length).toBe(0);
+    });
+
+    it("F1 delete: storage write failure is reported as a failed operation", async () => {
+        const { entry } = await exportFixture();
+        (globalThis as any).localStorage = new ThrowingStorage();
+        expect(InstrumentPresetLibrary.delete(entry.id)).toBe(false);
+        expect(InstrumentPresetLibrary.list().length).toBe(1);
     });
 });

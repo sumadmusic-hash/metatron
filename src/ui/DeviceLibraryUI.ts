@@ -304,8 +304,13 @@ export class DeviceLibraryUI {
                 delBtn.title = "Delete this instrument preset from the library";
                 delBtn.onclick = (e) => {
                     e.stopPropagation();
-                    InstrumentPresetLibrary.delete(entry.id);
-                    Toast.show(`Instrument preset "${entry.name}" deleted.`, "info");
+                    const deleted = InstrumentPresetLibrary.delete(entry.id);
+                    Toast.show(
+                        deleted
+                            ? `Instrument preset "${entry.name}" deleted.`
+                            : `Could not delete instrument preset "${entry.name}" from local storage.`,
+                        deleted ? "info" : "error",
+                    );
                     this.render(this.container);
                 };
 

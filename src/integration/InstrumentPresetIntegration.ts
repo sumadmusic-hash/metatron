@@ -131,8 +131,13 @@ export async function exportInstrumentToLibrary(
     const snapshot = createSnapshot(doc, rootId);
     const result = buildInstrumentExportInput(device, name, snapshot, bindingManager);
     if (!result.ok) return { ok: false, errors: result.errors };
-    const entry = InstrumentPresetLibrary.save(result.preset);
-    return { ok: true, entry, preset: result.preset, warnings: result.warnings };
+    const saved = InstrumentPresetLibrary.save(result.preset);
+    if (!saved.ok) {
+        // A successful engine export that could NOT be persisted must not be
+        // reported as a successful library export (F1).
+        return { ok: false, errors: saved.errors };
+    }
+    return { ok: true, entry: saved.entry, preset: result.preset, warnings: result.warnings };
 }
 
 /** P2 (pre-import) — parse + validate a stored envelope (controlled failure

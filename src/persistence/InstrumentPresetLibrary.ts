@@ -44,11 +44,18 @@ function isEntry(value: unknown): value is InstrumentPresetLibraryEntry {
     );
 }
 
+/** Result of a `save` attempt: `ok: true` only when the envelope was actually
+ *  written to local storage. A storage failure is NEVER reported as success. */
+export type InstrumentPresetSaveResult =
+    | { ok: true; entry: InstrumentPresetLibraryEntry }
+    | { ok: false; errors: string[] };
+
 export class InstrumentPresetLibrary {
     public static readonly KEY = INSTRUMENT_PRESET_LIBRARY_KEY;
 
-    /** Persist a new v0.1 envelope. Returns the created library entry. */
-    public static save(preset: InstrumentPreset): InstrumentPresetLibraryEntry {
+    /** Persist a new v0.1 envelope. A `localStorage.setItem` failure is
+     *  returned as `ok: false` — never faked as a successful save. */
+    public static save(preset: InstrumentPreset): InstrumentPresetSaveResult {
         const entry: InstrumentPresetLibraryEntry = {
             id: generateId("ipst"),
             name: preset.name,
@@ -61,9 +68,14 @@ export class InstrumentPresetLibrary {
         try {
             localStorage.setItem(this.KEY, JSON.stringify(entries));
         } catch (e) {
-            console.error("Failed to save instrument preset to local storage:", e);
+            return {
+                ok: false,
+                errors: [
+                    `Failed to persist instrument preset to local storage: ${e instanceof Error ? e.message : String(e)}`,
+                ],
+            };
         }
-        return entry;
+        return { ok: true, entry };
     }
 
     /** Minimal metadata for every stored instrument preset (no parsing). */
@@ -86,8 +98,8 @@ export class InstrumentPresetLibrary {
         if (!entries.some((e) => e.id === id)) return false;
         try {
             localStorage.setItem(this.KEY, JSON.stringify(entries.filter((e) => e.id !== id)));
-        } catch (e) {
-            console.error("Failed to update local storage after instrument preset deletion:", e);
+        } catch {
+            return false;
         }
         return true;
     }

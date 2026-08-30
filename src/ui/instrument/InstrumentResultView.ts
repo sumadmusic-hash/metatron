@@ -64,13 +64,13 @@ export function renderInstrumentImportOutcome(outcome: InstrumentImportOutcome):
         `parameters:     ${result.sections.chain.ok ? "restored + verified" : "see failures"}`,
         `bindings:       ${result.sections.bindings.detail}`,
         `preset values:  ${result.sections.preset.detail}`,
-        `verification:   ${result.verification.chainVerdict} · devices ${result.verification.chain.devices.matched}/${result.verification.chain.devices.expected}` +
+        `verification:   ${result.verification.chainVerdict} · devices ${result.verification.chain.devices.actual}/${result.verification.chain.devices.expected}` +
             ` · params ${result.verification.chain.parameters.matched}/${result.verification.chain.parameters.expected}` +
             ` · conns ${result.verification.chain.connections.matched}/${result.verification.chain.connections.expected}` +
             ` · topology ${result.verification.chain.topology.equal ? "equal" : "DIFF"}`,
         `bindings readback: ${result.verification.bindings.ok ? "PASS" : "FAIL"}`,
         `preset readback:   ${result.verification.preset.ok ? "PASS" : "FAIL"}`,
-        "device readback:   " + String(result.verification.chain.devices.matched),
+        "device readback:   " + result.verification.chain.devices.actual + "/" + result.verification.chain.devices.expected,
     );
     if (result.failures.length > 0) {
         lines.push("FAILURE RECORDS:");
