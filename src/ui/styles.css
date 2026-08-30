@@ -1,0 +1,678 @@
+:root {
+    --bg-dark: #0f1115;
+    --bg-panel: rgba(25, 28, 35, 0.7);
+    --border-color: rgba(255, 255, 255, 0.1);
+    --accent-color: #00e5ff;
+    --accent-hover: #00b3cc;
+    --text-primary: #ffffff;
+    --text-secondary: #8892b0;
+    --knob-bg: #1a1d24;
+    --knob-border: #2d3342;
+}
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    margin: 0;
+    overflow: hidden;
+}
+
+/* Premium Toolbar */
+.toolbar {
+    height: 56px;
+    background: var(--bg-panel);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    justify-content: space-between;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    z-index: 100;
+    position: relative;
+}
+
+.toolbar h1 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #fff, #8892b0);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* Glassmorphism Buttons */
+.btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(5px);
+}
+
+.btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.btn.primary {
+    background: var(--accent-color);
+    color: #000;
+    border: none;
+}
+
+.btn.primary:hover {
+    background: var(--accent-hover);
+    box-shadow: 0 4px 15px rgba(0, 229, 255, 0.4);
+}
+
+/* Grid Background for Editor */
+.editor-canvas {
+    background-image: radial-gradient(var(--border-color) 1px, transparent 1px);
+    background-size: 20px 20px;
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: auto;
+}
+
+/* Control Components */
+/* A Control is a rectangular container with two stacked regions:
+   1. the Visual Area (colored surface holding the knob/switch widget)
+   2. the Label Area (name + binding status footer) */
+.control-wrapper {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    box-sizing: border-box;
+    user-select: none;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.02);
+    transition: box-shadow 0.2s ease;
+    overflow: visible;
+    cursor: grab;
+}
+
+.control-wrapper.edit-mode:hover {
+    box-shadow: 0 0 0 2px var(--border-color);
+}
+
+.control-wrapper.edit-mode:active {
+    cursor: grabbing;
+}
+
+/* Rectangular visual area carrying the configurable color (§13) */
+.control-visual-area {
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px 9px 0 0;
+    background: rgba(255, 255, 255, 0.03);
+    pointer-events: none;
+}
+
+/* The widget is interactive while the rest of the surface stays inert */
+.control-visual-area .knob-body,
+.control-visual-area .switch-body {
+    pointer-events: auto;
+}
+
+/* Label footer: name + subtle status dot. Names ellipsize instead of wrapping. */
+.control-label-area {
+    flex: 0 0 auto;
+    height: 26px;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 6px;
+    box-sizing: border-box;
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    border-radius: 0 0 9px 9px;
+}
+
+.control-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* The physical Knob. Remains geometrically square (aspect-ratio 1/1) —
+   the parent Control may be rectangular, the knob never becomes an ellipse. */
+.knob-body {
+    aspect-ratio: 1 / 1;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #222630, #15181e);
+    box-shadow:
+        inset 0 2px 4px rgba(255, 255, 255, 0.1),
+        0 4px 8px rgba(0, 0, 0, 0.5),
+        0 8px 16px rgba(0, 0, 0, 0.4);
+    position: relative;
+    border: 2px solid var(--knob-border);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+.knob-indicator {
+    position: absolute;
+    width: 4px;
+    height: 16px;
+    background: var(--accent-color);
+    border-radius: 2px;
+    box-shadow: 0 0 8px var(--accent-color);
+}
+
+/* Switch Component (a vertical rail; its thumb stays circular) */
+.switch-body {
+    background: #111;
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.8);
+    position: relative;
+    border: 1px solid var(--border-color);
+    --toggle-travel: 14px;
+}
+
+.switch-toggle {
+    border-radius: 50%;
+    position: absolute;
+    top: 2px;
+    background: linear-gradient(145deg, #333, #222);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.switch-body.on .switch-toggle {
+    transform: translateY(var(--toggle-travel, 14px));
+    background: linear-gradient(145deg, var(--accent-color), var(--accent-hover));
+    box-shadow: 0 2px 10px var(--accent-color);
+}
+
+/* ---------- Phase A editor additions ---------- */
+
+/* Editor toolbar (left of the app toolbar) */
+.editor-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    align-self: flex-start;
+    margin: 12px;
+    padding: 10px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+    z-index: 50;
+}
+
+.editor-canvas.editor-canvas--nogrid {
+    background-image: none;
+}
+
+.btn.small {
+    padding: 5px 10px;
+    font-size: 12px;
+}
+
+.btn.active {
+    background: var(--accent-color);
+    color: #000;
+    border-color: transparent;
+}
+
+.editor-canvas-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+/* Group container */
+.group-box {
+    position: absolute;
+    border: 2px dashed rgba(255,255,255,0.25);
+    border-radius: 10px;
+    box-sizing: border-box;
+    cursor: grab;
+    user-select: none;
+}
+
+.group-box.selected {
+    border-style: solid;
+    box-shadow: 0 0 0 2px var(--accent-color), 0 0 20px rgba(0,229,255,0.15);
+}
+
+.group-box .group-label {
+    position: absolute;
+    top: -20px;
+    left: 6px;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: #fff;
+    white-space: nowrap;
+}
+
+.group-box .group-color-input {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    opacity: 0;
+}
+
+.group-box:hover .group-color-input {
+    opacity: 1;
+}
+
+.group-box .resize-handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    right: -7px;
+    bottom: -7px;
+    background: var(--accent-color);
+    border-radius: 50%;
+    border: 2px solid #000;
+    cursor: nwse-resize;
+}
+
+/* USE-mode Group: the same container, but presented as a finished visual
+   group on the performance surface. Solid boundary instead of the dashed
+   editor outline, and no editor affordances. It is pure decoration — it
+   never intercepts pointer events, so knob drags / switch clicks / control
+   selection always reach the member Controls. */
+.group-box.use-group {
+    border-style: solid;
+    border-color: rgba(255, 255, 255, 0.32);
+    cursor: default;
+    pointer-events: none;
+}
+
+.group-box.use-group:hover {
+    border-color: rgba(255, 255, 255, 0.32);
+}
+
+.group-box.use-group .group-label {
+    cursor: default;
+    user-select: none;
+}
+
+.control-wrapper.selected {
+    box-shadow: 0 0 0 2px var(--accent-color);
+    z-index: 10;
+}
+
+.control-wrapper .resize-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    right: -5px;
+    bottom: -5px;
+    background: var(--accent-color);
+    border-radius: 50%;
+    border: 2px solid #000;
+    cursor: nwse-resize;
+    z-index: 20;
+}
+
+/* Editing tools — a coherent horizontal bar that floats ABOVE the selected
+   control. It is a context overlay, not part of the Control's own measured
+   120×120 geometry. Positioned via JS `applyToolbarPosition()` to flip
+   below when the control sits near the canvas top edge. */
+.control-tools {
+    position: absolute;
+    left: 50%;
+    bottom: auto;
+    top: -36px;
+    transform: translateX(-50%);
+    display: none;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    background: rgba(10, 12, 16, 0.94);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    white-space: nowrap;
+    z-index: 30;
+    pointer-events: auto;
+}
+
+.control-wrapper.selected .control-tools {
+    display: flex;
+}
+
+.control-tools .tool-btn {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    font-size: 11px;
+    line-height: 20px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.control-tools .tool-btn:hover {
+    background: var(--accent-color);
+    color: #000;
+}
+
+.control-tools .color-swatch {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.control-tools .group-membership {
+    font-size: 10px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    padding: 1px 4px;
+    max-width: 120px;
+}
+
+/* USE-mode: Learn/MIDI actions live in a floating bar that only appears for
+   the selected control — no permanent per-control clutter (§6). */
+.use-actions {
+    position: absolute;
+    left: 50%;
+    top: -34px;
+    transform: translateX(-50%);
+    display: none;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    background: rgba(10, 12, 16, 0.94);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    white-space: nowrap;
+    z-index: 40;
+}
+
+.control-wrapper.selected .use-actions {
+    display: flex;
+}
+
+.use-actions .mini-btn {
+    margin: 0;
+    font-size: 10px;
+}
+
+/* UseMode control-surface interactive elements */
+.knob-body.interactive {
+    cursor: ns-resize;
+}
+
+.switch-body.interactive {
+    cursor: pointer;
+}
+
+.binding-buttons {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.binding-buttons .btn {
+    padding: 2px 6px;
+    font-size: 10px;
+}
+
+.learn-banner {
+    position: fixed;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255, 87, 34, 0.95);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    z-index: 200;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+}
+
+.learn-banner .pulse {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #fff;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+}
+
+/* Device library modal */
+.device-sidebar,
+.preset-sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 220px;
+    background: var(--bg-panel);
+    backdrop-filter: blur(10px);
+    border-right: 1px solid var(--border-color);
+    padding: 10px;
+    overflow-y: auto;
+    z-index: 30;
+    box-sizing: border-box;
+}
+
+.device-sidebar h3,
+.preset-sidebar h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    margin: 6px 0 10px;
+}
+
+.device-list-item,
+.preset-list-item {
+    padding: 7px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.device-list-item:hover,
+.preset-list-item:hover {
+    background: rgba(255,255,255,0.06);
+}
+
+.device-list-item.active,
+.preset-list-item.active {
+    background: rgba(0,229,255,0.12);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.text-input {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border-radius: 6px;
+    outline: none;
+    font-size: 13px;
+}
+
+.text-input:focus {
+    border-color: var(--accent-color);
+}
+
+.confirm-bar {
+    position: fixed;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1c242f;
+    border: 1px solid var(--border-color);
+    padding: 12px 16px;
+    border-radius: 10px;
+    z-index: 220;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+}
+
+.confirm-bar.danger {
+    border-color: #f44336;
+}
+
+/* ---------- Phase B: layout + library + surface learn ---------- */
+
+.content-row {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    position: relative;
+}
+
+.content-area {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    display: flex;
+}
+
+.content-area > .editor-canvas {
+    flex: 1;
+}
+
+.device-sidebar-wrap {
+    width: 250px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    border-right: 1px solid var(--border-color);
+    background: var(--bg-panel);
+    backdrop-filter: blur(10px);
+}
+
+.device-sidebar-wrap .device-sidebar {
+    position: static;
+    width: auto;
+    height: auto;
+    border-right: none;
+}
+
+.mini-btn {
+    background: rgba(0,0,0,0.55);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    margin-left: 4px;
+    line-height: 1.6;
+}
+
+.mini-btn:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-left: 4px;
+}
+
+.status-dot.connected {
+    background: #4CAF50;
+    box-shadow: 0 0 5px #4CAF50;
+}
+
+.status-dot.disconnected {
+    background: #FFC107;
+    box-shadow: 0 0 5px #FFC107;
+}
+
+.status-dot.unconfigured {
+    background: #F44336;
+}
+
+.learn-bar {
+    position: absolute;
+    left: 50%;
+    top: 24px;
+    transform: translateX(-50%);
+    background: rgba(255, 87, 34, 0.95);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    z-index: 60;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+    font-size: 13px;
+    animation: pulse-border 1.2s infinite;
+}
+
+@keyframes pulse-border {
+    0%, 100% { box-shadow: 0 6px 24px rgba(0,0,0,0.5), 0 0 0 0 rgba(255,87,34,0.6); }
+    50% { box-shadow: 0 6px 24px rgba(0,0,0,0.5), 0 0 0 12px rgba(255,87,34,0); }
+}
+
+.control-wrapper.use-mode {
+    pointer-events: auto;
+}
