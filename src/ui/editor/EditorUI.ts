@@ -632,6 +632,21 @@ export class EditorUI {
         });
         el.appendChild(colorInput);
 
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "tool-btn group-delete-btn";
+        deleteBtn.title = "Delete group";
+        deleteBtn.textContent = "✕";
+        deleteBtn.addEventListener("pointerdown", (e: PointerEvent) => {
+            e.stopPropagation();
+        });
+        deleteBtn.addEventListener("click", (e: MouseEvent) => {
+            e.stopPropagation();
+            this.selectedGroupId = group.id;
+            this.selectedControlId = null;
+            this.deleteSelected();
+        });
+        el.appendChild(deleteBtn);
+
         // Resize handle
         const resizeH = document.createElement("div");
         resizeH.className = "resize-handle";

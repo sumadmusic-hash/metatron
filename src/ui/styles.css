@@ -305,6 +305,33 @@ body {
     cursor: nwse-resize;
 }
 
+.group-box .group-delete-btn {
+    position: absolute;
+    top: 2px;
+    left: 4px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0;
+    font-size: 12px;
+    line-height: 20px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.group-box .group-delete-btn:hover {
+    background: rgba(255, 60, 60, 0.85);
+    color: #fff;
+}
+
+.group-box.use-group .group-delete-btn {
+    display: none;
+}
+
 /* USE-mode Group: the same container, but presented as a finished visual
    group on the performance surface. Solid boundary instead of the dashed
    editor outline, and no editor affordances. It is pure decoration — it
