@@ -30,4 +30,19 @@ export interface NexusBindingDefinition {
 export interface MidiBindingDefinition {
     channel?: number;
     cc?: number;
+    /**
+     * Optional scaling of incoming CC values (0..127) into the control's
+     * normalized value range 0..1 (C2). Every field is optional: a mapping
+     * without scaling fields keeps the legacy identity behavior
+     * `clamp(raw / 127, 0, 1)`. Number defaults/guards are applied by
+     * `sanitizeMidiScaling` in src/midi/MidiScaling.ts.
+     */
+    /** Lower output bound (clamped to 0..1; default 0). */
+    min?: number;
+    /** Upper output bound (clamped to 0..1; default 1). */
+    max?: number;
+    /** Mirror the raw position 0↔127 before the curve is applied. */
+    flip?: boolean;
+    /** Power curve exponent (> 0; default 1). */
+    exponent?: number;
 }

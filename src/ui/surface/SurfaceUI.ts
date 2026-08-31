@@ -8,6 +8,7 @@ import { createNexusValueMapping, mapNexusToNormalized } from "../../nexus/Nexus
 import { MidiLearn, MidiLearnTimeoutError } from "../../midi/MidiLearn";
 import { Toast } from "../Toast";
 import { computeControlLayout, contrastTextColor } from "../geometry";
+import type { MidiBindingDefinition } from "../../core/model/types";
 
 /**
  * USE-mode control surface. Controls are interactive here:
@@ -243,6 +244,52 @@ private container!: HTMLElement;
         midiBtn.onclick = (e) => { e.stopPropagation(); this.startMidiLearn(control); };
         actions.appendChild(midiBtn);
 
+        // ── C2 Step 5: MIDI mapping readout, Unmap + scaling editor (§7) ──
+        // The UI only reads/edits the stored definition; all value math stays
+        // exclusively in applyMidiScaling. State comes straight from the
+        // selected Control / getMappingForControl — no extra map, no store.
+        const mapping = this.midiMapping.getMappingForControl(control.id);
+
+        const midiBar = document.createElement("div");
+        midiBar.className = "use-midi-map";
+        midiBar.style.cssText = "display:flex;align-items:center;gap:6px;";
+
+        const readout = document.createElement("span");
+        readout.className = "use-midi-readout";
+        readout.style.fontSize = "10px";
+        if (mapping) {
+            readout.innerText = `Ch ${mapping.channel} / CC ${mapping.cc}`;
+            readout.title = `MIDI mapping${this.scalingSummary(mapping)}`;
+            readout.style.color = "var(--text-primary)";
+        } else {
+            readout.innerText = "Unmapped";
+            readout.title = "No MIDI mapping — move a hardware CC to learn (§25)";
+            readout.style.color = "var(--text-secondary)";
+        }
+        midiBar.appendChild(readout);
+
+        if (mapping) {
+            const unmapBtn = document.createElement("button");
+            unmapBtn.className = "mini-btn";
+            unmapBtn.innerText = "Unmap";
+            unmapBtn.title = "Remove the MIDI mapping (channel/CC + scaling) for this control.";
+            unmapBtn.onclick = (e) => {
+                e.stopPropagation();
+                this.midiMapping.clearMapping(control.id);
+                this.deviceLibrary.saveCurrentDevice();
+                this.reRender();
+            };
+            midiBar.appendChild(unmapBtn);
+        }
+        actions.appendChild(midiBar);
+
+        // F-5: the scaling editor only appears for a COMPLETE, valid mapping
+        // (channel AND cc present) — an incomplete definition like `{min: 0.5}`
+        // still reads "Unmapped" and offers no scaling controls.
+        if (mapping) {
+            actions.appendChild(this.buildScalingEditor(control, mapping));
+        }
+
         el.appendChild(actions);
 
         // Clicking anywhere on the control selects it (no re-render needed;
@@ -251,6 +298,96 @@ private container!: HTMLElement;
 
         this.container.appendChild(el);
         this.applyControlLayout(el, control);
+    }
+
+    /** Compact scaling summary for the readout tooltip (display only). */
+    private scalingSummary(definition: MidiBindingDefinition): string {
+        const parts: string[] = [];
+        if (definition.min !== undefined) parts.push(`min ${definition.min}`);
+        if (definition.max !== undefined) parts.push(`max ${definition.max}`);
+        if (definition.flip === true) parts.push("flip");
+        if (definition.exponent !== undefined) parts.push(`exp ${definition.exponent}`);
+        return parts.length ? ` · ${parts.join(" · ")}` : "";
+    }
+
+    /**
+     * C2 §9 scaling editor — edits ONLY the stored MidiBindingDefinition.
+     * min/max are clamped into 0..1, exponent must stay > 0; invalid input is
+     * reverted and never persisted. The authoritative math stays solely in
+     * applyMidiScaling — this UI never computes MIDI values itself.
+     */
+    private buildScalingEditor(control: any, definition: MidiBindingDefinition): HTMLElement {
+        const editor = document.createElement("div");
+        editor.className = "use-midi-scaling";
+        editor.style.cssText =
+            "display:flex;align-items:center;gap:6px;margin-left:6px;padding-left:6px;" +
+            "border-left:1px solid var(--border-color);flex-wrap:wrap;";
+
+        const commit = () => {
+            this.deviceLibrary.saveCurrentDevice();
+            this.reRender();
+        };
+        const apply = (patch: Partial<MidiBindingDefinition>) => {
+            control.midiBindingDefinition = { ...definition, ...patch };
+            commit();
+        };
+
+        const numberField = (label: string, field: "min" | "max" | "exponent") => {
+            const wrap = document.createElement("label");
+            wrap.className = "use-scaling-field";
+            wrap.style.cssText =
+                "display:inline-flex;align-items:center;gap:3px;font-size:10px;" +
+                "color:var(--text-secondary);";
+            wrap.innerText = label;
+
+            const input = document.createElement("input");
+            input.type = "number";
+            input.step = "any";
+            input.dataset.scaling = field;
+            input.value = definition[field] !== undefined ? String(definition[field]) : "";
+            input.title = field === "exponent" ? "exponent (> 0)" : `${field} (0..1)`;
+            input.style.cssText =
+                "width:44px;font-size:10px;padding:2px 4px;background:rgba(0,0,0,0.2);" +
+                "color:#fff;border:1px solid var(--border-color);border-radius:4px;outline:none;";
+            input.onclick = (e) => e.stopPropagation();
+            input.onchange = () => {
+                const entered = String(input.value).trim();
+                const parsed = entered === "" ? NaN : Number(entered);
+                if (Number.isNaN(parsed)) { this.reRender(); return; } // revert + reset the visible field
+                if (field === "exponent") {
+                    if (parsed <= 0) { this.reRender(); return; } // revert + reset the visible field
+                    apply({ exponent: parsed });
+                } else if (field === "min") {
+                    apply({ min: Math.min(1, Math.max(0, parsed)) });
+                } else {
+                    apply({ max: Math.min(1, Math.max(0, parsed)) });
+                }
+            };
+            wrap.appendChild(input);
+            return wrap;
+        };
+
+        editor.appendChild(numberField("min", "min"));
+        editor.appendChild(numberField("max", "max"));
+
+        const flipWrap = document.createElement("label");
+        flipWrap.className = "use-scaling-field";
+        flipWrap.style.cssText =
+            "display:inline-flex;align-items:center;gap:3px;font-size:10px;" +
+            "color:var(--text-secondary);";
+        flipWrap.innerText = "flip";
+        const flipInput = document.createElement("input");
+        flipInput.type = "checkbox";
+        flipInput.dataset.scaling = "flip";
+        flipInput.checked = definition.flip === true;
+        flipInput.onclick = (e) => e.stopPropagation();
+        flipInput.onchange = () => apply({ flip: flipInput.checked });
+        flipWrap.appendChild(flipInput);
+        editor.appendChild(flipWrap);
+
+        editor.appendChild(numberField("exp", "exponent"));
+
+        return editor;
     }
 
     /** Sync the rendered element to the Control's stored geometry. */

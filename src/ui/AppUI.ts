@@ -2,6 +2,7 @@ import { DeviceLibrary } from "../core/DeviceLibrary";
 import { NexusAdapter } from "../nexus/NexusAdapter";
 import { MidiAccess } from "../midi/MidiAccess";
 import { MidiMapping } from "../midi/MidiMapping";
+import { applyMidiScaling } from "../midi/MidiScaling";
 import { BindingManager } from "../core/BindingManager";
 import { DeviceHistory } from "../core/history/DeviceHistory";
 import { EditorUI } from "./editor/EditorUI";
@@ -68,7 +69,7 @@ export class AppUI {
             if (!controlId) return;
             const control = this.deviceLibrary.currentDevice?.getControl(controlId);
             if (!control) return;
-            const normalized = Math.min(1, Math.max(0, _value / 127));
+            const normalized = applyMidiScaling(_value, control.midiBindingDefinition);
             this.applyValueToDevice(controlId, normalized);
         };
         this.midiAccess.setMessageHandler(midiHandler);
