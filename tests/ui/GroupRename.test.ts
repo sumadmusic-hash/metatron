@@ -53,7 +53,7 @@ describe("Group rename regression", () => {
     it("Test 1 — double-click on the Group name enters rename and commits to the model", () => {
         const { host, device } = mount();
         const group = device.groups.values().next().value as Group;
-        const label = host.querySelector<HTMLElement>(`[data-grp-id="${group.id}"] .group-label`)!;
+        const label = host.querySelector<HTMLElement>(`[data-grp-id="${group.id}"] .group-name`)!;
 
         doubleClickLabel(label);
 
@@ -72,7 +72,7 @@ describe("Group rename regression", () => {
         const { host, library } = mount();
         const device = library.currentDevice!;
         const group = device.groups.values().next().value as Group;
-        const label = host.querySelector<HTMLElement>(`[data-grp-id="${group.id}"] .group-label`)!;
+        const label = host.querySelector<HTMLElement>(`[data-grp-id="${group.id}"] .group-name`)!;
 
         doubleClickLabel(label);
         const input = label.querySelector<HTMLInputElement>("input")!;
@@ -86,7 +86,7 @@ describe("Group rename regression", () => {
     it("Test 3 — double-click name starts rename and does NOT move the Group", () => {
         const { host, device } = mount();
         const group = device.groups.values().next().value as Group;
-        const label = host.querySelector<HTMLElement>(`[data-grp-id="${group.id}"] .group-label`)!;
+        const label = host.querySelector<HTMLElement>(`[data-grp-id="${group.id}"] .group-name`)!;
 
         doubleClickLabel(label);
         expect(label.querySelector("input")).not.toBeNull();
@@ -109,7 +109,7 @@ describe("Group rename regression", () => {
     it("Test 7 — Enter commits the new name", () => {
         const { host, device } = mount();
         const group = device.groups.values().next().value as Group;
-        const label = host.querySelector<HTMLElement>(`[data-grp-id="${group.id}"] .group-label`)!;
+        const label = host.querySelector<HTMLElement>(`[data-grp-id="${group.id}"] .group-name`)!;
 
         doubleClickLabel(label);
         const input = label.querySelector<HTMLInputElement>("input")!;
@@ -123,7 +123,7 @@ describe("Group rename regression", () => {
     it("Test 8 — blur commits the new name", () => {
         const { host, device } = mount();
         const group = device.groups.values().next().value as Group;
-        const label = host.querySelector<HTMLElement>(`[data-grp-id="${group.id}"] .group-label`)!;
+        const label = host.querySelector<HTMLElement>(`[data-grp-id="${group.id}"] .group-name`)!;
 
         doubleClickLabel(label);
         const input = label.querySelector<HTMLInputElement>("input")!;

@@ -19,7 +19,7 @@ export class AppUI {
     private bindingManager: BindingManager;
 
     private currentMode: "EDIT" | "USE" = "EDIT";
-    private libraryOpen = true;
+    private sidebarCollapsed = this.currentMode !== "EDIT";
 
     private history: DeviceHistory;
     private undoBtn?: HTMLButtonElement;
@@ -197,16 +197,17 @@ export class AppUI {
         title.style.whiteSpace = "nowrap";
         toolbar.appendChild(title);
 
-        const libraryBtn = document.createElement("button");
-        libraryBtn.className = "btn" + (this.libraryOpen ? " active" : "");
-        libraryBtn.innerText = "Device Library";
-        libraryBtn.onclick = () => {
-            this.libraryOpen = !this.libraryOpen;
-            this.render();
-        };
-        toolbar.appendChild(libraryBtn);
+const libraryBtn = document.createElement("button");
+libraryBtn.className = "btn" + (this.sidebarCollapsed ? "" : " active");
+libraryBtn.innerText = this.currentMode === "EDIT" ? "Device Library" : "Library";
+libraryBtn.title = this.sidebarCollapsed ? "Show library" : "Hide library";
+libraryBtn.onclick = () => {
+    this.sidebarCollapsed = !this.sidebarCollapsed;
+    this.render();
+};
+toolbar.appendChild(libraryBtn);
 
-        // Project Connection UI
+// Project Connection UI
         const connectionContainer = document.createElement("div");
         connectionContainer.style.display = "flex";
         connectionContainer.style.alignItems = "center";
@@ -296,6 +297,9 @@ export class AppUI {
         modeToggle.innerText = this.currentMode === "EDIT" ? "Switch to USE Mode" : "Switch to EDIT Mode";
         modeToggle.onclick = () => {
             this.currentMode = this.currentMode === "EDIT" ? "USE" : "EDIT";
+            // USE mode favors maximum controller width, so start the library
+            // collapsed there; EDIT restores normal library access.
+            this.sidebarCollapsed = this.currentMode === "USE";
             this.render();
         };
         toolbar.appendChild(modeToggle);
@@ -306,12 +310,28 @@ export class AppUI {
         const contentRow = document.createElement("div");
         contentRow.className = "content-row";
 
-        if (this.libraryOpen) {
-            const sidebar = document.createElement("aside");
-            sidebar.className = "device-sidebar-wrap";
-            this.libraryUI.render(sidebar);
-            contentRow.appendChild(sidebar);
-        }
+        // Left sidebar pane: an always-present edge toggle plus the collapsible
+        // Device Library column. Collapsing only changes the library column's
+        // width (content stays mounted), so the controller surface reclaims the
+        // freed horizontal space via flex:1.
+        const sidebarPane = document.createElement("div");
+        sidebarPane.className = "sidebar-pane" + (this.sidebarCollapsed ? " collapsed" : "");
+
+        const sidebarToggle = document.createElement("button");
+        sidebarToggle.className = "sidebar-toggle";
+        sidebarToggle.textContent = this.sidebarCollapsed ? "›" : "‹";
+        sidebarToggle.title = this.sidebarCollapsed ? "Show library" : "Hide library";
+        sidebarToggle.onclick = () => {
+            this.sidebarCollapsed = !this.sidebarCollapsed;
+            this.render();
+        };
+        sidebarPane.appendChild(sidebarToggle);
+
+        const sidebar = document.createElement("aside");
+        sidebar.className = "device-sidebar-wrap";
+        this.libraryUI.render(sidebar);
+        sidebarPane.appendChild(sidebar);
+        contentRow.appendChild(sidebarPane);
 
         const contentArea = document.createElement("div");
         contentArea.className = "content-area";

@@ -140,12 +140,19 @@ private container!: HTMLElement;
         fill.style.background = this.hexToRgba(group.color, 0.12);
         el.appendChild(fill);
 
-        const label = document.createElement("div");
-        label.className = "group-label";
-        label.style.background = group.color;
-        label.style.color = contrastTextColor(group.color);
-        label.innerText = group.name;
-        el.appendChild(label);
+        // Group Header — mirrors the EDIT renderer so the group name lives
+        // INSIDE the Group Box and stays visible in USE mode. No floating
+        // label above the box, no delete button on the performance surface.
+        const groupHeader = document.createElement("div");
+        groupHeader.className = "group-header";
+        const groupNameSpan = document.createElement("span");
+        groupNameSpan.className = "group-name";
+        groupNameSpan.textContent = group.name;
+        if (group.color) {
+            groupNameSpan.style.color = contrastTextColor(group.color);
+        }
+        groupHeader.appendChild(groupNameSpan);
+        el.appendChild(groupHeader);
 
         this.container.appendChild(el);
     }

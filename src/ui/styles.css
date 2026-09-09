@@ -328,7 +328,106 @@ body {
     color: #fff;
 }
 
-.group-box.use-group .group-delete-btn {
+.group-box.use-group .group-hex-row {
+    display: none;
+}
+
+/* Group Header */
+.group-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px;
+    background: rgba(0, 0, 0, 0.04);
+    border-radius: 0 0 10px 10px;
+    font-size: 11px;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.group-header .group-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    line-height: 1.2;
+}
+
+.group-header .group-delete-btn {
+    position: static;
+    top: auto;
+    left: auto;
+    flex: 0 0 auto;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    font-size: 11px;
+    line-height: 20px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.group-header .group-delete-btn:hover {
+    background: var(--accent-color);
+    color: #000;
+}
+
+.color-hex-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    color: #9ae2ff;
+    white-space: nowrap;
+}
+
+.group-box .group-hex-row {
+    position: absolute;
+    top: 3px;
+    right: 24px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    z-index: 2;
+    opacity: 0;
+    white-space: nowrap;
+}
+
+.group-box:hover .group-hex-row {
+    opacity: 1;
+}
+
+.group-hex-row .tool-btn {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    font-size: 11px;
+    line-height: 20px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.group-hex-row .tool-btn:hover {
+    background: var(--accent-color);
+    color: #000;
+}
+
+.group-box.use-group .group-hex-row {
     display: none;
 }
 
@@ -348,9 +447,10 @@ body {
     border-color: rgba(255, 255, 255, 0.32);
 }
 
-.group-box.use-group .group-label {
-    cursor: default;
-    user-select: none;
+/* USE mode: the group header/name stays visible inside the box, but the
+   editor-only delete button must never appear on the performance surface. */
+.group-box.use-group .group-delete-btn {
+    display: none;
 }
 
 .control-wrapper.selected {
@@ -624,13 +724,48 @@ body {
     flex: 1;
 }
 
-.device-sidebar-wrap {
+/* Collapsible left sidebar pane (USE mode favors max controller width) */
+.sidebar-pane {
+    display: flex;
+    align-items: stretch;
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+.sidebar-toggle {
+    flex: 0 0 auto;
+    width: 20px;
+    padding: 0;
+    border: none;
+    border-right: 1px solid var(--border-color);
+    background: var(--bg-panel);
+    color: var(--text-secondary);
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.sidebar-toggle:hover {
+    background: var(--bg-panel);
+    color: var(--accent-color);
+}
+
+.sidebar-pane .device-sidebar-wrap {
     width: 250px;
     flex-shrink: 0;
-    overflow-y: auto;
+    overflow: hidden;
     border-right: 1px solid var(--border-color);
     background: var(--bg-panel);
     backdrop-filter: blur(10px);
+    transition: width 0.18s ease;
+}
+
+/* Collapsed: the library column genuinely leaves the flex flow's space (its
+   width goes to 0), so the flex:1 controller surface reclaims the whole row.
+   Content stays mounted — only clipped — so library state is never lost. */
+.sidebar-pane.collapsed .device-sidebar-wrap {
+    width: 0;
+    border-right: none;
 }
 
 .device-sidebar-wrap .device-sidebar {

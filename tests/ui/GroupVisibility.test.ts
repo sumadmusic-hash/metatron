@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { Device } from "../../src/core/model/Device";
 import { Control } from "../../src/core/model/Control";
 import { Group } from "../../src/core/model/Group";
@@ -79,7 +81,33 @@ describe("Group visibility in EDIT mode (editor object)", () => {
         const group = host.querySelector(".group-box") as HTMLElement;
         expect(group).not.toBeNull();
         expect(group.dataset.grpId).toBe(device.groups.values().next().value.id);
-        expect(group.querySelector(".group-label")?.textContent).toBe("FILTER");
+        expect(group.querySelector(".group-name")?.textContent).toBe("FILTER");
+        // Single source of truth — exactly one visible name, no floating label.
+        expect(host.querySelectorAll(".group-name").length).toBe(1);
+        expect(host.querySelector(".group-label")).toBeNull();
+    });
+
+    it("applies a larger, prominent font to the Group Name and keeps the delete button separate", () => {
+        const { host } = mountEditor();
+        const header = host.querySelector(".group-header") as HTMLElement;
+        const name = header.querySelector(".group-name") as HTMLElement;
+        const del = header.querySelector(".group-delete-btn") as HTMLElement;
+        // Structural separation: name and delete are siblings in the same header
+        // (a flex row), so the delete never overlaps the name.
+        expect(name.parentElement).toBe(header);
+        expect(del.parentElement).toBe(header);
+
+        // The stylesheet applies a clearly larger title-style font (1.1rem,
+        // weight 600) rather than the 11px metadata size.
+        const css = readFileSync(resolve("src/ui/styles.css"), "utf8");
+        const nameRule = css.match(/\.group-header \.group-name\s*\{[^}]*\}/);
+        expect(nameRule).toBeTruthy();
+        expect(nameRule?.[0]).toMatch(/font-size:\s*1\.1rem/);
+        expect(nameRule?.[0]).toMatch(/font-weight:\s*600/);
+        // The delete button is explicitly reset to static (in-flow) so the
+        // legacy absolute rule cannot pull it on top of the name.
+        const delRule = css.match(/\.group-header \.group-delete-btn\s*\{[^}]*\}/);
+        expect(delRule?.[0]).toMatch(/position:\s*static/);
     });
 
     it("carries editor affordances (resize handle + color picker)", () => {
@@ -108,18 +136,38 @@ describe("Group visibility in USE mode (finished surface)", () => {
         expect(group.dataset.grpId).toBeDefined();
     });
 
-    it("shows the Group name in USE mode", () => {
+    it("shows the Group name inside the Group Box in USE mode", () => {
         const { host } = mountSurface();
-        const label = host.querySelector(".group-box.use-group .group-label") as HTMLElement;
-        expect(label).not.toBeNull();
-        expect(label.textContent).toBe("FILTER");
+        const group = host.querySelector(".group-box.use-group") as HTMLElement;
+        expect(group).not.toBeNull();
+        // The name lives in the group-header, which is INSIDE the group box
+        // (not a floating label positioned above it).
+        const header = group.querySelector(":scope > .group-header") as HTMLElement;
+        expect(header).not.toBeNull();
+        const name = header.querySelector(":scope > .group-name") as HTMLElement;
+        expect(name).not.toBeNull();
+        expect(name.textContent).toBe("FILTER");
+        // Exactly one visible group name — no floating duplicate.
+        expect(host.querySelectorAll(".group-name").length).toBe(1);
+        expect(host.querySelector(".group-label")).toBeNull();
+    });
+
+    it("keeps the Group name visible and hides the delete button in USE mode", () => {
+        const { host } = mountSurface();
+        const group = host.querySelector(".group-box.use-group") as HTMLElement;
+        // Name is present (visible in USE).
+        expect(group.querySelector(".group-name")?.textContent).toBe("FILTER");
+        // No delete affordance is created on the performance surface.
+        expect(group.querySelector(".group-delete-btn")).toBeNull();
+        // The group header itself is not hidden.
+        const header = group.querySelector(".group-header") as HTMLElement;
+        expect(header).not.toBeNull();
+        expect(getComputedStyle(header).display).not.toBe("none");
     });
 
     it("shows the Group color in USE mode", () => {
         const { host } = mountSurface();
         const group = host.querySelector(".group-box.use-group") as HTMLElement;
-        const label = group.querySelector(".group-label") as HTMLElement;
-        expect(label.style.background).toBe("#ff8800");
         const fill = group.children[0] as HTMLElement;
         // happy-dom serializes the color components with spaces, browsers may not.
         expect(fill.style.background.replace(/\s+/g, " ")).toBe("rgba(255, 136, 0, 0.12)");

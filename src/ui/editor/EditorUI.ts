@@ -378,6 +378,39 @@ export class EditorUI {
         colorInput.className = "color-swatch";
         colorInput.value = control.visualDefinition?.color || "#333333";
         colorInput.title = "Visual area color (§13)";
+
+        const hexLabel = document.createElement("span");
+        hexLabel.className = "color-hex-label";
+        hexLabel.textContent = control.visualDefinition?.color || "#333333";
+
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "tool-btn";
+        copyBtn.textContent = "Copy";
+        copyBtn.title = "Copy hex color to clipboard";
+        copyBtn.onclick = (e) => {
+            e.stopPropagation();
+            void this.copyHex(control.visualDefinition?.color || "#333333");
+        };
+
+        const pasteBtn = document.createElement("button");
+        pasteBtn.className = "tool-btn";
+        pasteBtn.textContent = "Paste";
+        pasteBtn.title = "Paste a hex color from the clipboard (validated)";
+        pasteBtn.onclick = (e) => {
+            e.stopPropagation();
+            void this.pasteHex("control", (hex) => {
+                control.visualDefinition = control.visualDefinition || {};
+                control.visualDefinition.color = hex;
+                visualArea.style.background = hex;
+                const indicator = el.querySelector<HTMLElement>(".knob-indicator");
+                if (indicator) {
+                    indicator.style.background = hex;
+                    indicator.style.boxShadow = `0 0 8px ${hex}`;
+                }
+                colorInput.value = hex;
+                hexLabel.textContent = hex;
+            });
+        };
         colorInput.addEventListener("input", (e) => {
             const value = (e.target as HTMLInputElement).value;
             // Coalesce one color-picker sweep into a single history action:
@@ -392,6 +425,7 @@ export class EditorUI {
             control.visualDefinition = control.visualDefinition || {};
             control.visualDefinition.color = value;
             visualArea.style.background = control.visualDefinition.color;
+            hexLabel.textContent = value;
             this.deviceLibrary.saveCurrentDevice();
         });
         colorInput.addEventListener("change", () => {
@@ -413,6 +447,9 @@ export class EditorUI {
             this.clearColorGesture(`ctl:${control.id}`);
         });
         tools.appendChild(colorInput);
+        tools.appendChild(hexLabel);
+        tools.appendChild(copyBtn);
+        tools.appendChild(pasteBtn);
 
         const del = document.createElement("button");
         del.className = "tool-btn";
@@ -584,23 +621,73 @@ export class EditorUI {
         fill.style.background = this.hexToRgba(group.color, 0.12);
         el.appendChild(fill);
 
-        const label = document.createElement("div");
-        label.className = "group-label";
-        label.style.background = group.color;
-        label.style.color = contrastTextColor(group.color);
-        label.innerText = group.name;
-        label.style.cursor = "text";
-        label.addEventListener("dblclick", (e) => {
+        // Group Header - single source of group name display
+        const groupHeader = document.createElement("div");
+        groupHeader.className = "group-header";
+        const groupNameSpan = document.createElement("span");
+        groupNameSpan.className = "group-name";
+        groupNameSpan.style.cursor = "text";
+        groupNameSpan.textContent = group.name;
+        groupNameSpan.addEventListener("dblclick", (e) => {
             e.stopPropagation();
-            this.beginRename(label, group);
+            this.beginRename(groupNameSpan, group);
         });
-        el.appendChild(label);
+        const deleteBtnInHeader = document.createElement("button");
+        deleteBtnInHeader.className = "group-delete-btn";
+        deleteBtnInHeader.title = "Delete group";
+        deleteBtnInHeader.textContent = "✕";
+        deleteBtnInHeader.addEventListener("pointerdown", (e) => e.stopPropagation());
+        deleteBtnInHeader.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.selectedGroupId = group.id;
+            this.selectedControlId = null;
+            this.deleteSelected();
+        });
+        groupHeader.appendChild(groupNameSpan);
+        groupHeader.appendChild(deleteBtnInHeader);
+        el.insertBefore(groupHeader, el.firstChild);
 
         // Group color picker (§15)
         const colorInput = document.createElement("input");
         colorInput.type = "color";
         colorInput.className = "group-color-input";
         colorInput.value = group.color;
+
+        const hexRow = document.createElement("div");
+        hexRow.className = "group-hex-row";
+        hexRow.addEventListener("pointerdown", (e: PointerEvent) => {
+            e.stopPropagation();
+        });
+        const hexLabel = document.createElement("span");
+        hexLabel.className = "color-hex-label";
+        hexLabel.textContent = group.color;
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "tool-btn";
+        copyBtn.textContent = "Copy";
+        copyBtn.title = "Copy hex color to clipboard";
+        copyBtn.onclick = (e) => {
+            e.stopPropagation();
+            void this.copyHex(group.color);
+        };
+        const pasteBtn = document.createElement("button");
+        pasteBtn.className = "tool-btn";
+        pasteBtn.textContent = "Paste";
+        pasteBtn.title = "Paste a hex color from the clipboard (validated)";
+        pasteBtn.onclick = (e) => {
+            e.stopPropagation();
+            void this.pasteHex("group", (hex) => {
+                group.color = hex;
+                groupNameSpan.textContent = hex;
+                groupNameSpan.style.color = contrastTextColor(hex);
+                groupHeader.style.background = this.hexToRgba(hex, 0.14);
+                fill.style.background = this.hexToRgba(hex, 0.12);
+                colorInput.value = hex;
+                hexLabel.textContent = hex;
+            });
+        };
+        hexRow.appendChild(hexLabel);
+        hexRow.appendChild(copyBtn);
+        hexRow.appendChild(pasteBtn);
         colorInput.addEventListener("input", (e) => {
             const value = (e.target as HTMLInputElement).value;
             const key = `grp:${group.id}`;
@@ -610,9 +697,11 @@ export class EditorUI {
                 this.colorGestureBefore = this.history && device ? this.history.captureDeviceState(device) : null;
             }
             group.color = value;
-            label.style.background = group.color;
-            label.style.color = contrastTextColor(group.color);
+            groupNameSpan.textContent = value;
+            groupNameSpan.style.color = contrastTextColor(group.color);
+            groupHeader.style.background = this.hexToRgba(group.color, 0.14);
             fill.style.background = this.hexToRgba(group.color, 0.12);
+            hexLabel.textContent = value;
             this.deviceLibrary.saveCurrentDevice();
         });
         colorInput.addEventListener("change", () => {
@@ -631,21 +720,7 @@ export class EditorUI {
             this.clearColorGesture(`grp:${group.id}`);
         });
         el.appendChild(colorInput);
-
-        const deleteBtn = document.createElement("button");
-        deleteBtn.className = "tool-btn group-delete-btn";
-        deleteBtn.title = "Delete group";
-        deleteBtn.textContent = "✕";
-        deleteBtn.addEventListener("pointerdown", (e: PointerEvent) => {
-            e.stopPropagation();
-        });
-        deleteBtn.addEventListener("click", (e: MouseEvent) => {
-            e.stopPropagation();
-            this.selectedGroupId = group.id;
-            this.selectedControlId = null;
-            this.deleteSelected();
-        });
-        el.appendChild(deleteBtn);
+        el.appendChild(hexRow);
 
         // Resize handle
         const resizeH = document.createElement("div");
@@ -702,6 +777,72 @@ export class EditorUI {
             this.colorGestureKey = null;
             this.colorGestureBefore = null;
         }
+    }
+
+    /**
+     * Canonicalize a clipboard hex color. Accepts `#RGB` and `#RRGGBB`
+     * (case-insensitive) and always normalizes to the deterministic
+     * uppercase `#RRGGBB` form. Returns null for anything else.
+     */
+    private normalizeHexColor(raw: string): string | null {
+        const m = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(raw.trim());
+        if (!m) return null;
+        const digits = m[1];
+        const full = digits.length === 3 ? digits.split("").map((d) => d + d).join("") : digits;
+        return `#${full.toUpperCase()}`;
+    }
+
+    /**
+     * Copy the current hex color into the clipboard (user-gesture only).
+     * Never touches the model; failures surface as an error toast (§54).
+     */
+    private async copyHex(hex: string) {
+        try {
+            await navigator.clipboard.writeText(hex);
+            Toast.show(`Copied ${hex} to clipboard.`, "success");
+        } catch {
+            Toast.show("Clipboard unavailable — could not copy the color.", "error");
+        }
+    }
+
+    /**
+     * Paste a clipboard hex color onto exactly one element. The value is
+     * validated and normalized first; an invalid value changes nothing and
+     * raises an error toast. A valid paste is a discrete single action: it
+     * captures a FRESH before-state (never a stale picker-gesture baseline),
+     * applies the color through the same set-save path as the color picker,
+     * records exactly one `control.color` / `group.color` history action and
+     * clears any pending color-gesture baseline.
+     */
+    private async pasteHex(kind: "control" | "group", apply: (hex: string) => void) {
+        let raw: string;
+        try {
+            raw = await navigator.clipboard.readText();
+        } catch {
+            Toast.show("Clipboard unavailable — could not read a color.", "error");
+            return;
+        }
+        const hex = this.normalizeHexColor(raw);
+        if (!hex) {
+            Toast.show(`Invalid hex color "${raw.trim()}". Expected #RGB or #RRGGBB.`, "error");
+            return;
+        }
+        const device = this.deviceLibrary.currentDevice;
+        if (!device) return;
+        const before = this.history?.captureDeviceState(device);
+        apply(hex);
+        this.deviceLibrary.saveCurrentDevice();
+        const after = this.history?.captureDeviceState(device);
+        if (this.history && before && after && !patchesEqual(before, after)) {
+            this.history.record({
+                type: kind === "control" ? "control.color" : "group.color",
+                scope: "device",
+                deviceId: device.id,
+                before,
+                after,
+            });
+        }
+        this.clearColorGesture();
     }
 
     /**
