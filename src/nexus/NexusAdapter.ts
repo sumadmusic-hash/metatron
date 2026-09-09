@@ -4,6 +4,21 @@ import { BindingManager } from "../core/BindingManager";
 import { createNexusValueMapping, mapNormalizedToNexus, mapNexusToNormalized } from "./NexusValueMapping";
 import { resolveFieldByPath } from "./ChainPath";
 
+/**
+ * Resolve the OAuth redirect URL from the browser's current origin.
+ *
+ * The @audiotool/nexus SDK uses `redirectUrl` verbatim as the OAuth
+ * `redirect_uri` (see its docs: `redirectUrl: "http://127.0.0.1:5173/"`) and
+ * the Audiotool application validates the redirect origin server-side. Using
+ * the live `window.location.origin` removes the development-host assumption:
+ * locally it resolves to the dev server origin, in production to whatever
+ * origin the app is served from. The trailing slash matches the SDK's
+ * documented redirect-uri form.
+ */
+export function resolveOauthRedirectUrl(origin: string): string {
+    return origin.endsWith("/") ? origin : `${origin}/`;
+}
+
 export class NexusAdapter {
     private client: any = null;
     public document: SyncedDocument | null = null;
@@ -56,7 +71,7 @@ export class NexusAdapter {
     public async authenticate(clientId: string): Promise<boolean> {
         this.client = await audiotool({ 
             clientId,
-            redirectUrl: "http://127.0.0.1:5175/",
+            redirectUrl: resolveOauthRedirectUrl(window.location.origin),
             scope: "project:write"
         });
         
