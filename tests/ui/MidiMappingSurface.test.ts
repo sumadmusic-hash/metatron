@@ -42,7 +42,7 @@ function mount(device: Device) {
     new AppUI(root, lib, new NexusAdapter(), midi, new BindingManager(device)).render();
     // Mount the USE-mode surface (MIDI ends up in the surface DOM).
     const toggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find(
-        (b) => b.innerText.includes("Switch to USE Mode"),
+        (b) => b.innerText === "USE",
     )!;
     toggle.click();
     return { root, midi, lib, device };

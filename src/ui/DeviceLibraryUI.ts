@@ -243,7 +243,7 @@ export class DeviceLibraryUI {
                 const loadBtn = document.createElement("button");
                 loadBtn.className = "mini-btn";
                 loadBtn.innerText = "Load";
-                loadBtn.title = "Apply this preset to the device (§20)";
+                loadBtn.title = "Apply this preset to the device";
                 loadBtn.onclick = (e) => {
                     e.stopPropagation();
                     const before = this.currentPatch(device);
@@ -654,7 +654,7 @@ export class DeviceLibraryUI {
         if (this.history && before && after && !patchesEqual(before, after)) {
             this.history.record({ type: "device.create", scope: "library", deviceId: null, before, after });
         }
-        Toast.show("New empty device created (§20).", "success");
+        Toast.show("New empty device created.", "success");
         this.onDeviceChanged();
     }
 

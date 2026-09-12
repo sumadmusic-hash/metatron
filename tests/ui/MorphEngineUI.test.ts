@@ -58,7 +58,7 @@ function mount(device: Device) {
     app.render();
     // USE mode renders the live surface widgets (knob indicator).
     const toggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find(
-        (b) => b.innerText.includes("Switch to USE Mode"),
+        (b) => b.innerText === "USE",
     );
     toggle!.click();
     return { lib, adapter, device, root, app };

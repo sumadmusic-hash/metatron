@@ -6,6 +6,7 @@
     --accent-hover: #00b3cc;
     --text-primary: #ffffff;
     --text-secondary: #8892b0;
+    --text-warning: #fbbf24;
     --knob-bg: #1a1d24;
     --knob-border: #2d3342;
 }
@@ -34,6 +35,35 @@ body {
     position: relative;
 }
 
+.toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    margin-left: auto;
+}
+
+/* Secondary bar housing the automation strip below the main header */
+.automation-bar {
+    background: var(--bg-panel);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    height: 40px;
+    position: relative;
+    z-index: 99;
+}
+
 .toolbar h1 {
     font-size: 16px;
     font-weight: 600;
@@ -42,6 +72,10 @@ body {
     background: linear-gradient(90deg, #fff, #8892b0);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* M20.12 — Metatron logo sits left of the title inside the same flex row.
@@ -53,6 +87,7 @@ body {
     gap: 8px;
     margin-right: 20px;
     white-space: nowrap;
+    min-width: 0;
 }
 
 .app-title .app-logo {
@@ -94,6 +129,117 @@ body {
     box-shadow: 0 4px 15px rgba(0, 229, 255, 0.4);
 }
 
+/* M21.2 — minimal internal automation entry point (no big automation UI).
+   A compact ARM / REC / STOP / WRITE strip; the status line reflects the
+   state machine and the last take's summary. */
+.automation-strip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+}
+
+.automation-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.automation-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.automation-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.automation-status {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    margin-left: 4px;
+}
+
+/* M21.5 — reminder that live sound feedback needs both windows visible.
+   Small, subtle, static: never animated, blinking, or alarm-styled. */
+.automation-hint {
+    font-size: 11px;
+    color: var(--text-warning);
+    white-space: nowrap;
+    margin-left: 8px;
+}
+
+/* M21.8 — ARMED visual: subtle amber tint on ARM button while armed/recording. */
+.automation-btn.armed {
+    background: rgba(245, 158, 11, 0.18);
+    border-color: rgba(245, 158, 11, 0.6);
+    color: #fbbf24;
+}
+
+/* M21.8 — RECORDING visual: red tint on REC button while recording. */
+.automation-btn.recording {
+    background: rgba(239, 68, 68, 0.22);
+    border-color: rgba(239, 68, 68, 0.75);
+    color: #fca5a5;
+    font-weight: 700;
+}
+
+/* M21.8 — live elapsed counter next to the status while RECORDING. */
+.automation-elapsed {
+    font-size: 12px;
+    font-weight: 700;
+    color: #f87171;
+    white-space: nowrap;
+    margin-left: 6px;
+    letter-spacing: 0.5px;
+}
+
+/* M21.8 — CLEAR button: subtle neutral style with red hover hint. */
+.automation-btn.clear {
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+    opacity: 0.85;
+}
+
+.automation-btn.clear:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.12);
+    color: #fca5a5;
+}
+
+/* M21.8 — take overview after STOP: compact column with control rows. */
+.automation-take {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin-left: 10px;
+    padding-left: 10px;
+    border-left: 1px solid var(--border-color);
+    max-width: 360px;
+}
+
+.automation-take-head {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.automation-take-row {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 /* Grid Background for Editor */
 .editor-canvas {
     background-image: radial-gradient(var(--border-color) 1px, transparent 1px);
@@ -121,6 +267,24 @@ body {
     transition: box-shadow 0.2s ease;
     overflow: visible;
     cursor: grab;
+}
+
+.control-wrapper.write-refused::after {
+    content: "!";
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--text-warning);
+    color: #111;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    z-index: 5;
+    pointer-events: none;
 }
 
 .control-wrapper.edit-mode:hover {

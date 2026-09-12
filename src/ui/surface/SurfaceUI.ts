@@ -9,6 +9,7 @@ import { MidiLearn, MidiLearnTimeoutError } from "../../midi/MidiLearn";
 import { applyLearnedControlName, buildLearnedControlName, resolveEntityDisplayName } from "../../nexus/ControlNaming";
 import { Toast } from "../Toast";
 import { computeControlLayout } from "../geometry";
+import { WRITE_REFUSED_CLASS, WRITE_REFUSED_TITLE } from "../writeRefusal";
 import type { MidiBindingDefinition } from "../../core/model/types";
 
 /**
@@ -31,6 +32,7 @@ private container!: HTMLElement;
     private midiLearn: MidiLearn;
     private midiHandler: (channel: number, cc: number, value: number) => void;
     private selectedControlId: string | null = null;
+    private isWriteRefused?: (controlId: string) => boolean;
 
     constructor(
         deviceLibrary: DeviceLibrary,
@@ -39,7 +41,8 @@ private container!: HTMLElement;
         bindingManager: BindingManager,
         midiMapping: MidiMapping,
         onLocalChange: (controlId: string, value: number) => void,
-        midiHandler: (channel: number, cc: number, value: number) => void
+        midiHandler: (channel: number, cc: number, value: number) => void,
+        isWriteRefused?: (controlId: string) => boolean
     ) {
         this.deviceLibrary = deviceLibrary;
         this.nexusAdapter = nexusAdapter;
@@ -48,6 +51,7 @@ private container!: HTMLElement;
         this.midiMapping = midiMapping;
         this.onLocalChange = onLocalChange;
         this.midiHandler = midiHandler;
+        this.isWriteRefused = isWriteRefused;
         this.midiLearn = new MidiLearn(this.midiAccess);
     }
 
@@ -101,6 +105,7 @@ private container!: HTMLElement;
     }
 
     private updateControlElement(controlId: string, value: number) {
+        if (!this.container) return;
         const el = this.container.querySelector(`[data-ctl-id="${controlId}"]`) as HTMLElement | null;
         if (!el) return;
 
@@ -172,6 +177,11 @@ private container!: HTMLElement;
         el.className = "control-wrapper use-mode" + (this.selectedControlId === control.id ? " selected" : "");
         el.dataset.ctlId = control.id;
 
+        if (this.isWriteRefused?.(control.id)) {
+            el.classList.add(WRITE_REFUSED_CLASS);
+            el.title = WRITE_REFUSED_TITLE;
+        }
+
         // Rectangular visual area holding the widget
         const visualArea = document.createElement("div");
         visualArea.className = "control-visual-area";
@@ -229,7 +239,7 @@ private container!: HTMLElement;
             state === "CONNECTED"
                 ? `CONNECTED → ${target ?? "unknown target"}`
                 : state === "DISCONNECTED"
-                    ? "DISCONNECTED — select this control, then Learn to reconnect (§39)."
+                    ? "DISCONNECTED — select this control, then Learn to reconnect."
                     : "UNCONFIGURED — select this control to open Learn/MIDI actions.";
         labelArea.appendChild(statusDot);
         el.appendChild(labelArea);
@@ -242,14 +252,14 @@ private container!: HTMLElement;
         const learnBtn = document.createElement("button");
         learnBtn.className = "mini-btn";
         learnBtn.innerText = "Learn";
-        learnBtn.title = "Learn this control from Audiotool (§23)";
+        learnBtn.title = "Learn this control from Audiotool";
         learnBtn.onclick = (e) => { e.stopPropagation(); this.startNexusLearn(control); };
         actions.appendChild(learnBtn);
 
         const midiBtn = document.createElement("button");
         midiBtn.className = "mini-btn";
         midiBtn.innerText = "MIDI";
-        midiBtn.title = "MIDI-learn: move a hardware CC (§25)";
+        midiBtn.title = "MIDI-learn: move a hardware CC";
         midiBtn.onclick = (e) => { e.stopPropagation(); this.startMidiLearn(control); };
         actions.appendChild(midiBtn);
 
@@ -272,7 +282,7 @@ private container!: HTMLElement;
             readout.style.color = "var(--text-primary)";
         } else {
             readout.innerText = "Unmapped";
-            readout.title = "No MIDI mapping — move a hardware CC to learn (§25)";
+            readout.title = "No MIDI mapping — move a hardware CC to learn";
             readout.style.color = "var(--text-secondary)";
         }
         midiBar.appendChild(readout);
@@ -509,7 +519,7 @@ private container!: HTMLElement;
 
     private async startNexusLearn(control: any) {
         if (!this.nexusAdapter.document) {
-            Toast.show("Connect to an Audiotool project first (§23).", "error");
+            Toast.show("Connect to an Audiotool project first.", "error");
             return;
         }
         if (this.nexusLearnControlId !== null) { this.cancelNexusLearn(); return; }

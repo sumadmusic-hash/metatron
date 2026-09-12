@@ -40,7 +40,7 @@ function mount(device: Device): { device: Device; midi: FakeMidiAccess; lib: Dev
     app.render();
     // applyValueToDevice writes into the surface DOM — mount the USE surface first.
     const toggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find(
-        (b) => b.innerText.includes("Switch to USE Mode"),
+        (b) => b.innerText === "USE",
     )!;
     toggle.click();
     return { device, midi, lib };

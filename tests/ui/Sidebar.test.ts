@@ -49,7 +49,7 @@ function click(el: HTMLElement) {
 }
 function switchToUse(root: HTMLElement) {
     const b = [...root.querySelectorAll<HTMLButtonElement>("button")].find((x) =>
-        x.innerText.includes("Switch to USE Mode")
+        x.innerText === "USE"
     )!;
     b.click();
 }

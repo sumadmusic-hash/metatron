@@ -13,6 +13,7 @@ import { applyLearnedControlName, buildLearnedControlName, resolveEntityDisplayN
 import { computeControlLayout, CONTROL_MIN_SIZE, contrastTextColor } from "../geometry";
 import { DeviceHistory } from "../../core/history/DeviceHistory";
 import { patchesEqual } from "../../core/history/HistoryAction";
+import { WRITE_REFUSED_CLASS, WRITE_REFUSED_TITLE } from "../writeRefusal";
 import type { DeviceStatePatch } from "../../core/history/HistoryAction";
 
 const SNAP = 20;
@@ -89,12 +90,16 @@ export class EditorUI {
     // Session-scoped undo/redo (C1). Transient by design — never persisted.
     private history?: DeviceHistory;
 
+    // G-04: optional lookup for a control whose last Audiotool write was
+    // refused; renders the subtle write-refused marker at render time.
+    private isWriteRefused?: (controlId: string) => boolean;
+
     // Color-picker gesture coalescing: one sweep of the picker = ONE history
     // action (before captured on first input, action committed on change).
     private colorGestureKey: string | null = null;
     private colorGestureBefore: DeviceStatePatch | null = null;
 
-    constructor(deviceLibrary: DeviceLibrary, nexusAdapter?: NexusAdapter, bindingManager?: BindingManager, midiAccess?: MidiAccess, midiMapping?: MidiMapping, midiHandler?: (channel: number, cc: number, value: number) => void, history?: DeviceHistory) {
+    constructor(deviceLibrary: DeviceLibrary, nexusAdapter?: NexusAdapter, bindingManager?: BindingManager, midiAccess?: MidiAccess, midiMapping?: MidiMapping, midiHandler?: (channel: number, cc: number, value: number) => void, history?: DeviceHistory, isWriteRefused?: (controlId: string) => boolean) {
         this.deviceLibrary = deviceLibrary;
         this.nexusAdapter = nexusAdapter;
         this.bindingManager = bindingManager;
@@ -102,7 +107,9 @@ export class EditorUI {
         this.midiMapping = midiMapping;
         this.midiHandler = midiHandler;
         this.history = history;
+        this.isWriteRefused = isWriteRefused;
         this.midiLearn = midiAccess ? new MidiLearn(midiAccess) : null;
+        document.addEventListener("keydown", this.handleKeydown);
     }
 
     public render(parent: HTMLElement) {
@@ -175,11 +182,7 @@ export class EditorUI {
             bar.innerText = "LEARNING — adjust a parameter in Audiotool… (click to cancel)";
         }
         bar.style.cursor = "pointer";
-        bar.onclick = () => {
-            if (this.nexusLearningId !== null) { this.nexusLearn?.cancelLearn(); this.nexusLearningId = null; }
-            if (this.midiLearningId !== null) { this.midiLearn?.cancelLearn(); this.midiLearningId = null; }
-            this.render(this.container.parentElement!);
-        };
+        bar.onclick = () => this.cancelActiveLearn();
         return bar;
     }
 
@@ -274,7 +277,7 @@ export class EditorUI {
         if (this.selectedControlId) {
             const before = this.history?.captureDeviceState(device);
             device.removeControl(this.selectedControlId); // soft delete/archive
-            Toast.show("Control archived (soft-delete): preset references stay valid (§44).", "info");
+            Toast.show("Control archived. Preset references remain valid.", "info");
             const after = this.history?.captureDeviceState(device);
             if (this.history && before && after && !patchesEqual(before, after)) {
                 this.history.record({ type: "control.archive", scope: "device", deviceId: device.id, before, after });
@@ -309,6 +312,11 @@ export class EditorUI {
         const el = document.createElement("div");
         el.className = "control-wrapper edit-mode" + (this.selectedControlId === control.id ? " selected" : "");
         el.dataset.ctlId = control.id;
+
+        if (this.isWriteRefused?.(control.id)) {
+            el.classList.add(WRITE_REFUSED_CLASS);
+            el.title = WRITE_REFUSED_TITLE;
+        }
 
         // Rectangular visual area: the configurable color surface (§13). The
         // widget lives inside this area, keeping it visually intentional.
@@ -370,7 +378,7 @@ export class EditorUI {
             state === "CONNECTED"
                 ? `CONNECTED → ${target ?? "unknown target"}`
                 : state === "DISCONNECTED"
-                    ? "DISCONNECTED — active binding is for another project. Select+Learn to reconnect (§39)."
+                    ? "DISCONNECTED — active binding is for another project. Select+Learn to reconnect."
                     : "UNCONFIGURED — no Audiotool binding.";
         labelArea.appendChild(badge);
         el.appendChild(labelArea);
@@ -391,7 +399,7 @@ export class EditorUI {
         colorInput.type = "color";
         colorInput.className = "color-swatch";
         colorInput.value = control.visualDefinition?.color || "#333333";
-        colorInput.title = "Visual area color (§13)";
+        colorInput.title = "Visual area color";
 
         const hexLabel = document.createElement("span");
         hexLabel.className = "color-hex-label";
@@ -476,7 +484,7 @@ export class EditorUI {
             const learnBtn = document.createElement("button");
             learnBtn.className = "tool-btn";
             learnBtn.innerText = "Learn";
-            learnBtn.title = "Learn this control from Audiotool for the CURRENT project (§23/§24)";
+            learnBtn.title = "Learn this control from Audiotool for the CURRENT project";
             learnBtn.onclick = (e) => { e.stopPropagation(); void this.startNexusLearn(control); };
             toolsRow1.appendChild(learnBtn);
 
@@ -499,7 +507,7 @@ export class EditorUI {
             const midiBtn = document.createElement("button");
             midiBtn.className = "tool-btn";
             midiBtn.innerText = "MIDI";
-            midiBtn.title = "MIDI-learn a hardware CC for this control (§25-27)";
+            midiBtn.title = "MIDI-learn a hardware CC for this control";
             midiBtn.onclick = (e) => { e.stopPropagation(); void this.startMidiLearn(control); };
             toolsRow1.appendChild(midiBtn);
         }
@@ -1143,7 +1151,7 @@ export class EditorUI {
     private async startNexusLearn(control: any) {
         if (!this.nexusAdapter || !this.bindingManager) return;
         if (!this.nexusAdapter.document) {
-            Toast.show("Connect to an Audiotool project first (§23).", "error");
+            Toast.show("Connect to an Audiotool project first.", "error");
             return;
         }
         if (this.nexusLearningId !== null) { this.cancelNexusLearn(); return; }
@@ -1196,6 +1204,39 @@ export class EditorUI {
         this.nexusLearn?.cancelLearn();
         this.nexusLearn = null;
         this.nexusLearningId = null;
+        this.render(this.container.parentElement!);
+    }
+
+    private handleKeydown = (e: KeyboardEvent) => {
+        if (!this.container?.isConnected) return;
+        if (e.metaKey || e.ctrlKey) return;
+        if (this.isEditableTarget(e.target)) return;
+
+        if (e.key === "Escape") {
+            if (this.nexusLearningId !== null || this.midiLearningId !== null) {
+                e.preventDefault();
+                this.cancelActiveLearn();
+            }
+            return;
+        }
+
+        if (e.key === "Delete" || e.key === "Backspace") {
+            if (this.selectedControlId) {
+                e.preventDefault();
+                this.deleteSelected();
+            }
+        }
+    };
+
+    private isEditableTarget(target: EventTarget | null): boolean {
+        if (!(target instanceof Element)) return false;
+        const tag = target.tagName;
+        return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (target as HTMLElement).isContentEditable === true;
+    }
+
+    private cancelActiveLearn() {
+        if (this.nexusLearningId !== null) { this.nexusLearn?.cancelLearn(); this.nexusLearningId = null; }
+        if (this.midiLearningId !== null) { this.midiLearn?.cancelLearn(); this.midiLearningId = null; }
         this.render(this.container.parentElement!);
     }
 
