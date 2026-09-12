@@ -295,15 +295,21 @@ body {
     white-space: nowrap;
 }
 
-/* Group edit toolbar (M20.11) — lives OUTSIDE the group box as a sibling
+/* Group edit toolbar (M20.11/15) — lives OUTSIDE the group box as a sibling
    (`parent > .group-box + .group-tools`), so the box's own surface never
    carries editor furniture. Positioned via JS `positionGroupToolbar()` to
-   flip below when the group sits near the canvas top edge. Revealed on group
-   hover and kept visible while hovered itself so its buttons stay clickable.
-   Inert when invisible so it never blocks clicks on the canvas. */
+   flip below when the group sits near the canvas top edge.
+
+   M20.15 — visibility is tied to GROUP SELECTION (`.group-box.selected`),
+   NOT to the pointer position: once the box is clicked it becomes selected
+   and the toolbar shows and stays interactive, so the cursor can leave the
+   box to reach Copy/Paste/Delete without the toolbar vanishing. The hover /
+   :focus-within rules are optional discoverability extras only. `display:none`
+   hides the toolbar for hit-testing, so no separate pointer-events logic is
+   needed. Deselection (e.g. clicking empty canvas) hides it again. */
 .group-tools {
     position: absolute;
-    display: flex;
+    display: none;
     align-items: center;
     gap: 6px;
     padding: 4px 8px;
@@ -312,16 +318,14 @@ body {
     border-radius: 8px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
     z-index: 25;
-    transition: opacity 0.12s ease;
 }
 
+.group-box.selected + .group-tools,
 .group-box:hover + .group-tools,
-.group-tools:hover {
-    opacity: 1;
-    pointer-events: auto;
+.group-tools:hover,
+.group-tools:focus-within {
+    display: flex;
 }
 
 .group-tools .group-color-input {

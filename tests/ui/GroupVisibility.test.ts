@@ -136,10 +136,16 @@ describe("Group visibility in EDIT mode (editor object)", () => {
         const toolsRule = css.match(/\.group-tools\s*\{[^}]*\}/);
         expect(toolsRule).toBeTruthy();
         expect(toolsRule?.[0]).toMatch(/position:\s*absolute/);
-        // Hovering the box reveals the adjacent sibling toolbar; hovering the
-        // toolbar itself keeps it visible (it is not a child of the box).
+        // M20.15 — visibility is SELECTION-driven (not pointer-position):
+        // hidden with `display:none`, revealed by the selected sibling box.
+        expect(toolsRule?.[0]).toMatch(/display:\s*none/);
+        expect(toolsRule?.[0]).not.toMatch(/opacity/);
+        expect(toolsRule?.[0]).not.toMatch(/pointer-events/);
+        expect(css).toMatch(/\.group-box\.selected\s*\+\s*\.group-tools\s*,\s*\.group-box:hover\s*\+\s*\.group-tools\s*,\s*\.group-tools:hover\s*,\s*\.group-tools:focus-within\s*\{\s*display:\s*flex;\s*\}/);
+        // Hover/:focus-within rules remain as optional discoverability extras.
         expect(css).toMatch(/\.group-box:hover\s*\+\s*\.group-tools/);
         expect(css).toMatch(/\.group-tools:hover/);
+        expect(css).toMatch(/\.group-tools:focus-within/);
         // Delete is pinned to the RIGHT END of the toolbar.
         const delRule = css.match(/\.group-tools \.group-delete-btn\s*\{[^}]*\}/);
         expect(delRule?.[0]).toMatch(/margin-left:\s*auto/);
@@ -285,5 +291,85 @@ describe("M20.7 — Group name is always light in USE mode", () => {
         const name = host.querySelector(".group-box .group-name") as HTMLElement;
         // No inline force in EDIT mode — the fix did not leak out of USE mode.
         expect(name.style.color).toBe("");
+    });
+});
+
+describe("M20.15 — the group toolbar stays visible via Group SELECTION, not hover", () => {
+
+    /** Injects the real `.group-tools` visibility rules from styles.css into a
+     *  live <style> element so computed `display` reflects the production CSS. */
+    function injectGroupToolsRules(): string {
+        const css = readFileSync(resolve("src/ui/styles.css"), "utf8");
+        const base = css.match(/\.group-tools\s*\{[^}]*\}/)![0];
+        const reveal = css.match(
+            /\.group-box\.selected\s*\+\s*\.group-tools\s*,\s*\.group-box:hover\s*\+\s*\.group-tools\s*,\s*\.group-tools:hover\s*,\s*\.group-tools:focus-within\s*\{[^}]*\}/
+        )![0];
+        const style = document.createElement("style");
+        style.textContent = `${base}${reveal}`;
+        document.head.appendChild(style);
+        return css;
+    }
+
+    it("shows the toolbar on selection and hides it again on deselection", () => {
+        const { host } = mountEditor();
+        injectGroupToolsRules();
+        const box = host.querySelector<HTMLElement>(".group-box")!;
+        const tools = host.querySelector<HTMLElement>(".group-tools")!;
+
+        // 1. Grundzustand: `display: none`.
+        expect(getComputedStyle(tools).display).toBe("none");
+
+        // 2+3. pointerdown wählt die Group aus und enthüllt die Toolbar.
+        box.dispatchEvent(new PointerEvent("pointerdown", { pointerId: 1, clientX: 60, clientY: 60, button: 0, bubbles: true, cancelable: true }));
+        expect(box.classList.contains("selected")).toBe(true);
+        expect(getComputedStyle(tools).display).toBe("flex");
+
+        // 4. Kein Hover nötig: Verlassen der Box ändert nichts.
+        document.dispatchEvent(new PointerEvent("pointermove", { pointerId: 1, clientX: 900, clientY: 900, bubbles: true }));
+        expect(box.classList.contains("selected")).toBe(true);
+        expect(getComputedStyle(tools).display).toBe("flex");
+
+        // 5+6. Klick auf leere Canvas-Fläche deselektiert und verbirgt die Toolbar.
+        const inner = host.querySelector(".editor-canvas-inner")!;
+        inner.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        expect(box.classList.contains("selected")).toBe(false);
+        expect(getComputedStyle(tools).display).toBe("none");
+    });
+
+    it("keeps the toolbar clickable when visible and leaves the control toolbar untouched", () => {
+        const { host, device } = mountEditor();
+        injectGroupToolsRules();
+        const box = host.querySelector<HTMLElement>(".group-box")!;
+        const tools = host.querySelector<HTMLElement>(".group-tools")!;
+        const groupEl = host.querySelector<HTMLElement>(".group-box")!;
+
+        box.dispatchEvent(new PointerEvent("pointerdown", { pointerId: 1, clientX: 60, clientY: 60, button: 0, bubbles: true, cancelable: true }));
+        expect(getComputedStyle(tools).display).toBe("flex");
+        // No pointer-events blocking in the visible state.
+        expect(getComputedStyle(tools).pointerEvents).not.toBe("none");
+
+        // Delete innerhalb der Toolbar funktioniert weiterhin (Model + DOM weg).
+        const del = tools.querySelector<HTMLElement>(".group-delete-btn")!;
+        del.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        expect(device.getGroup(groupEl.dataset.grpId!)).toBeUndefined();
+        expect(host.querySelector(".group-box")).toBeNull();
+
+        // Die Control-Toolbar-Mechanik ist unverändert (display-gesteuert via Selection).
+        const css = readFileSync(resolve("src/ui/styles.css"), "utf8");
+        expect(css).toMatch(/\.control-wrapper\.selected \.control-tools\s*\{\s*display:\s*flex;\s*\}/);
+    });
+
+    it("does not regress Group drag: selection still fires before a drag starts", () => {
+        const { host } = mountEditor();
+        injectGroupToolsRules();
+        const box = host.querySelector<HTMLElement>(".group-box")!;
+        const tools = host.querySelector<HTMLElement>(".group-tools")!;
+
+        // Drag-Geste: pointerdown + Bewegung → Gruppe wandert, Toolbar bleibt sichtbar.
+        box.dispatchEvent(new PointerEvent("pointerdown", { pointerId: 1, clientX: 50, clientY: 50, button: 0, bubbles: true, cancelable: true }));
+        document.dispatchEvent(new PointerEvent("pointermove", { pointerId: 1, clientX: 90, clientY: 90, bubbles: true, cancelable: true }));
+        document.dispatchEvent(new PointerEvent("pointerup", { pointerId: 1, bubbles: true, cancelable: true }));
+        expect(box.classList.contains("selected")).toBe(true);
+        expect(getComputedStyle(tools).display).toBe("flex");
     });
 });
