@@ -40,7 +40,7 @@ describe("M20.12 — Metatron logo left of the title", () => {
         expect(titleWrap).not.toBeNull();
         const logo = titleWrap.querySelector<HTMLImageElement>(".app-logo")!;
         expect(logo).not.toBeNull();
-        expect(logo.getAttribute("src")).toBe("/metatron-logo.svg");
+        expect(logo.getAttribute("src")).toBe("/metatron-logo-small.svg");
         expect(logo.getAttribute("alt")).toBe("Metatron");
     });
 
@@ -65,9 +65,11 @@ describe("M20.12 — Metatron logo left of the title", () => {
         expect(rule?.[0]).toMatch(/width:\s*28px/);
         expect(rule?.[0]).toMatch(/height:\s*28px/);
         expect(rule?.[0]).toMatch(/object-fit:\s*contain/);
-        // Ungestörte Skalierung: the asset itself is a perfect square.
-        const svg = readFileSync(resolve("public/metatron-logo.svg"), "utf8");
+        // Ungestörte Skalierung: die kleine, optimierte SVG ist ein perfektes Quadrat.
+        const svg = readFileSync(resolve("public/metatron-logo-small.svg"), "utf8");
         expect(svg).toMatch(/viewBox="0 0 1600 1600"/);
+        // Die große Original-SVG bleibt erhalten (nicht gelöscht).
+        expect(readFileSync(resolve("public/metatron-logo.svg"), "utf8")).toMatch(/viewBox="0 0 1600 1600"/);
     });
 
     it("spaces the logo ~8-10px from the title without shifting other header elements", () => {

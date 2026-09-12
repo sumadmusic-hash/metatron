@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1600"
+  height="1600"
+  viewBox="0 0 1600 1600">
+
+
+  <defs>
+    <!-- Kompakte, schwächere Glows für kleine UI-Darstellung -->
+    <filter id="softGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+
+    <filter id="edgeGlow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+
+    <linearGradient id="roof"
+      x1="50%" y1="0%"
+      x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#54F6FF"/>
+      <stop offset="55%" stop-color="#2461F2"/>
+      <stop offset="100%" stop-color="#122A9E"/>
+    </linearGradient>
+
+
+    <linearGradient id="topLeft"
+      x1="0%" y1="0%"
+      x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5AF4FF"/>
+      <stop offset="42%" stop-color="#245EF4"/>
+      <stop offset="100%" stop-color="#10279F"/>
+    </linearGradient>
+
+
+    <linearGradient id="topRight"
+      x1="100%" y1="0%"
+      x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5AF4FF"/>
+      <stop offset="42%" stop-color="#245EF4"/>
+      <stop offset="100%" stop-color="#10279F"/>
+    </linearGradient>
+
+
+    <linearGradient id="bottom"
+      x1="50%" y1="0%"
+      x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#245EF4"/>
+      <stop offset="58%" stop-color="#751CFF"/>
+      <stop offset="100%" stop-color="#CC18FF"/>
+    </linearGradient>
+  </defs>
+
+
+  <!-- Hauptkörper -->
+  <g filter="url(#softGlow)">
+
+
+    <!-- Linke obere Facette -->
+    <path
+      fill="url(#topLeft)"
+      d="M315.9 443.2
+         L802.3 725
+         L802.3 1402.3
+         L322.7 1145.5 Z"/>
+
+
+    <!-- Rechte obere Facette -->
+    <path
+      fill="url(#topRight)"
+      d="M1281.8 445.5
+         L802.3 725
+         L802.3 1402.3
+         L1284.1 1145.5 Z"/>
+
+
+    <!-- Vereinfachte violette Tiefe -->
+    <path
+      fill="url(#bottom)"
+      opacity="0.9"
+      d="M322.7 1145.5
+         L802.3 1402.3
+         L1284.1 1145.5
+         L802.3 725 Z"/>
+
+
+    <!-- Obere schwebende Dachform -->
+    <path
+      fill="url(#roof)"
+      d="M793.2 193.2
+         L370.5 436.4
+         L488.6 509.1
+         L795.5 327.3 Z"/>
+
+
+    <path
+      fill="url(#roof)"
+      d="M793.2 193.2
+         L1225 440.9
+         L1115.9 504.5
+         L795.5 327.3 Z"/>
+
+
+  </g>
+
+
+  <!-- Schwarzer Innenraum -->
+  <path
+    fill="#020308"
+    d="M479.5 706.8
+       L484.1 1052.3
+       L795.5 1229.5
+       L1113.6 1045.5
+       L1116 706.8
+       L806.8 895.5 Z"/>
+
+
+  <!-- Klare Konturen -->
+  <g
+    fill="none"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    filter="url(#edgeGlow)">
+
+
+    <polyline
+      points="370.5,436.4 793.2,193.2 1225,440.9"
+      stroke="#5AF4FF"
+      stroke-width="4"/>
+
+
+    <polyline
+      points="315.9,443.2 802.3,725 1281.8,445.5"
+      stroke="#EFFFFF"
+      stroke-width="3"/>
+
+
+    <polyline
+      points="322.7,1145.5 802.3,1402.3 1284.1,1145.5"
+      stroke="#E43DFF"
+      stroke-width="4"/>
+
+
+    <line
+      x1="802.3"
+      y1="725"
+      x2="802.3"
+      y2="1402.3"
+      stroke="#FFFFFF"
+      stroke-width="1.5"
+      opacity="0.45"/>
+  </g>
+
+
+  <!-- Scharfe Dach-Mittelkante -->
+  <line
+    x1="793.2"
+    y1="193.2"
+    x2="795.5"
+    y2="327.3"
+    stroke="#B7FCFF"
+    stroke-width="2"/>
+
+
+  <!-- Dezente innere Akzente -->
+  <polyline
+    points="479.5,706.8 806.8,895.5 1115.9,706.8"
+    fill="none"
+    stroke="#25D5FF"
+    stroke-width="2"
+    opacity="0.5"
+    filter="url(#edgeGlow)"/>
+
+
+  <polyline
+    points="484.1,1052.3 795.5,1229.5 1113.6,1045.5"
+    fill="none"
+    stroke="#B026FF"
+    stroke-width="2"
+    opacity="0.55"
+    filter="url(#edgeGlow)"/>
+
+
+</svg>

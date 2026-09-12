@@ -218,7 +218,7 @@ export class AppUI {
         const titleWrap = document.createElement("div");
         titleWrap.className = "app-title";
         const logo = document.createElement("img");
-        logo.src = "/metatron-logo.svg";
+        logo.src = "/metatron-logo-small.svg";
         logo.alt = "Metatron";
         logo.className = "app-logo";
         const title = document.createElement("h1");
