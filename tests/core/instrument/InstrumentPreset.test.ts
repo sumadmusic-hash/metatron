@@ -298,6 +298,50 @@ describe("InstrumentPreset v0.1 — F. Value mapping", () => {
     });
 });
 
+describe("InstrumentPreset v0.1 — G. M23.2 OPTIONAL control descriptors", () => {
+    function bindingWith(
+        extra: Record<string, unknown>,
+        base: InstrumentPresetBinding = presetFixture().bindings[0],
+    ): InstrumentPresetBinding {
+        return { ...base, ...extra };
+    }
+
+    it("accepts a binding with the full optional descriptor (additive)", () => {
+        const preset = presetFixture();
+        preset.bindings = [bindingWith({ controlName: "Cutoff", controlType: "knob", controlNameSource: "auto" })];
+        expect(validateInstrumentPreset(preset).valid).toBe(true);
+    });
+
+    it("accepts a binding with only some descriptor fields (still legacy-valid)", () => {
+        const preset = presetFixture();
+        preset.bindings = [bindingWith({ controlName: "Cutoff" })];
+        expect(validateInstrumentPreset(preset).valid).toBe(true);
+    });
+
+    it("accepts controlNameSource manual", () => {
+        const preset = presetFixture();
+        preset.bindings = [bindingWith({ controlName: "Cutoff", controlType: "switch", controlNameSource: "manual" })];
+        expect(validateInstrumentPreset(preset).valid).toBe(true);
+    });
+
+    it("rejects a non-empty-string controlName when present", () => {
+        const empty = presetFixture(); empty.bindings = [bindingWith({ controlName: "" })];
+        expect(validateInstrumentPreset(empty).valid).toBe(false);
+    });
+
+    it("rejects an unknown controlType when present", () => {
+        const preset = presetFixture();
+        preset.bindings = [bindingWith({ controlType: "rotary" })];
+        expect(validateInstrumentPreset(preset).valid).toBe(false);
+    });
+
+    it("rejects an unknown controlNameSource when present", () => {
+        const preset = presetFixture();
+        preset.bindings = [bindingWith({ controlNameSource: "derived" })];
+        expect(validateInstrumentPreset(preset).valid).toBe(false);
+    });
+});
+
 describe("InstrumentPreset v0.1 — structural consistency", () => {
     it("rejects duplicate bindings for the same controlId", () => {
         const preset = presetFixture();

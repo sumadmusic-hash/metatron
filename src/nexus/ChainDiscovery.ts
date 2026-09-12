@@ -265,3 +265,123 @@ export function describeParameter(
 export function isAutomatable(targetTypes: string[] | undefined): boolean {
     return (targetTypes ?? []).includes("AutomatableParameter");
 }
+
+/** Result of a binding-based chain union (M19). */
+export interface ChainUnionResult {
+    /** Normalized selected device ids (bound seeds + reachable audio members), in discovery order. */
+    devices: string[];
+    /** Cables whose endpoints are both in the union (deduped, input order). */
+    connections: AudioConnection[];
+    /** Root candidates: selected devices with no incoming cable within the selected subgraph. */
+    rootCandidates: string[];
+    /** Depth limit that bounded every traversal. */
+    maxDepth: number;
+    /** True when any traversal hit the depth limit. */
+    truncated: boolean;
+}
+
+/**
+ * CHAIN UNION FROM BINDINGS (M19) — pure, framework-free, unit-testable.
+ *
+ * Given the normalized audio-cable set and the entity ids of Metatron-bound
+ * devices, select the complete audio-chain union those controls need:
+ *
+ *   - for every bound device: traverse UPSTREAM through incoming audio cables
+ *     to the devices that feed it, and DOWNSTREAM through outgoing audio cables
+ *     to the devices it feeds;
+ *   - a device with no incoming cable ends the upstream walk (root candidate);
+ *   - a device with no outgoing cable is a SINK — downstream expansion stops
+ *     there and never re-enters the sink's other feeders (shared mixers only
+ *     contribute their connected subgraph, not every sibling input);
+ *   - bound devices are always included, even with zero cables;
+ *   - memberships are UNION-ed across all bound entities (no duplicates);
+ *   - cables are returned only when BOTH endpoints are selected;
+ *   - root candidates derive from the SELECTED subgraph, never from the
+ *     original project's global roots.
+ *
+ * Purity guarantee: never mutates `cables` or `boundEntityIds`; builds fresh
+ * adjacency maps (the incoming map is DERIVED from the same cable data — no
+ * Nexus access); repeated calls with equal inputs return equal results.
+ * Cycle-safe via a visited set; bounded by `maxDepth` (default = the same
+ * limit used by `traverseChain`).
+ */
+export function chainUnionFromBindings(
+    cables: AudioConnection[],
+    boundEntityIds: string[],
+    maxDepth: number = DEFAULT_MAX_DEPTH,
+): ChainUnionResult {
+    const outgoing = new Map<string, AudioConnection[]>();
+    const incoming = new Map<string, AudioConnection[]>();
+    const appendEdge = (map: Map<string, AudioConnection[]>, key: string, edge: AudioConnection) => {
+        const list = map.get(key);
+        if (list) list.push(edge);
+        else map.set(key, [edge]);
+    };
+
+    for (const cable of cables) {
+        const from = normalizeEntityId(cable.from.entityId);
+        const to = normalizeEntityId(cable.to.entityId);
+        if (!from || !to) continue;
+        appendEdge(outgoing, from, cable);
+        appendEdge(incoming, to, cable);
+    }
+
+    // Global membership: every discovered device is part of the union once.
+    const discovered = new Set<string>();
+    const devices: string[] = [];
+    let truncated = false;
+
+    /**
+     * Direction-parameterized walk. `adjacency` + `next` select the direction:
+     *   - downstream: outgoing map, next = cable.to.entityId
+     *   - upstream:   incoming map, next = cable.from.entityId
+     * A node with no edges in that direction naturally terminates the walk
+     * (root for upstream, sink for downstream). Visited set → cycle safety.
+     */
+    const traverse = (start: string, adjacency: Map<string, AudioConnection[]>, next: (c: AudioConnection) => string) => {
+        const queued = new Set<string>([start]);
+        const queue: Array<{ id: string; depth: number }> = [{ id: start, depth: 0 }];
+        while (queue.length > 0) {
+            const { id, depth } = queue.shift()!;
+            if (!discovered.has(id)) {
+                discovered.add(id);
+                devices.push(id);
+            }
+            if (depth >= maxDepth) {
+                truncated = true;
+                continue;
+            }
+            const edges = adjacency.get(id) ?? [];
+            for (const edge of edges) {
+                const nextId = normalizeEntityId(next(edge));
+                if (!nextId || discovered.has(nextId) || queued.has(nextId)) continue;
+                queued.add(nextId);
+                queue.push({ id: nextId, depth: depth + 1 });
+            }
+        }
+    };
+
+    for (const boundRaw of boundEntityIds) {
+        const bound = normalizeEntityId(boundRaw);
+        if (!bound) continue;
+        traverse(bound, incoming, (c) => c.from.entityId); // upstream → roots
+        traverse(bound, outgoing, (c) => c.to.entityId);   // downstream → sinks
+    }
+
+    // Only cables whose endpoints are both selected; dedupe by cable id.
+    const seenCables = new Set<string>();
+    const connections: AudioConnection[] = [];
+    for (const cable of cables) {
+        const from = normalizeEntityId(cable.from.entityId);
+        const to = normalizeEntityId(cable.to.entityId);
+        if (!discovered.has(from) || !discovered.has(to)) continue;
+        if (seenCables.has(cable.id)) continue;
+        seenCables.add(cable.id);
+        connections.push(cable);
+    }
+
+    const hasIncoming = new Set(connections.map((c) => normalizeEntityId(c.to.entityId)));
+    const rootCandidates = devices.filter((id) => !hasIncoming.has(id));
+
+    return { devices, connections, rootCandidates, maxDepth, truncated };
+}

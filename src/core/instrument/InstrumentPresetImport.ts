@@ -15,6 +15,13 @@
  *   3. APPLY every preset control value through the stored `valueMapping` via
  *      `mapNormalizedToNexus` (0..1 → real Nexus range/domain), then READ BACK
  *      from the target through `mapNexusToNormalized` and compare.
+ *   4. REMAP (M23.2): every binding is first matched to a destination control
+ *      via the pure `resolveControlForBinding` — exact controlId, else the
+ *      OPTIONAL name+type SIGNATURE fallback. NEVER any targetName/entity
+ *      matching (M23.1.1). On a remap, `controlValues` (keyed by the envelope
+ *      control id) are re-keyed to the destination control and that control's
+ *      `value` is set (normalized 0..1, inside the caller's existing
+ *      mutation window so "instrument.import" undo/redo stays correct).
  *
  * Controlled failures (never silent skips):
  *   - sourceEntityIndex out of range / source id missing   → binding failure
@@ -52,7 +59,12 @@ export interface InstrumentPresetImportOptions {
 
 /** Per-binding resolution/import outcome. */
 export interface ImportedBindingRecord {
+    /** Destination control id (=== envelope id when matched by id, remapped otherwise). */
     controlId: string;
+    /** Envelope control id — the reference id the binding travels under in the preset. */
+    sourceControlId: string;
+    /** How the destination control was found (M23.2): exact id or name+type signature. */
+    matchedBy?: "id" | "signature";
     sourceEntityIndex: number;
     fieldPath: string;
     /** Target id resolved through the clone idMap (never a source id). */
@@ -64,7 +76,10 @@ export interface ImportedBindingRecord {
 
 /** Per-control-value application outcome. */
 export interface ImportedPresetValueRecord {
+    /** Destination control id the value was applied to (remapped when needed). */
     controlId: string;
+    /** Envelope/source control id the value travels under in the preset. */
+    sourceControlId?: string;
     normalized: number;
     /** The raw value written to the target (mapped, not normalized). */
     nexusValue?: number | boolean;
@@ -128,6 +143,103 @@ function lastPathSegment(path: string): string {
     return parts[parts.length - 1] ?? path;
 }
 
+/** Structural footprint of a Control that `resolveControlForBinding` may read.
+ *  The real `Control` and plain test doubles both satisfy it. */
+export interface BindingMatchableControl {
+    id: string;
+    name: string;
+    type: "knob" | "switch";
+    nameSource?: "auto" | "manual";
+    archived?: boolean;
+}
+
+/** Structural footprint of a Device as seen by the resolver. */
+export interface BindingMatchableDevice {
+    id: string;
+    getControl(controlId: string): BindingMatchableControl | undefined;
+    controls: ReadonlyMap<string, BindingMatchableControl>;
+}
+
+export type BindingMatchResult =
+    | { ok: true; controlId: string; matchedBy: "id" | "signature" }
+    | { ok: false; reason: "missing" | "ambiguous" | "type-mismatch" };
+
+export type BindingMatchReason = "missing" | "ambiguous" | "type-mismatch";
+
+/**
+ * M23.2 — pure, side-effect-free destination-control matching for ONE binding.
+ * Matching order (per M23.1.1 — NO targetName/entity matching anywhere):
+ *   1. exact `controlId` via `device.getControl` → `matchedBy: "id"`.
+ *   2. SKIPPED — variable targetName matching MUST NOT exist (targetName is
+ *      `entityType / fieldPath` only, collides across duplicate entities, and
+ *      is never a concrete entity identity).
+ *   3. SIGNATURE fallback (convention-based, never entity-verified) only when
+ *      the binding carries the OPTIONAL descriptors and `controlNameSource`
+ *      is not "manual": bind to the UNIQUE control whose name and type both
+ *      match (archived and manual-renamed controls excluded). One candidate →
+ *      `"signature"`; several → `"ambiguous"`; a unique name with a wrong type
+ *      → `"type-mismatch"`; none → `"missing"`. Never a best guess.
+ */
+export function resolveControlForBinding(
+    binding: Pick<InstrumentPresetBinding, "controlId" | "controlName" | "controlType" | "controlNameSource">,
+    device: BindingMatchableDevice,
+): BindingMatchResult {
+    const exact = device.getControl(binding.controlId);
+    if (exact) {
+        return { ok: true, controlId: exact.id, matchedBy: "id" };
+    }
+
+    if (
+        binding.controlName === undefined ||
+        binding.controlType === undefined ||
+        binding.controlNameSource === "manual"
+    ) {
+        return { ok: false, reason: "missing" };
+    }
+
+    const named: BindingMatchableControl[] = [];
+    const typed: BindingMatchableControl[] = [];
+    for (const control of device.controls.values()) {
+        if (control.archived) continue;
+        if (control.name !== binding.controlName) continue;
+        if (control.nameSource === "manual") continue;
+        named.push(control);
+        if (control.type === binding.controlType) typed.push(control);
+    }
+
+    if (named.length > 0 && typed.length === 0) {
+        return { ok: false, reason: "type-mismatch" };
+    }
+    if (typed.length === 0) {
+        return { ok: false, reason: "missing" };
+    }
+    if (typed.length > 1) {
+        return { ok: false, reason: "ambiguous" };
+    }
+    return { ok: true, controlId: typed[0].id, matchedBy: "signature" };
+}
+
+/** Failure copy for the binding section — the "why" of an UNRESOLVED control. */
+function controlMatchFailureMessage(
+    binding: InstrumentPresetBinding,
+    device: BindingMatchableDevice,
+    reason: BindingMatchReason,
+): string {
+    const name = binding.controlName ?? "?";
+    const type = binding.controlType ?? "?";
+    switch (reason) {
+        case "ambiguous":
+            return `control "${binding.controlId}" (name "${name}" type "${type}"): multiple destination controls match the signature — UNRESOLVED (no guess)`;
+        case "type-mismatch":
+            return `control "${binding.controlId}" (name "${name}"): destination names match but none has controlType "${type}" — UNRESOLVED`;
+        case "missing":
+            if (binding.controlName === undefined || binding.controlType === undefined || binding.controlNameSource === "manual") {
+                return `control "${binding.controlId}" does not exist on device "${device.id}" (no usable signature descriptor)`;
+            }
+            return `control "${binding.controlId}" (name "${name}" type "${type}") does not exist on device "${device.id}" — UNRESOLVED (no guess)`;
+    }
+}
+
 /** Resolve one binding through snapshot → idMap → target field.
  *  Never guesses names; never reuses source ids as target ids. */
 function resolveBinding(
@@ -181,6 +293,7 @@ function resolveBinding(
         resolved: {
             record: {
                 controlId: binding.controlId,
+                sourceControlId: binding.controlId,
                 sourceEntityIndex: index,
                 fieldPath: binding.fieldPath,
                 targetEntityId,
@@ -256,25 +369,30 @@ export async function importInstrumentPreset(
     const liveBindings = new Map<string, ResolvedBinding>();
 
     for (const binding of preset.bindings) {
-        if (!device.getControl(binding.controlId)) {
+        // M23.2 — resolve the DESTINATION control: exact id, else signature.
+        const match = resolveControlForBinding(binding, device);
+        if (!match.ok) {
             const record: ImportedBindingRecord = {
                 controlId: binding.controlId,
+                sourceControlId: binding.controlId,
                 sourceEntityIndex: binding.sourceEntityIndex,
                 fieldPath: binding.fieldPath,
                 targetEntityId: "",
                 valueMapping: binding.valueMapping,
                 ok: false,
-                message: `control "${binding.controlId}" does not exist on device "${device.id}"`,
+                message: controlMatchFailureMessage(binding, device, match.reason),
             };
             bindingRecords.push(record);
-            failures.push(`binding ${binding.controlId}: ${record.message}`);
+            failures.push(`binding ${binding.controlId} (${match.reason}): ${record.message}`);
             continue;
         }
 
         const resolved = resolveBinding(snapshot, idMap, targetDoc, binding);
         if (!resolved.ok) {
             const record: ImportedBindingRecord = {
-                controlId: binding.controlId,
+                controlId: match.controlId,
+                sourceControlId: binding.controlId,
+                matchedBy: match.matchedBy,
                 sourceEntityIndex: binding.sourceEntityIndex,
                 fieldPath: binding.fieldPath,
                 targetEntityId: "",
@@ -283,62 +401,70 @@ export async function importInstrumentPreset(
                 message: resolved.message,
             };
             bindingRecords.push(record);
-            failures.push(`binding ${binding.controlId}: ${record.message}`);
+            failures.push(`binding ${binding.controlId} (${match.matchedBy}): ${record.message}`);
             continue;
         }
 
-        const { record, field } = resolved.resolved;
+        const { record, field, details } = resolved.resolved;
+        const destinationRecord: ImportedBindingRecord = {
+            ...record,
+            controlId: match.controlId,
+            sourceControlId: binding.controlId,
+            matchedBy: match.matchedBy,
+        };
         bindingManager.setBinding(
-            record.controlId,
-            record.targetEntityId,
-            lastPathSegment(record.fieldPath),
+            destinationRecord.controlId,
+            destinationRecord.targetEntityId,
+            lastPathSegment(destinationRecord.fieldPath),
             undefined,
             field,
-            record.fieldPath,
-            record.valueMapping,
+            destinationRecord.fieldPath,
+            destinationRecord.valueMapping,
         );
-        liveBindings.set(record.controlId, resolved.resolved);
-        bindingRecords.push(record);
+        liveBindings.set(destinationRecord.controlId, { record: destinationRecord, field, details });
+        bindingRecords.push(destinationRecord);
     }
     const bindingsOk = bindingRecords.every((b) => b.ok);
 
     // ── 3. PRESET VALUES ───────────────────────────────────────────────────
     const presetRecords: ImportedPresetValueRecord[] = [];
-    for (const [controlId, normalized] of Object.entries(preset.metatron.controlValues)) {
-        const binding = preset.bindings.find((b) => b.controlId === controlId);
-        const bindingRecord = bindingRecords.find((b) => b.controlId === controlId);
+    for (const [sourceControlId, normalized] of Object.entries(preset.metatron.controlValues)) {
+        // M23.2 — controlValues travel under the ENVELOPE (source) control id;
+        // the record is the same id remapped to the destination via the match.
+        const bindingRecord = bindingRecords.find((b) => b.sourceControlId === sourceControlId);
 
-        if (!binding) {
-            presetRecords.push({ controlId, normalized, ok: false, message: "control has no binding — not applicable" });
-            failures.push(`preset ${controlId}: control has no binding — not applicable`);
+        if (!bindingRecord) {
+            presetRecords.push({ controlId: sourceControlId, sourceControlId, normalized, ok: false, message: "control has no binding — not applicable" });
+            failures.push(`preset ${sourceControlId}: control has no binding — not applicable`);
             continue;
         }
-        if (!bindingRecord || !bindingRecord.ok) {
-            const reason = bindingRecord?.message ?? "binding not resolvable — not applied";
-            presetRecords.push({ controlId, normalized, ok: false, message: reason });
-            failures.push(`preset ${controlId}: ${reason}`);
+        if (!bindingRecord.ok) {
+            const reason = bindingRecord.message ?? "binding not resolvable — not applied";
+            presetRecords.push({ controlId: bindingRecord.controlId, sourceControlId, normalized, ok: false, message: reason });
+            failures.push(`preset ${sourceControlId}: ${reason}`);
             continue;
         }
         if (!Number.isFinite(normalized) || normalized < 0 || normalized > 1) {
-            presetRecords.push({ controlId, normalized, ok: false, message: `value ${normalized} not normalized (0..1) — not clamped` });
-            failures.push(`preset ${controlId}: value ${normalized} not normalized (0..1)`);
+            presetRecords.push({ controlId: bindingRecord.controlId, sourceControlId, normalized, ok: false, message: `value ${normalized} not normalized (0..1) — not clamped` });
+            failures.push(`preset ${sourceControlId}: value ${normalized} not normalized (0..1)`);
             continue;
         }
 
-        const live = liveBindings.get(controlId);
+        const destinationId = bindingRecord.controlId;
+        const live = liveBindings.get(destinationId);
         const mapping = live?.record.valueMapping ?? bindingRecord.valueMapping;
         const nexusValue = mapNormalizedToNexus(mapping, normalized);
         if (nexusValue === undefined) {
-            presetRecords.push({ controlId, normalized, ok: false, message: "no numeric mapping — write refused" });
-            failures.push(`preset ${controlId}: no numeric mapping — write refused`);
+            presetRecords.push({ controlId: destinationId, sourceControlId, normalized, ok: false, message: "no numeric mapping — write refused" });
+            failures.push(`preset ${sourceControlId}: no numeric mapping — write refused`);
             continue;
         }
 
         // Final guard: never write an immutable/schema-less target field.
         const blockReason = fieldWriteBlockReason(live?.details);
         if (blockReason || !live) {
-            presetRecords.push({ controlId, normalized, nexusValue, ok: false, message: blockReason ?? "target field unavailable" });
-            failures.push(`preset ${controlId}: ${blockReason ?? "target field unavailable"}`);
+            presetRecords.push({ controlId: destinationId, sourceControlId, normalized, nexusValue, ok: false, message: blockReason ?? "target field unavailable" });
+            failures.push(`preset ${sourceControlId}: ${blockReason ?? "target field unavailable"}`);
             continue;
         }
 
@@ -349,14 +475,20 @@ export async function importInstrumentPreset(
                 if (typeof err === "string" && err) updateError = err;
             });
             if (updateError) {
-                presetRecords.push({ controlId, normalized, nexusValue, ok: false, message: `tryUpdate: ${updateError}` });
-                failures.push(`preset ${controlId}: tryUpdate: ${updateError}`);
+                presetRecords.push({ controlId: destinationId, sourceControlId, normalized, nexusValue, ok: false, message: `tryUpdate: ${updateError}` });
+                failures.push(`preset ${sourceControlId}: tryUpdate: ${updateError}`);
             } else {
-                presetRecords.push({ controlId, normalized, nexusValue, ok: true });
+                // M23.2 — reflect the applied value on the DESTINATION Metatron
+                // control itself (always normalized 0..1; no new value mapping).
+                // Happens inside the caller's existing "instrument.import"
+                // mutation window, so undo/redo restores control values too.
+                const destinationControl = device.getControl(destinationId);
+                if (destinationControl) destinationControl.value = normalized;
+                presetRecords.push({ controlId: destinationId, sourceControlId, normalized, nexusValue, ok: true });
             }
         } catch (e) {
-            presetRecords.push({ controlId, normalized, nexusValue, ok: false, message: `transaction rejected: ${String((e as any)?.message ?? e)}` });
-            failures.push(`preset ${controlId}: transaction rejected: ${String((e as any)?.message ?? e)}`);
+            presetRecords.push({ controlId: destinationId, sourceControlId, normalized, nexusValue, ok: false, message: `transaction rejected: ${String((e as any)?.message ?? e)}` });
+            failures.push(`preset ${sourceControlId}: transaction rejected: ${String((e as any)?.message ?? e)}`);
         }
     }
     const presetOk = presetRecords.every((r) => r.ok);

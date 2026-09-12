@@ -188,6 +188,89 @@ describe("REAL NEXUS PIPELINE (offline document) — bidirectional proof", () =>
         expect(unchanged.fields.mix.value).toBeCloseTo(beforeMix, 5);
         expect(disconnected.value).toBeCloseTo(0.77, 5); // stored for later reconnection
     });
+
+    it("PRESET-LOAD REGRESSION (M22.1): full preset-load path + onDeviceChanged(setDevice same) keeps the binding alive and writable", async () => {
+        armAdapter();
+
+        // Reproduce the real bug sequence: create device → establish binding →
+        // save preset → change control value → load preset → onDeviceChanged →
+        // setDevice(same instance).
+        const reg = new Control("knob", "RegDepth");
+        device.addControl(reg);
+        manager.applyLearnResult(reg.id, {
+            entityId: entity.id,
+            entityType: "stompboxDelay",
+            fieldName: "feedbackFactor",
+            fieldPath: "feedbackFactor",
+            value: entity.fields.feedbackFactor.value,
+            targetName: "stompboxDelay / feedbackFactor",
+            field: entity.fields.feedbackFactor
+        });
+        const original = manager.getActiveBinding(reg.id);
+        expect(original).toBeDefined();
+
+        reg.value = 0.33;
+        const preset = device.savePreset("RegressionPreset");
+        reg.value = 0.99;
+
+        // loadPreset mutates ONLY control.value (Device.loadPreset, §22 semantics).
+        device.loadPreset(preset.id);
+        expect(reg.value).toBeCloseTo(0.33, 5);
+
+        // DeviceLibraryUI Load handler tail: this.onDeviceChanged() → AppUI.onDeviceChanged
+        // → bindingManager.setDevice(device) with the SAME instance (AppUI.ts:197-204).
+        manager.setDevice(device);
+
+        // The binding must survive the refresh and stay identical (same live field).
+        expect(manager.getActiveBinding(reg.id)).toBe(original);
+        expect(reg.activeBindingState).toBe("CONNECTED");
+
+        // Moving the control afterwards still writes through to the real Nexus field.
+        const ok = await adapter.updateBoundControl(reg.id, 0.41);
+        expect(ok).toBe(true);
+        const after = doc.queryEntities.getEntity(entity.id);
+        expect(after.fields.feedbackFactor.value).toBeCloseTo(0.41, 5);
+
+        // Audiotool → Metatron: subscription set up at Learn time is unchanged,
+        // so an external change after the same-device refresh still reaches the control.
+        let received: { id: string; value: number } | null = null;
+        adapter.onNexusValueChanged = (controlId, v) => {
+            const c = device.getControl(controlId);
+            if (c) c.value = v;
+            received = { id: controlId, value: v };
+        };
+        adapter.subscribeBoundControl(reg.id);
+        await doc.modify((t: any) => { t.update(entity.fields.feedbackFactor, 0.55); });
+        await new Promise((r) => setTimeout(r, 50));
+        expect(received?.id).toBe(reg.id);
+        expect(received?.value).toBeCloseTo(0.55, 5);
+
+        device.removeControl(reg.id, true);
+    });
+
+    it("A REAL device switch (different instance) still clears bindings, even after the same-device guard (M22.1)", async () => {
+        armAdapter();
+        const sw = new Control("knob", "SwitchProbe");
+        device.addControl(sw);
+        manager.applyLearnResult(sw.id, {
+            entityId: entity.id,
+            entityType: "stompboxDelay",
+            fieldName: "feedbackFactor",
+            fieldPath: "feedbackFactor",
+            value: entity.fields.feedbackFactor.value,
+            targetName: "stompboxDelay / feedbackFactor",
+            field: entity.fields.feedbackFactor
+        });
+        expect(manager.getActiveBinding(sw.id)).toBeDefined();
+
+        const other = new Device("Other-Vivid");
+        manager.setDevice(other);
+        expect(manager.deviceRef).toBe(other);
+        expect(manager.getActiveBinding(sw.id)).toBeUndefined();
+        expect(await adapter.updateBoundControl(sw.id, 0.5)).toBe(false);
+
+        device.removeControl(sw.id, true);
+    });
 });
 
 describe("PROJECT CHANGE SEMANTICS (§39/§40, user decision: NO auto-reconnect, NO fuzzy matching)", () => {

@@ -41,6 +41,7 @@ export function captureDeviceState(device: Device): DeviceStatePatch {
             id: c.id,
             type: c.type,
             name: c.name,
+            nameSource: c.nameSource,
             position: { x: c.position.x, y: c.position.y },
             size: { width: c.size.width, height: c.size.height },
             groupId: c.groupId,
@@ -107,6 +108,7 @@ export function restoreDeviceState(device: Device, patch: DeviceStatePatch): voi
         if (control) {
             control.type = data.type;
             control.name = data.name;
+            control.nameSource = data.nameSource;
             control.position = { x: data.position.x, y: data.position.y };
             control.size = { width: data.size.width, height: data.size.height };
             control.groupId = data.groupId;

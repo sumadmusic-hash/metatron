@@ -148,15 +148,19 @@ export function compareSnapshotWithTarget(
     }
     const connectionEqual = connExpected > 0 && connMatched === connExpected;
 
-    // — topology (traversal order through the mapping) —
+    // — topology (membership-based: traversal order is incidental, not structural) —
+    // Connections are already verified as an exact edge set above, so topology
+    // must only establish that the SAME devices are present after idMap mapping.
     const sourceOrder = snapshot.devices.map((d) => normalizeEntityId(d.sourceEntityId));
     const mappedSourceOrder = sourceOrder
         .map((id) => idMap.get(id))
         .filter((id): id is string => Boolean(id));
+    const mappedSet = new Set(mappedSourceOrder);
+    const visitedSet = new Set(targetOrder ?? []);
     const topologyEqual =
-        mappedSourceOrder.length > 0 &&
-        (targetOrder ?? []).length === mappedSourceOrder.length &&
-        mappedSourceOrder.every((id, i) => (targetOrder ?? [])[i] === id);
+        mappedSet.size > 0 &&
+        mappedSet.size === visitedSet.size &&
+        [...mappedSet].every((id) => visitedSet.has(id));
 
     const sectionsOk = deviceMatch && paramEqual && connectionEqual && topologyEqual;
     return {

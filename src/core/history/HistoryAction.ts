@@ -28,6 +28,8 @@ export interface ControlStatePatch {
     id: string;
     type: ControlType;
     name: string;
+    /** Origin of the control name ("auto" | "manual" | undefined legacy). */
+    nameSource?: "auto" | "manual";
     position: Position;
     size: Size;
     groupId?: string;

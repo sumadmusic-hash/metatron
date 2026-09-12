@@ -20,6 +20,10 @@ import { cloneChainToDoc, restoreParametersInDoc, KNOWN_CREATABLE_TYPES, resolve
 import { idMapUsesNoSourceIds, planDevices, planParameterField, socketSegmentsFromPath } from "./planning";
 import { listCablesLive, listParametersLive } from "../chain-discovery/live";
 import { valuesEqualFloat32 } from "./verify";
+import { chainUnionFromBindings, extractAudioConnections, normalizeEntityId } from "../../src/nexus/ChainDiscovery";
+import { createSnapshotFromUnion } from "../../src/nexus/ChainSnapshot";
+import { cloneChainFromSnapshot } from "../../src/nexus/ChainClone";
+import { PLACEMENT_ORIGIN_X, PLACEMENT_ORIGIN_Y, DEVICE_SPACING_X, CHAIN_SPACING_Y } from "../../src/nexus/ChainPlanning";
 import { CAPABILITY_TABLE } from "./api-capabilities";
 import type { ParameterPlan, ChainSnapshot } from "./types";
 
@@ -371,5 +375,158 @@ describe("REAL NEXUS QUANTUM object-array (bands) resolution + write/read-back",
             expect(read, w.path).toBeDefined();
             expect(valuesEqualFloat32(read, w.value), w.path).toBe(true);
         }
+    });
+});
+
+// ———————————————————————————————————————————————————————————————————————
+// M20.1 — multi-root topology regression (live "chain structure: not ok")
+// Reproduces the M19.4 live failure: an exported union snapshot with two
+// root candidates must import with topology.equal === true and PASS verdict.
+// ———————————————————————————————————————————————————————————————————————
+
+describe("REAL NEXUS CHAIN CLONE — multi-root union snapshot (M20.1 regression)", () => {
+    it("clones both bound chains and reports topology equal + PASS verdict", async () => {
+        const source = await createOfflineDocument({ validated: true });
+        const target = await createOfflineDocument({ validated: true });
+
+        await source.modify((t: any) => {
+            t.create("pulverisateur", { displayName: "SYNTH A" });
+            t.create("stompboxChorus", { displayName: "CHORUS A" });
+            t.create("mixerChannel", { displayName: "MIXER A" });
+            t.create("heisenberg", { displayName: "SYNTH B" });
+            t.create("stompboxDelay", { displayName: "DELAY B" });
+            t.create("mixerChannel", { displayName: "MIXER B" });
+        });
+        const byType = (type: string, i = 0) =>
+            source.queryEntities.get().filter((x: any) => x.entityType === type)[i] as any;
+        await source.modify((t: any) => {
+            t.create("desktopAudioCable", {
+                fromSocket: byType("pulverisateur").fields.audioOutput.location,
+                toSocket: byType("stompboxChorus").fields.audioInput.location,
+            });
+            t.create("desktopAudioCable", {
+                fromSocket: byType("stompboxChorus").fields.audioOutput.location,
+                toSocket: byType("mixerChannel", 0).fields.audioInput.location,
+            });
+            t.create("desktopAudioCable", {
+                fromSocket: byType("heisenberg").fields.audioOutput.location,
+                toSocket: byType("stompboxDelay").fields.audioInput.location,
+            });
+            t.create("desktopAudioCable", {
+                fromSocket: byType("stompboxDelay").fields.audioOutput.location,
+                toSocket: byType("mixerChannel", 1).fields.audioInput.location,
+            });
+        });
+
+        // M19.3 export shape: binding-based union snapshot of two chains
+        const union = chainUnionFromBindings(
+            extractAudioConnections(listCablesLive(source as any) as any),
+            [normalizeEntityId(byType("pulverisateur").id), normalizeEntityId(byType("heisenberg").id)],
+        );
+        expect(union.rootCandidates).toHaveLength(2);
+        const snapshot = createSnapshotFromUnion(source as any, union);
+        expect(snapshot.devices).toHaveLength(6);
+        expect(snapshot.connections).toHaveLength(4);
+
+        const result = await cloneChainFromSnapshot(snapshot, target as any);
+        expect(result.verification!.devices.matched).toBe(true);
+        expect(result.verification!.connections.equal).toBe(true);
+        expect(result.verification!.topology.equal).toBe(true);
+        expect(result.report.finalVerdict).toBe("CHAIN CLONE: PASS");
+    });
+});
+
+// ———————————————————————————————————————————————————————————————————————
+// M20.3 — automatic placement (real SDK): generated lanes on the target,
+// never (0,0), mixerChannel untouched, display names + topology preserved.
+// ———————————————————————————————————————————————————————————————————————
+
+describe("REAL NEXUS AUTO-ARRANGE (M20.3 offline)", () => {
+    it("places each chain in its own lane; mixers receive no position fields", async () => {
+        const source = await createOfflineDocument({ validated: true });
+        const target = await createOfflineDocument({ validated: true });
+
+        await source.modify((t: any) => {
+            t.create("pulverisateur", { displayName: "SYNTH A" });
+            t.create("stompboxChorus", { displayName: "CHORUS A" });
+            t.create("mixerChannel", { displayName: "MIXER A" });
+            t.create("heisenberg", { displayName: "SYNTH B" });
+            t.create("stompboxDelay", { displayName: "DELAY B" });
+            t.create("mixerChannel", { displayName: "MIXER B" });
+        });
+        const byType = (type: string, i = 0) =>
+            source.queryEntities.get().filter((x: any) => x.entityType === type)[i] as any;
+
+        await source.modify((t: any) => {
+            t.create("desktopAudioCable", {
+                fromSocket: byType("pulverisateur").fields.audioOutput.location,
+                toSocket: byType("stompboxChorus").fields.audioInput.location,
+            });
+            t.create("desktopAudioCable", {
+                fromSocket: byType("stompboxChorus").fields.audioOutput.location,
+                toSocket: byType("mixerChannel", 0).fields.audioInput.location,
+            });
+            t.create("desktopAudioCable", {
+                fromSocket: byType("heisenberg").fields.audioOutput.location,
+                toSocket: byType("stompboxDelay").fields.audioInput.location,
+            });
+            t.create("desktopAudioCable", {
+                fromSocket: byType("stompboxDelay").fields.audioOutput.location,
+                toSocket: byType("mixerChannel", 1).fields.audioInput.location,
+            });
+        });
+
+        const union = chainUnionFromBindings(
+            extractAudioConnections(listCablesLive(source as any) as any),
+            [normalizeEntityId(byType("pulverisateur").id), normalizeEntityId(byType("heisenberg").id)],
+        );
+        const snapshot = createSnapshotFromUnion(source as any, union);
+        const result = await cloneChainFromSnapshot(snapshot, target as any);
+        expect(result.report.finalVerdict).toBe("CHAIN CLONE: PASS");
+
+        const byNameT = (n: string) => target.queryEntities.get().find((e: any) => e.fields.displayName?.value === n) as any;
+        const synthA = byNameT("SYNTH A");
+        const chorusA = byNameT("CHORUS A");
+        const synthB = byNameT("SYNTH B");
+        const delayB = byNameT("DELAY B");
+
+        // display names preserved verbatim
+        expect(synthA).toBeDefined();
+        expect(chorusA).toBeDefined();
+        expect(synthB).toBeDefined();
+        expect(delayB).toBeDefined();
+
+        // never (0,0)
+        expect(synthA.fields.positionX.value).toBeGreaterThan(0);
+        expect(synthA.fields.positionY.value).toBeGreaterThan(0);
+
+        // chain A owns lane 0: exact generated coordinates
+        expect(synthA.fields.positionX.value).toBe(PLACEMENT_ORIGIN_X);
+        expect(synthA.fields.positionY.value).toBe(PLACEMENT_ORIGIN_Y);
+        expect(chorusA.fields.positionX.value).toBe(PLACEMENT_ORIGIN_X + DEVICE_SPACING_X);
+        expect(chorusA.fields.positionY.value).toBe(synthA.fields.positionY.value);
+
+        // chain B owns its own lane: same X origin, different Y
+        expect(synthB.fields.positionY.value).toBe(PLACEMENT_ORIGIN_Y + CHAIN_SPACING_Y);
+        expect(synthB.fields.positionY.value).not.toBe(synthA.fields.positionY.value);
+        expect(synthB.fields.positionX.value).toBe(PLACEMENT_ORIGIN_X);
+        expect(delayB.fields.positionX.value).toBe(PLACEMENT_ORIGIN_X + DEVICE_SPACING_X);
+
+        // X increases along the audio direction within each chain
+        expect(synthA.fields.positionX.value).toBeLessThan(chorusA.fields.positionX.value);
+        expect(synthB.fields.positionX.value).toBeLessThan(delayB.fields.positionX.value);
+
+        // mixerChannel: no position fields on the target, still created exactly as before
+        const mixerTargets = target.queryEntities.get().filter((e: any) => e.entityType === "mixerChannel");
+        expect(mixerTargets).toHaveLength(2);
+        for (const m of mixerTargets) {
+            expect("positionX" in m.fields).toBe(false);
+            expect("positionY" in m.fields).toBe(false);
+        }
+
+        // existing behavior untouched: cables + topology still match
+        expect(listCablesLive(target as any)).toHaveLength(4);
+        expect(result.verification!.connections.equal).toBe(true);
+        expect(result.verification!.topology.equal).toBe(true);
     });
 });

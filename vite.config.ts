@@ -16,6 +16,7 @@ export default defineConfig({
         "poc/chain-clone": resolve("poc/chain-clone/index.html"),
         "poc/chain-clone-live": resolve("poc/chain-clone-live/index.html"),
         "poc/instrument-preset-live": resolve("poc/instrument-preset-live/index.html"),
+        "poc/chain-union-live": resolve("poc/chain-union-live/index.html"),
       },
     },
   },

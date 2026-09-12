@@ -189,6 +189,111 @@ export function planClone(
     };
 }
 
+// ———————————————————————————————————————————————————————————————————————
+// Automatic placement (M20.3 / M20.5)
+//
+// Generated, target-side grid layout: each independent root/chain gets its
+// own horizontal lane; devices inside a lane flow left → right along the
+// audio path. Positions are computed at IMPORT time and are never stored in
+// the snapshot or preset.
+//
+// Uses a conservative generic placement grid because Nexus does not expose
+// device dimensions: no width/height bound exists for any device type before
+// or after creation, so every device gets the same generous cell and no
+// type-specific spacing (no per-device hardcodes). This lowers the chance of
+// overlap but cannot guarantee that devices never overlap.
+// ———————————————————————————————————————————————————————————————————————
+
+/** Horizontal distance between consecutive devices of one chain lane. */
+export const DEVICE_SPACING_X = 680;
+
+/** Vertical distance between independent chain lanes. */
+export const CHAIN_SPACING_Y = 560;
+
+/** Origin offset so imported devices never land on (0,0). */
+export const PLACEMENT_ORIGIN_X = 400;
+export const PLACEMENT_ORIGIN_Y = 400;
+
+/** Device types whose desktop position is managed by the mixer, not x/y. */
+export const NON_POSITIONABLE_TYPES = new Set(["mixerChannel"]);
+
+/** Desktop coordinate for one created device. */
+export interface DevicePosition {
+    x: number;
+    y: number;
+}
+
+/**
+ * Compute a generated desktop layout for a snapshot (pure, Nexus-free).
+ *
+ * - every `rootCandidates` entry owns one lane (own Y);
+ * - devices inside a lane get increasing X positions following audio order;
+ * - a device shared between chains keeps its FIRST assigned position (single
+ *   position, never duplicated);
+ * - `NON_POSITIONABLE_TYPES` (mixerChannel) are never positioned: the mixer
+ *   strip has no `positionX`/`positionY` schema fields;
+ * - leftover devices (empty root list / devices outside every root's graph)
+ *   receive their own dedicated lane and never reuse an existing chain lane.
+ */
+export function planDeviceLayout(snapshot: ChainSnapshot): Map<string, DevicePosition> {
+    const positions = new Map<string, DevicePosition>();
+    const entityTypeById = new Map(
+        snapshot.devices.map((d) => [normalizeEntityId(d.sourceEntityId), d.entityType]),
+    );
+    const adjacency = new Map<string, string[]>();
+    for (const conn of snapshot.connections) {
+        const from = normalizeEntityId(conn.fromEntityId);
+        const to = normalizeEntityId(conn.toEntityId);
+        if (!from || !to || from === to) continue;
+        const list = adjacency.get(from);
+        if (list) list.push(to);
+        else adjacency.set(from, [to]);
+    }
+
+    const isPlaceable = (id: string): boolean => !NON_POSITIONABLE_TYPES.has(entityTypeById.get(id) ?? "");
+
+    const placeLane = (chainIds: string[], laneIndex: number): number => {
+        let column = 0;
+        for (const id of chainIds) {
+            if (!isPlaceable(id) || positions.has(id)) continue;
+            positions.set(id, {
+                x: PLACEMENT_ORIGIN_X + column * DEVICE_SPACING_X,
+                y: PLACEMENT_ORIGIN_Y + laneIndex * CHAIN_SPACING_Y,
+            });
+            column++;
+        }
+        return column > 0 ? laneIndex + 1 : laneIndex;
+    };
+
+    let lane = 0;
+    for (const rawRoot of snapshot.rootCandidates) {
+        const root = normalizeEntityId(rawRoot);
+        if (!root) continue;
+        // audio order through the selected subgraph (BFS over outgoing cables)
+        const chain: string[] = [];
+        const visited = new Set<string>([root]);
+        const queue = [root];
+        while (queue.length > 0) {
+            const id = queue.shift()!;
+            chain.push(id);
+            for (const next of adjacency.get(id) ?? []) {
+                if (visited.has(next)) continue;
+                visited.add(next);
+                queue.push(next);
+            }
+        }
+        lane = placeLane(chain, lane);
+    }
+
+    // fallback: devices without any lane (no roots / cyclic) append inline
+    const leftover = snapshot.devices
+        .map((d) => normalizeEntityId(d.sourceEntityId))
+        .filter((id) => Boolean(id) && isPlaceable(id) && !positions.has(id));
+    placeLane(leftover, lane);
+
+    return positions;
+}
+
 /** Verdict from tried/ok counts. */
 export function verdictFromCounts(tried: number, ok: number, skipped: number): Verdict {
     if (tried === 0) {

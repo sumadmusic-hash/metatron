@@ -13,11 +13,11 @@ import {
     importInstrumentPreset,
     type InstrumentImportResult,
 } from "../core/instrument/InstrumentPresetImport";
-import { createSnapshot } from "../nexus/ChainSnapshot";
+import { createSnapshotFromUnion } from "../nexus/ChainSnapshot";
 import type { ChainSnapshot } from "../nexus/ChainTypes";
 import { listAudioDevicesLive, listCablesLive } from "../nexus/ChainLive";
 import type { RawCable } from "../nexus/ChainLive";
-import { normalizeEntityId } from "../nexus/ChainDiscovery";
+import { chainUnionFromBindings, extractAudioConnections, normalizeEntityId } from "../nexus/ChainDiscovery";
 import type { AudioDeviceNode } from "../nexus/ChainDiscovery";
 import {
     InstrumentPresetLibrary,
@@ -113,6 +113,21 @@ export function buildInstrumentExportInput(
     return exportInstrumentPreset({ device, preset, snapshot, bindings });
 }
 
+/** Collect the unique entity ids of all active, non-archived, bound controls
+ *  on the given device. Mirrors the filtering logic of `buildInstrumentExportInput`. */
+export function collectActiveBoundEntityIds(device: Device, bindingManager: BindingManager): string[] {
+    const ids: string[] = [];
+    device.controls.forEach((control) => {
+        if (control.archived) return;
+        const active = bindingManager.getActiveBinding(control.id);
+        if (!active) return;
+        const fieldPath = active.fieldPath ?? active.fieldName;
+        if (!fieldPath) return;
+        ids.push(active.entityId);
+    });
+    return ids;
+}
+
 /** P1 — EXPORT: connected project (SOURCE, read-only) + current device/bindings
  *  → `exportInstrumentPreset` → `serializeInstrumentPreset` → local library. */
 export async function exportInstrumentToLibrary(
@@ -124,11 +139,20 @@ export async function exportInstrumentToLibrary(
     if (!doc) {
         return { ok: false, errors: ["InstrumentPreset export: no SOURCE document — connect to an Audiotool project first."] };
     }
-    const rootId = selectSourceRoot(doc);
-    if (!rootId) {
-        return { ok: false, errors: ["InstrumentPreset export: no audio chain found on the connected project."] };
+
+    // Binding-based chain union selection (M19.3)
+    const boundEntityIds = collectActiveBoundEntityIds(device, bindingManager);
+    if (boundEntityIds.length === 0) {
+        return { ok: false, errors: ["InstrumentPreset export: no bound control — connect to a project and Learn/reconnect at least one control first."] };
     }
-    const snapshot = createSnapshot(doc, rootId);
+
+    const cables = extractAudioConnections(listCablesLive(doc));
+    const union = chainUnionFromBindings(cables, boundEntityIds);
+    if (union.devices.length === 0) {
+        return { ok: false, errors: ["InstrumentPreset export: no audio chain found for the bound controls on the connected project."] };
+    }
+    const snapshot = createSnapshotFromUnion(doc, union);
+
     const result = buildInstrumentExportInput(device, name, snapshot, bindingManager);
     if (!result.ok) return { ok: false, errors: result.errors };
     const saved = InstrumentPresetLibrary.save(result.preset);

@@ -308,13 +308,43 @@ describe("Group drag — separation and member movement", () => {
         const device = deviceWithGroup();
         const g = device.groups.values().next().value as Group;
         const host = mount(device, fullEditor(device));
-        const groupEl = host.querySelector<HTMLElement>(`[data-grp-id="${g.id}"]`)!;
-        const colorInput = groupEl.querySelector<HTMLElement>(".group-color-input")!;
+        const colorInput = host.querySelector<HTMLElement>(`[data-grp-tools-for="${g.id}"] .group-color-input`)!;
 
         pd(colorInput, 0, 0);
         pm(50, 50);
         pu();
 
         expect(g.position).toEqual({ x: 100, y: 100 });
+    });
+
+    it("M20.11 — the external edit toolbar follows the Group on move and resize", () => {
+        const device = deviceWithGroup();
+        const g = device.groups.values().next().value as Group;
+        const host = mount(device, fullEditor(device));
+        const box = host.querySelector<HTMLElement>(`[data-grp-id="${g.id}"]`)!;
+        const tools = host.querySelector<HTMLElement>(`[data-grp-tools-for="${g.id}"]`)!;
+
+        // Toolbar is a SIBLING of the box, positioned independently above it.
+        expect(tools.parentElement).toBe(box.parentElement);
+        expect(box.querySelector(".group-color-input")).toBeNull();
+        expect(tools.style.left).toBe("100px");
+        expect(tools.style.top).toBe("56px"); // 100 − GROUP_TOOLS_OFFSET(44)
+
+        // Move: box and toolbar travel together by the same delta.
+        pd(box, 0, 0);
+        pm(40, 40);
+        pu();
+        expect(g.position).toEqual({ x: 140, y: 140 });
+        expect(tools.style.left).toBe("140px");
+        expect(tools.style.top).toBe("96px");
+
+        // Resize: box grows, toolbar stays glued above the enlarged box.
+        const rh = box.querySelector<HTMLElement>(".resize-handle")!;
+        pd(rh, 0, 0);
+        pm(60, 20);
+        pu();
+        expect(g.size).toEqual({ width: 300, height: 200 });
+        expect(tools.style.left).toBe("140px");
+        expect(tools.style.top).toBe("96px");
     });
 });

@@ -13,10 +13,15 @@ import {
     idMapUsesNoSourceIds,
     planConnections,
     planDevices,
+    planDeviceLayout,
     planParameterField,
     socketSegmentsFromPath,
     translateConnection,
     verdictFromCounts,
+    DEVICE_SPACING_X,
+    CHAIN_SPACING_Y,
+    PLACEMENT_ORIGIN_X,
+    PLACEMENT_ORIGIN_Y,
 } from "./planning";
 import type { ResolveTargetSocket } from "./planning";
 import { compareSnapshotWithTarget, valuesEqualFloat32, valueInRange, edgeKey } from "./verify";
@@ -25,9 +30,11 @@ import { buildCloneReport, resolveFieldByPath } from "./clone";
 const S_A = "934d92a5aaaa";
 const S_B = "934d92a5bbbb";
 const S_C = "934d92a5cccc";
+const S_D = "934d92a5dddd";
 const T_A = "a83f19c20001";
 const T_B = "a83f19c20002";
 const T_C = "a83f19c20003";
+const T_D = "a83f19c20004";
 
 function deviceSnapshot(id: string, entityType: string, fields: FieldSnapshot[] = []): DeviceSnapshot {
     return { sourceEntityId: id, entityType, displayName: id, fields };
@@ -404,6 +411,315 @@ describe("5/9/10/11. verification, missing + unsupported entities", () => {
 function buildTargetDigestStub(entities: Map<string, { entityType: string; displayName: string }>, parameters: Map<string, Map<string, unknown>>, edges: string[]) {
     return { entities, parameters, edges };
 }
+
+// ———————————————————————————————————————————————————————————————————————
+// M20.1 — topology is membership-based: order/multi-root must not produce DIFF
+// ———————————————————————————————————————————————————————————————————————
+
+describe("M20.1 — order-independent + multi-root topology", () => {
+    it("passes when target traversal order differs from the snapshot device order", () => {
+        const snapshot: ChainSnapshot = {
+            version: 1,
+            devices: [
+                deviceSnapshot(S_A, "pulverisateur", [fieldSnapshot({ path: "mix", value: 0.5, range: { min: 0, max: 1 } })]),
+                deviceSnapshot(S_B, "stompboxDelay", [fieldSnapshot({ path: "mix", value: 0.3, range: { min: 0, max: 1 } })]),
+                deviceSnapshot(S_C, "stompboxCompressor", [fieldSnapshot({ path: "isActive", value: true, primitiveType: "boolean", scalarType: 8 })]),
+            ],
+            connections: [
+                connectionSnapshot(S_A, S_B, "pulverisateur.audioOutput"),
+                connectionSnapshot(S_B, S_C, "stompboxDelay.audioOutput"),
+            ],
+            rootCandidates: [S_A],
+        };
+        const idMap = idMapOf([
+            [S_A, T_A],
+            [S_B, T_B],
+            [S_C, T_C],
+        ]);
+        const digest = {
+            entities: new Map([
+                [T_A, { entityType: "pulverisateur", displayName: "a" }],
+                [T_B, { entityType: "stompboxDelay", displayName: "b" }],
+                [T_C, { entityType: "stompboxCompressor", displayName: "c" }],
+            ]),
+            parameters: new Map<string, Map<string, unknown>>([
+                [T_A, new Map([["mix", 0.5]])],
+                [T_B, new Map([["mix", 0.3]])],
+                [T_C, new Map([["isActive", true]])],
+            ]),
+            edges: [edgeKey(T_A, T_B, "audioOutput"), edgeKey(T_B, T_C, "audioOutput")],
+        };
+        // target visits the SAME devices in a DIFFERENT order
+        const result = compareSnapshotWithTarget(snapshot, digest, idMap, [T_C, T_A, T_B]);
+        expect(result.topology.sourceOrder).not.toEqual(result.topology.targetOrder);
+        expect(result.topology.equal).toBe(true);
+        expect(result.ok).toBe(true);
+    });
+
+    it("passes for a multi-root snapshot when every mapped device is visited (any order)", () => {
+        const snapshot: ChainSnapshot = {
+            version: 1,
+            devices: [
+                deviceSnapshot(S_A, "pulverisateur", [fieldSnapshot({ path: "mix", value: 0.5, range: { min: 0, max: 1 } })]),
+                deviceSnapshot(S_B, "stompboxDelay", [fieldSnapshot({ path: "mix", value: 0.3, range: { min: 0, max: 1 } })]),
+                deviceSnapshot(S_C, "heisenberg", [fieldSnapshot({ path: "mix", value: 0.7, range: { min: 0, max: 1 } })]),
+                deviceSnapshot(S_D, "stompboxCompressor", [fieldSnapshot({ path: "isActive", value: true, primitiveType: "boolean", scalarType: 8 })]),
+            ],
+            connections: [
+                connectionSnapshot(S_A, S_B, "pulverisateur.audioOutput"),
+                connectionSnapshot(S_C, S_D, "heisenberg.audioOutput"),
+            ],
+            rootCandidates: [S_A, S_C],
+        };
+        const idMap = idMapOf([
+            [S_A, T_A],
+            [S_B, T_B],
+            [S_C, T_C],
+            [S_D, T_D],
+        ]);
+        const digest = {
+            entities: new Map([
+                [T_A, { entityType: "pulverisateur", displayName: "a" }],
+                [T_B, { entityType: "stompboxDelay", displayName: "b" }],
+                [T_C, { entityType: "heisenberg", displayName: "c" }],
+                [T_D, { entityType: "stompboxCompressor", displayName: "d" }],
+            ]),
+            parameters: new Map<string, Map<string, unknown>>([
+                [T_A, new Map([["mix", 0.5]])],
+                [T_B, new Map([["mix", 0.3]])],
+                [T_C, new Map([["mix", 0.7]])],
+                [T_D, new Map([["isActive", true]])],
+            ]),
+            edges: [edgeKey(T_A, T_B, "audioOutput"), edgeKey(T_C, T_D, "audioOutput")],
+        };
+        // combined traversal of both roots in a different (interleaved) order
+        const result = compareSnapshotWithTarget(snapshot, digest, idMap, [T_C, T_D, T_A, T_B]);
+        expect(result.topology.equal).toBe(true);
+        expect(result.ok).toBe(true);
+    });
+
+    it("fails when an expected device is missing from the target traversal", () => {
+        const snapshot: ChainSnapshot = {
+            version: 1,
+            devices: [
+                deviceSnapshot(S_A, "pulverisateur"),
+                deviceSnapshot(S_B, "stompboxDelay"),
+                deviceSnapshot(S_C, "stompboxCompressor"),
+            ],
+            connections: [
+                connectionSnapshot(S_A, S_B, "pulverisateur.audioOutput"),
+                connectionSnapshot(S_B, S_C, "stompboxDelay.audioOutput"),
+            ],
+            rootCandidates: [S_A],
+        };
+        const idMap = idMapOf([
+            [S_A, T_A],
+            [S_B, T_B],
+            [S_C, T_C],
+        ]);
+        const digest = {
+            entities: new Map([
+                [T_A, { entityType: "pulverisateur", displayName: "a" }],
+                [T_B, { entityType: "stompboxDelay", displayName: "b" }],
+                [T_C, { entityType: "stompboxCompressor", displayName: "c" }],
+            ]),
+            parameters: new Map(),
+            edges: [edgeKey(T_A, T_B, "audioOutput")],
+        };
+        // C exists but is never reached: traversal stops at B (missing cable)
+        const result = compareSnapshotWithTarget(snapshot, digest, idMap, [T_A, T_B]);
+        expect(result.topology.equal).toBe(false);
+        expect(result.ok).toBe(false);
+    });
+});
+
+// ———————————————————————————————————————————————————————————————————————
+// M20.3 — automatic placement: lanes, spacing, shared devices, mixerChannel
+// ———————————————————————————————————————————————————————————————————————
+
+describe("M20.3 — auto-arrange layout (generated grid)", () => {
+    function layoutSnapshot(devices: DeviceSnapshot[], connections: ConnectionSnapshot[], roots: string[]): ChainSnapshot {
+        return {
+            version: 1,
+            devices,
+            connections,
+            rootCandidates: roots,
+        };
+    }
+
+    it("places a single chain at increasing X, one lane Y, never (0,0)", () => {
+        const positions = planDeviceLayout(
+            layoutSnapshot(
+                [deviceSnapshot(S_A, "pulverisateur"), deviceSnapshot(S_B, "stompboxDelay"), deviceSnapshot(S_C, "stompboxCompressor")],
+                [
+                    connectionSnapshot(S_A, S_B, "pulverisateur.audioOutput"),
+                    connectionSnapshot(S_B, S_C, "stompboxDelay.audioOutput"),
+                ],
+                [S_A],
+            ),
+        );
+        expect(positions.size).toBe(3);
+        expect(positions.get(S_A)).toEqual({ x: PLACEMENT_ORIGIN_X, y: PLACEMENT_ORIGIN_Y });
+        expect(positions.get(S_B)).toEqual({ x: PLACEMENT_ORIGIN_X + DEVICE_SPACING_X, y: PLACEMENT_ORIGIN_Y });
+        expect(positions.get(S_C)).toEqual({ x: PLACEMENT_ORIGIN_X + 2 * DEVICE_SPACING_X, y: PLACEMENT_ORIGIN_Y });
+        expect([...positions.values()].every((p) => p.x > 0 && p.y > 0)).toBe(true);
+    });
+
+    it("gives two independent chains different Y lanes", () => {
+        const positions = planDeviceLayout(
+            layoutSnapshot(
+                [
+                    deviceSnapshot(S_A, "pulverisateur"),
+                    deviceSnapshot(S_B, "stompboxDelay"),
+                    deviceSnapshot(S_C, "heisenberg"),
+                    deviceSnapshot(S_D, "stompboxCompressor"),
+                ],
+                [
+                    connectionSnapshot(S_A, S_B, "pulverisateur.audioOutput"),
+                    connectionSnapshot(S_C, S_D, "heisenberg.audioOutput"),
+                ],
+                [S_A, S_C],
+            ),
+        );
+        expect(positions.get(S_A)!.y).toBe(PLACEMENT_ORIGIN_Y);
+        expect(positions.get(S_B)!.y).toBe(PLACEMENT_ORIGIN_Y);
+        expect(positions.get(S_A)!.y).not.toBe(positions.get(S_C)!.y);
+        expect(positions.get(S_C)!.y).toBe(PLACEMENT_ORIGIN_Y + CHAIN_SPACING_Y);
+        expect(positions.get(S_D)!.y).toBe(PLACEMENT_ORIGIN_Y + CHAIN_SPACING_Y);
+    });
+
+    it("follows audio direction (X increases from root toward the sink)", () => {
+        const positions = planDeviceLayout(
+            layoutSnapshot(
+                [deviceSnapshot(S_A, "pulverisateur"), deviceSnapshot(S_B, "stompboxDelay"), deviceSnapshot(S_C, "stompboxCompressor")],
+                [
+                    connectionSnapshot(S_A, S_B, "pulverisateur.audioOutput"),
+                    connectionSnapshot(S_B, S_C, "stompboxDelay.audioOutput"),
+                ],
+                [S_A],
+            ),
+        );
+        expect(positions.get(S_A)!.x).toBeLessThan(positions.get(S_B)!.x);
+        expect(positions.get(S_B)!.x).toBeLessThan(positions.get(S_C)!.x);
+    });
+
+    it("assigns a single position to a device shared by two chains (no dupes)", () => {
+        const positions = planDeviceLayout(
+            layoutSnapshot(
+                [
+                    deviceSnapshot(S_A, "pulverisateur"),
+                    deviceSnapshot(S_C, "heisenberg"),
+                    deviceSnapshot(S_D, "stompboxCompressor"),
+                ],
+                [
+                    connectionSnapshot(S_A, S_D, "pulverisateur.audioOutput"),
+                    connectionSnapshot(S_C, S_D, "heisenberg.audioOutput"),
+                ],
+                [S_A, S_C],
+            ),
+        );
+        // S_D is reachable from both roots but holds exactly one position
+        expect(positions.size).toBe(3);
+        const shared = [...positions.entries()].filter(([id]) => id === S_D);
+        expect(shared).toHaveLength(1);
+        expect(positions.get(S_A)!.y).not.toBe(positions.get(S_C)!.y);
+    });
+
+    it("never positions mixerChannel devices", () => {
+        const mixId = S_D;
+        const positions = planDeviceLayout(
+            layoutSnapshot(
+                [deviceSnapshot(S_A, "pulverisateur"), deviceSnapshot(mixId, "mixerChannel")],
+                [connectionSnapshot(S_A, mixId, "pulverisateur.audioOutput")],
+                [S_A],
+            ),
+        );
+        expect(positions.has(mixId)).toBe(false);
+        expect(positions.has(S_A)).toBe(true);
+    });
+});
+
+// ———————————————————————————————————————————————————————————————————————
+// M20.5 — conservative generic grid + dedicated leftover lane
+// ———————————————————————————————————————————————————————————————————————
+
+describe("M20.5 — conservative grid + leftover lane", () => {
+    function layoutSnapshot(devices: DeviceSnapshot[], connections: ConnectionSnapshot[], roots: string[]): ChainSnapshot {
+        return {
+            version: 1,
+            devices,
+            connections,
+            rootCandidates: roots,
+        };
+    }
+
+    it("places consecutive devices of one chain exactly DEVICE_SPACING_X apart", () => {
+        const positions = planDeviceLayout(
+            layoutSnapshot(
+                [deviceSnapshot(S_A, "pulverisateur"), deviceSnapshot(S_B, "stompboxDelay"), deviceSnapshot(S_C, "stompboxCompressor")],
+                [
+                    connectionSnapshot(S_A, S_B, "pulverisateur.audioOutput"),
+                    connectionSnapshot(S_B, S_C, "stompboxDelay.audioOutput"),
+                ],
+                [S_A],
+            ),
+        );
+        expect(positions.get(S_B)!.x - positions.get(S_A)!.x).toBe(DEVICE_SPACING_X);
+        expect(positions.get(S_C)!.x - positions.get(S_B)!.x).toBe(DEVICE_SPACING_X);
+        expect(positions.get(S_A)!.y).toBe(positions.get(S_B)!.y);
+    });
+
+    it("separates independent root chains by exactly CHAIN_SPACING_Y", () => {
+        const positions = planDeviceLayout(
+            layoutSnapshot(
+                [
+                    deviceSnapshot(S_A, "pulverisateur"),
+                    deviceSnapshot(S_B, "stompboxDelay"),
+                    deviceSnapshot(S_C, "heisenberg"),
+                    deviceSnapshot(S_D, "heisenberg"),
+                ],
+                [
+                    connectionSnapshot(S_A, S_B, "pulverisateur.audioOutput"),
+                    connectionSnapshot(S_C, S_D, "heisenberg.audioOutput"),
+                ],
+                [S_A, S_C],
+            ),
+        );
+        expect(positions.get(S_B)!.y - positions.get(S_A)!.y).toBe(0);
+        expect(positions.get(S_C)!.y - positions.get(S_A)!.y).toBe(CHAIN_SPACING_Y);
+        expect(positions.get(S_D)!.y - positions.get(S_C)!.y).toBe(0);
+    });
+
+    it("gives leftover devices their own new lane instead of reusing lane-1", () => {
+        const positions = planDeviceLayout(
+            layoutSnapshot(
+                [
+                    deviceSnapshot(S_A, "pulverisateur"),
+                    deviceSnapshot(S_B, "stompboxDelay"),
+                    deviceSnapshot(S_C, "heisenberg"),
+                    deviceSnapshot(S_D, "stompboxCompressor"),
+                ],
+                [
+                    connectionSnapshot(S_A, S_B, "pulverisateur.audioOutput"),
+                    connectionSnapshot(S_C, S_D, "heisenberg.audioOutput"),
+                ],
+                [S_A],
+            ),
+        );
+        // S_C / S_D are unreachable from the single root → leftovers
+        expect(positions.get(S_A)!.y).toBe(PLACEMENT_ORIGIN_Y);
+        expect(positions.get(S_B)!.y).toBe(PLACEMENT_ORIGIN_Y);
+        expect(positions.get(S_C)!.y - positions.get(S_A)!.y).toBe(CHAIN_SPACING_Y);
+        expect(positions.get(S_C)!.y).toBe(positions.get(S_D)!.y);
+        // ...and still keep normal X flow within their own lane
+        expect(positions.get(S_D)!.x - positions.get(S_C)!.x).toBe(DEVICE_SPACING_X);
+    });
+
+    it("uses conservative spacing clearly larger than the old point grid", () => {
+        expect(DEVICE_SPACING_X).toBeGreaterThan(260);
+        expect(CHAIN_SPACING_Y).toBeGreaterThan(220);
+    });
+});
 
 // ———————————————————————————————————————————————————————————————————————
 // 12. float32 tolerance

@@ -99,7 +99,11 @@ export class AppUI {
             () => this.onPresetLoad(),
             this.nexusAdapter,
             this.bindingManager,
-            this.history
+            this.history,
+            // Morph (M14) updates live control widgets in place — the same
+            // mechanism every normal local/Nexus value change uses. No full
+            // AppUI.render() for each slider input.
+            (controlId, value) => this.surfaceUI.applyNexusValue(controlId, value)
         );
 
         window.addEventListener("keydown", this.handleKeydown);
@@ -151,7 +155,18 @@ export class AppUI {
         control.value = value;
         this.deviceLibrary.saveCurrentDevice();
         this.surfaceUI.applyNexusValue(controlId, value);
-        void this.nexusAdapter.updateBoundControl(controlId, value);
+        // The Nexus write may be refused (disconnected/immutable/unbound/unsupported).
+        // The local value stays — but the failure must be observable, not discarded.
+        this.nexusAdapter.updateBoundControl(controlId, value).then(
+            (ok) => {
+                if (!ok) {
+                    console.warn(`[METATRON NEXUS WRITE] control=${controlId} write refused — local value kept (${Number(value).toFixed(4)})`);
+                }
+            },
+            (e) => {
+                console.error(`[METATRON NEXUS WRITE] control=${controlId} write error:`, e);
+            },
+        );
     }
 
     /**
@@ -165,7 +180,16 @@ export class AppUI {
         if (!device) return;
         device.controls.forEach((c) => {
             if (!c.archived && c.activeBindingState === "CONNECTED") {
-                void this.nexusAdapter.updateBoundControl(c.id, c.value);
+                this.nexusAdapter.updateBoundControl(c.id, c.value).then(
+                    (ok) => {
+                        if (!ok) {
+                            console.warn(`[METATRON NEXUS WRITE] preset push refused control=${c.id} — stored value kept locally`);
+                        }
+                    },
+                    (e) => {
+                        console.error(`[METATRON NEXUS WRITE] preset push control=${c.id} error:`, e);
+                    },
+                );
             }
         });
     }
@@ -191,11 +215,18 @@ export class AppUI {
         const toolbar = document.createElement("div");
         toolbar.className = "toolbar";
 
+        const titleWrap = document.createElement("div");
+        titleWrap.className = "app-title";
+        const logo = document.createElement("img");
+        logo.src = "/metatron-logo.svg";
+        logo.alt = "Metatron";
+        logo.className = "app-logo";
         const title = document.createElement("h1");
         title.innerText = `Metatron${this.deviceLibrary.currentDevice ? ` | ${this.deviceLibrary.currentDevice.name}` : ""}`;
-        title.style.marginRight = "20px";
         title.style.whiteSpace = "nowrap";
-        toolbar.appendChild(title);
+        titleWrap.appendChild(logo);
+        titleWrap.appendChild(title);
+        toolbar.appendChild(titleWrap);
 
 const libraryBtn = document.createElement("button");
 libraryBtn.className = "btn" + (this.sidebarCollapsed ? "" : " active");

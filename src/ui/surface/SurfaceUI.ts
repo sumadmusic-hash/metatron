@@ -6,8 +6,9 @@ import { BindingManager } from "../../core/BindingManager";
 import { NexusLearn, LearnTimeoutError, LearnCancelledError } from "../../nexus/NexusLearn";
 import { createNexusValueMapping, mapNexusToNormalized } from "../../nexus/NexusValueMapping";
 import { MidiLearn, MidiLearnTimeoutError } from "../../midi/MidiLearn";
+import { applyLearnedControlName, buildLearnedControlName, resolveEntityDisplayName } from "../../nexus/ControlNaming";
 import { Toast } from "../Toast";
-import { computeControlLayout, contrastTextColor } from "../geometry";
+import { computeControlLayout } from "../geometry";
 import type { MidiBindingDefinition } from "../../core/model/types";
 
 /**
@@ -148,9 +149,10 @@ private container!: HTMLElement;
         const groupNameSpan = document.createElement("span");
         groupNameSpan.className = "group-name";
         groupNameSpan.textContent = group.name;
-        if (group.color) {
-            groupNameSpan.style.color = contrastTextColor(group.color);
-        }
+        // The name is ALWAYS light in USE mode: the Metatron surface is dark,
+        // so a contrast-derived color (e.g. near-black for light groups) would
+        // be unreadable. The group color never overrides the name color.
+        groupNameSpan.style.color = "#fff";
         groupHeader.appendChild(groupNameSpan);
         el.appendChild(groupHeader);
 
@@ -527,6 +529,15 @@ private container!: HTMLElement;
             this.nexusLearn = null;
             this.nexusLearnControlId = null;
             this.bindingManager.applyLearnResult(control.id, result);
+            // Automatic naming (M4): manual-named controls are never overwritten.
+            applyLearnedControlName(
+                control,
+                buildLearnedControlName(
+                    resolveEntityDisplayName(this.nexusAdapter.document, result.entityId),
+                    result.entityType,
+                    result.fieldPath,
+                ),
+            );
             this.nexusAdapter.subscribeBoundControl(control.id);
             this.deviceLibrary.saveCurrentDevice();
             console.log(`[METATRON LEARN SUCCESS] controlId=${control.id} entityId=${result.entityId} fieldName=${result.fieldPath} value=${result.value}`);

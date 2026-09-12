@@ -130,7 +130,9 @@ export class NexusAdapter {
     /** Writes a value for a control's active binding. Input `value` is the
      *  NORMALIZED Metatron value 0..1; it is mapped into the real Nexus range
      *  via the binding's value mapping (schema-derived) before the write.
-     *  Returns false when not bound / no document / unsupported mapping. */
+     *  Returns false (with NO pending async operation) when not bound / no
+     *  document / document disconnected / immutable field / unsupported
+     *  mapping; returns true only after the write transaction completed. */
     public async updateBoundControl(controlId: string, value: number): Promise<boolean> {
         if (!this.document || !this.bindingManager) return false;
         const binding = this.bindingManager.getActiveBinding(controlId);
@@ -138,6 +140,16 @@ export class NexusAdapter {
 
         const field = this.resolveField(binding);
         if (!field) return false;
+
+        if (!this.isDocumentConnected()) {
+            console.warn(`[METATRON NEXUS WRITE] refused control=${controlId} field=${binding.fieldPath ?? binding.fieldName} reason=document-disconnected`);
+            return false;
+        }
+
+        if (field.mutable === false) {
+            console.warn(`[METATRON NEXUS WRITE] refused control=${controlId} field=${binding.fieldPath ?? binding.fieldName} reason=field-immutable`);
+            return false;
+        }
 
         const mapping = binding.valueMapping ?? createNexusValueMapping(field);
         const mapped = mapNormalizedToNexus(mapping, value);

@@ -87,15 +87,11 @@ describe("Group visibility in EDIT mode (editor object)", () => {
         expect(host.querySelector(".group-label")).toBeNull();
     });
 
-    it("applies a larger, prominent font to the Group Name and keeps the delete button separate", () => {
+    it("applies a larger, prominent font to the Group Name in the header", () => {
         const { host } = mountEditor();
         const header = host.querySelector(".group-header") as HTMLElement;
         const name = header.querySelector(".group-name") as HTMLElement;
-        const del = header.querySelector(".group-delete-btn") as HTMLElement;
-        // Structural separation: name and delete are siblings in the same header
-        // (a flex row), so the delete never overlaps the name.
         expect(name.parentElement).toBe(header);
-        expect(del.parentElement).toBe(header);
 
         // The stylesheet applies a clearly larger title-style font (1.1rem,
         // weight 600) rather than the 11px metadata size.
@@ -104,17 +100,25 @@ describe("Group visibility in EDIT mode (editor object)", () => {
         expect(nameRule).toBeTruthy();
         expect(nameRule?.[0]).toMatch(/font-size:\s*1\.1rem/);
         expect(nameRule?.[0]).toMatch(/font-weight:\s*600/);
-        // The delete button is explicitly reset to static (in-flow) so the
-        // legacy absolute rule cannot pull it on top of the name.
-        const delRule = css.match(/\.group-header \.group-delete-btn\s*\{[^}]*\}/);
-        expect(delRule?.[0]).toMatch(/position:\s*static/);
     });
 
-    it("carries editor affordances (resize handle + color picker)", () => {
+    it("keeps only the resize handle in-box; the edit toolbar is an external sibling", () => {
         const { host } = mountEditor();
         const group = host.querySelector(".group-box") as HTMLElement;
         expect(group.querySelector(".resize-handle")).not.toBeNull();
-        expect(group.querySelector(".group-color-input")).not.toBeNull();
+        // Color/hex/delete affordances moved OUT of the box (M20.11).
+        expect(group.querySelector(".group-color-input")).toBeNull();
+        expect(group.querySelector(".group-delete-btn")).toBeNull();
+        // They live in an adjacent sibling toolbar, not inside the group box.
+        const tools = host.querySelector(".group-tools") as HTMLElement;
+        expect(tools).not.toBeNull();
+        expect(tools.parentElement).toBe(group.parentElement);
+        expect(tools.querySelector(":scope > .group-color-input")).not.toBeNull();
+        expect(tools.querySelector(":scope > .group-delete-btn")).not.toBeNull();
+        expect(tools.querySelector(":scope > .group-delete-btn")!.textContent).toBe("✕");
+        // The toolbar carries the full edit set: color, hex + Copy/Paste, Delete.
+        expect(tools.querySelector(":scope > .group-hex-row .color-hex-label")).not.toBeNull();
+        expect(tools.querySelector(":scope > .group-hex-row .tool-btn")?.textContent).toBe("Copy");
     });
 
     it("renders member Controls on top of the edit Group", () => {
@@ -124,6 +128,27 @@ describe("Group visibility in EDIT mode (editor object)", () => {
         expect(group).not.toBeNull();
         expect(firstControl).not.toBeNull();
         expect((group.compareDocumentPosition(firstControl) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0).toBe(true);
+    });
+
+    it("M20.11 — the group edit toolbar is fully external; no in-box color rules remain", () => {
+        const css = readFileSync(resolve("src/ui/styles.css"), "utf8");
+        // The external toolbar rule exists and is JS-positioned (not box-relative).
+        const toolsRule = css.match(/\.group-tools\s*\{[^}]*\}/);
+        expect(toolsRule).toBeTruthy();
+        expect(toolsRule?.[0]).toMatch(/position:\s*absolute/);
+        // Hovering the box reveals the adjacent sibling toolbar; hovering the
+        // toolbar itself keeps it visible (it is not a child of the box).
+        expect(css).toMatch(/\.group-box:hover\s*\+\s*\.group-tools/);
+        expect(css).toMatch(/\.group-tools:hover/);
+        // Delete is pinned to the RIGHT END of the toolbar.
+        const delRule = css.match(/\.group-tools \.group-delete-btn\s*\{[^}]*\}/);
+        expect(delRule?.[0]).toMatch(/margin-left:\s*auto/);
+        // The old in-box affordances are gone — no absolutely-positioned color
+        // zones or delete button inside the group geometry.
+        expect(css).not.toMatch(/\.group-box \.group-color-input/);
+        expect(css).not.toMatch(/\.group-box \.group-hex-row/);
+        expect(css).not.toMatch(/\.group-box \.group-delete-btn/);
+        expect(css).not.toMatch(/\.group-header \.group-delete-btn/);
     });
 });
 
@@ -213,6 +238,8 @@ describe("Group visibility in USE mode (finished surface)", () => {
         // No Group editor affordances
         expect(group.querySelector(".resize-handle")).toBeNull();
         expect(group.querySelector(".group-color-input")).toBeNull();
+        // The external edit toolbar is not rendered on the performance surface.
+        expect(host.querySelector(".group-tools")).toBeNull();
         // No Control editor furniture anywhere on the surface
         expect(host.querySelector(".control-wrapper.edit-mode")).toBeNull();
         expect(host.querySelector(".control-tools")).toBeNull();
@@ -226,5 +253,37 @@ describe("Group visibility in USE mode (finished surface)", () => {
         control.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
         expect(control.classList.contains("selected")).toBe(true);
         expect(host.querySelector(".use-actions")).not.toBeNull();
+    });
+});
+
+describe("M20.7 — Group name is always light in USE mode", () => {
+
+    it("renders a dark group's name light in USE mode", () => {
+        const { host, device, ui } = mountSurface();
+        const group = device.groups.values().next().value as Group;
+        group.color = "#101030";
+        host.innerHTML = "";
+        ui.render(host);
+        const name = host.querySelector(".group-box.use-group .group-name") as HTMLElement;
+        expect(name.style.color).toBe("#fff");
+    });
+
+    it("does not let a light group color darken the name in USE mode", () => {
+        const { host, device, ui } = mountSurface();
+        // so light that contrastTextColor(...) would return near-black (#101010)
+        const group = device.groups.values().next().value as Group;
+        group.color = "#ffffaa";
+        host.innerHTML = "";
+        ui.render(host);
+        const name = host.querySelector(".group-box.use-group .group-name") as HTMLElement;
+        expect(name.style.color).toBe("#fff");
+        expect(name.style.color).not.toBe("#101010");
+    });
+
+    it("keeps EDIT mode unchanged (name still inherits the light theme color)", () => {
+        const { host } = mountEditor();
+        const name = host.querySelector(".group-box .group-name") as HTMLElement;
+        // No inline force in EDIT mode — the fix did not leak out of USE mode.
+        expect(name.style.color).toBe("");
     });
 });

@@ -15,6 +15,7 @@ import {
     renderInstrumentExportOutcome,
     renderInstrumentImportOutcome,
 } from "./instrument/InstrumentResultView";
+import { applyMorphToDevice } from "../integration/PresetMorphIntegration";
 
 /**
  * Device Library UI (spec §47, §48): New / Open / Save / Rename / Delete
@@ -29,6 +30,15 @@ export class DeviceLibraryUI {
     private bindingManager?: BindingManager;
     private history?: DeviceHistory;
     private instrumentResultArea?: HTMLElement;
+    private onControlValueChanged?: (controlId: string, value: number) => void;
+
+    // Transient Morph A/B selection state (M12). Slot references and the
+    // amount are deliberately NOT serialized: they are pure UI state and
+    // reset when the active device changes.
+    private morphA?: string;
+    private morphB?: string;
+    private morphAmount = 0.5;
+    private activeMorphDeviceId?: string;
 
     constructor(
         deviceLibrary: DeviceLibrary,
@@ -36,7 +46,8 @@ export class DeviceLibraryUI {
         onPresetLoad?: () => void,
         nexusAdapter?: NexusAdapter,
         bindingManager?: BindingManager,
-        history?: DeviceHistory
+        history?: DeviceHistory,
+        onControlValueChanged?: (controlId: string, value: number) => void
     ) {
         this.deviceLibrary = deviceLibrary;
         this.onDeviceChanged = onDeviceChanged;
@@ -44,6 +55,7 @@ export class DeviceLibraryUI {
         this.nexusAdapter = nexusAdapter;
         this.bindingManager = bindingManager;
         this.history = history;
+        this.onControlValueChanged = onControlValueChanged;
     }
 
     /** Structural snapshot of the given device (device-scope actions). The
@@ -130,6 +142,15 @@ export class DeviceLibraryUI {
     private renderPresets(panel: HTMLElement) {
         const device = this.deviceLibrary.currentDevice;
         if (!device) return;
+
+        // Morph A/B slots are device-scoped transient UI state: reset when the
+        // active device changes. Presets and controls are never touched.
+        if (device.id !== this.activeMorphDeviceId) {
+            this.morphA = undefined;
+            this.morphB = undefined;
+            this.morphAmount = 0.5;
+            this.activeMorphDeviceId = device.id;
+        }
 
         const h3 = document.createElement("h3");
         h3.style.marginTop = "20px";
@@ -237,12 +258,50 @@ export class DeviceLibraryUI {
                     this.onDeviceChanged(); // re-render surface so values appear
                 };
 
+                // Morph slot assignment (M12): picking A/B stores ONLY the preset
+                // id in the transient slot. It must NOT load the preset, change
+                // control values, or touch Nexus.
+                const morphABtn = document.createElement("button");
+                morphABtn.className = "mini-btn" + (this.morphA === preset.id ? " active" : "");
+                morphABtn.innerText = "A";
+                morphABtn.title = this.morphA === preset.id
+                    ? `Morph A: "${preset.name}" — click to unassign`
+                    : "Assign this preset to Morph A";
+                morphABtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (this.morphA === preset.id) {
+                        this.morphA = undefined;
+                    } else {
+                        this.morphA = preset.id;
+                    }
+                    this.render(this.container);
+                };
+
+                const morphBBtn = document.createElement("button");
+                morphBBtn.className = "mini-btn" + (this.morphB === preset.id ? " active" : "");
+                morphBBtn.innerText = "B";
+                morphBBtn.title = this.morphB === preset.id
+                    ? `Morph B: "${preset.name}" — click to unassign`
+                    : "Assign this preset to Morph B";
+                morphBBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (this.morphB === preset.id) {
+                        this.morphB = undefined;
+                    } else {
+                        this.morphB = preset.id;
+                    }
+                    this.render(this.container);
+                };
+
                 const delBtn = document.createElement("button");
                 delBtn.className = "mini-btn";
                 delBtn.innerText = "✕";
                 delBtn.title = "Delete preset";
                 delBtn.onclick = (e) => {
                     e.stopPropagation();
+                    // A deleted preset can no longer be a Morph slot (M12).
+                    if (this.morphA === preset.id) this.morphA = undefined;
+                    if (this.morphB === preset.id) this.morphB = undefined;
                     const before = this.currentPatch(device);
                     device.deletePreset(preset.id);
                     this.deviceLibrary.saveCurrentDevice();
@@ -253,12 +312,109 @@ export class DeviceLibraryUI {
                 };
 
                 row.appendChild(label);
+                row.appendChild(morphABtn);
+                row.appendChild(morphBBtn);
                 row.appendChild(renameBtn);
                 row.appendChild(loadBtn);
                 row.appendChild(delBtn);
                 panel.appendChild(row);
             });
         }
+
+        // Morph A/B status (M12): shows the current transient slot assignments.
+        // Never assumes any preset is "currently loaded" — these are reference
+        // slots only. The amount slider (M13) below is UI state only.
+        const morphBlock = document.createElement("div");
+        morphBlock.className = "preset-morph";
+        morphBlock.style.cssText = "margin-top:12px;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:rgba(255,255,255,0.03);";
+        const morphTitle = document.createElement("div");
+        morphTitle.className = "preset-morph-title";
+        morphTitle.innerText = "MORPH";
+        morphTitle.style.cssText = "font-weight:700;letter-spacing:1px;font-size:11px;color:var(--text-secondary);margin-bottom:6px;";
+        morphBlock.appendChild(morphTitle);
+        const status = document.createElement("div");
+        status.className = "preset-morph-status";
+        const slotName = (id?: string) => (id ? device.presets.get(id)?.name ?? "—" : "—");
+        status.innerText = `A: ${slotName(this.morphA)}    B: ${slotName(this.morphB)}`;
+        status.style.cssText = "font-size:12px;color:var(--text-primary);white-space:pre;overflow:hidden;text-overflow:ellipsis;";
+        morphBlock.appendChild(status);
+
+        // Morph amount slider (M13/M14) — moves update morphAmount and the
+        // percent readout in place, then apply the interpolated values ONLY
+        // when both slots are filled:
+        //   slider input → read Preset A → read Preset B
+        //   → applyMorphToDevice (pure M9 engine + M10 integration)
+        //   → visible control widgets updated in place
+        //   → CONNECTED controls pushed through NexusAdapter.updateBoundControl
+        // With a missing slot: only the amount/percent update — no Morph
+        // calculation, no control writes, no Nexus traffic.
+        const applyMorph = () => {
+            // Clear slots whose preset no longer exists; never applies a stale ref.
+            if (this.morphA !== undefined && !device.presets.has(this.morphA)) this.morphA = undefined;
+            if (this.morphB !== undefined && !device.presets.has(this.morphB)) this.morphB = undefined;
+            status.innerText = `A: ${slotName(this.morphA)}    B: ${slotName(this.morphB)}`;
+            const presetA = this.morphA === undefined ? undefined : device.presets.get(this.morphA);
+            const presetB = this.morphB === undefined ? undefined : device.presets.get(this.morphB);
+            if (!presetA || !presetB) return;
+
+            const result = applyMorphToDevice(device, presetA, presetB, this.morphAmount, {
+                updateBoundControl: (id, value) => {
+                    if (!this.nexusAdapter) return Promise.resolve(true);
+                    return this.nexusAdapter.updateBoundControl(id, value);
+                },
+            });
+            // Reflect the new control.values on the live surface widgets in place
+            // (the same mechanism normal local value changes use). No full render.
+            Object.keys(result).forEach((id) => {
+                this.onControlValueChanged?.(id, result[id]);
+            });
+            // Persist the RESULTING control.value state only (morph slots and the
+            // amount stay transient and are never serialized).
+            this.deviceLibrary.saveCurrentDevice();
+        };
+
+        const percent = document.createElement("div");
+        percent.className = "preset-morph-percent";
+        percent.innerText = `${Math.round(this.morphAmount * 100)}%`;
+        percent.style.cssText = "text-align:center;font-size:12px;color:var(--accent-color);font-weight:700;margin:8px 0 2px;";
+        morphBlock.appendChild(percent);
+
+        const sliderRow = document.createElement("div");
+        sliderRow.className = "preset-morph-slider-row";
+        sliderRow.style.cssText = "display:flex;align-items:center;gap:6px;";
+        const aLabel = document.createElement("span");
+        aLabel.className = "preset-morph-endcap";
+        aLabel.innerText = "A";
+        aLabel.style.cssText = "font-size:11px;color:var(--text-secondary);font-weight:700;";
+        const bLabel = document.createElement("span");
+        bLabel.className = "preset-morph-endcap";
+        bLabel.innerText = "B";
+        bLabel.style.cssText = "font-size:11px;color:var(--text-secondary);font-weight:700;";
+        const slider = document.createElement("input");
+        slider.className = "preset-morph-slider";
+        slider.type = "range";
+        slider.min = "0";
+        slider.max = "1";
+        slider.step = "0.01";
+        slider.value = String(this.morphAmount);
+        slider.style.flex = "1";
+        slider.style.accentColor = "var(--accent-color)";
+        slider.oninput = () => {
+            const raw = parseFloat(slider.value);
+            const clamped = Math.min(1, Math.max(0, Number.isFinite(raw) ? raw : 0.5));
+            this.morphAmount = clamped;
+            slider.value = String(clamped);
+            percent.innerText = `${Math.round(clamped * 100)}%`;
+            applyMorph();
+            morphBlock.title = `Transient Morph state (not saved) — amount: ${clamped.toFixed(2)} — applied to controls when A and B are set`;
+        };
+        sliderRow.appendChild(aLabel);
+        sliderRow.appendChild(slider);
+        sliderRow.appendChild(bLabel);
+        morphBlock.appendChild(sliderRow);
+
+        morphBlock.title = `Transient Morph state (not saved) — amount: ${this.morphAmount.toFixed(2)} — no morph applied yet`;
+        panel.appendChild(morphBlock);
     }
 
     /**
@@ -439,8 +595,16 @@ export class DeviceLibraryUI {
         if (!device) return;
         const before = this.currentPatch(device);
         const outcome = await importInstrumentFromLibrary(libraryId, doc, this.bindingManager);
+        // M23.3.1: persist the imported device state and re-render the surface
+        // so the imported Control.value becomes visible — the exact
+        // save/refresh pattern used by preset.load. Exactly ONE history action
+        // remains: recordDeviceAction is called once, nothing else records.
+        this.deviceLibrary.saveCurrentDevice();
         const after = this.currentPatch(device);
         this.recordDeviceAction("instrument.import", device, before, after);
+        // Re-render FIRST so the result box lands in the fresh result area
+        // (AppUI.render rebuilds the sidebar, including the report container).
+        this.onDeviceChanged();
         this.instrumentResultArea?.appendChild(renderInstrumentImportOutcome(outcome));
         if (outcome.ok) {
             Toast.show("Instrument preset imported — chain restored and verified.", "success");

@@ -163,9 +163,28 @@ describe("InstrumentPresetExport v0.1 — fixture (real offline SOURCE)", () => 
     it("J. bindings carry only logical identity — no source id leaks", () => {
         const result = exportInstrumentPreset(input());
         if (!result.ok) return;
+        // M23.2 — the envelope additively carries OPTIONAL control descriptors
+        // (controlName/controlType/controlNameSource). The logical identity set
+        // (controlId/sourceEntityIndex/fieldPath/valueMapping) is unchanged and
+        // no other keys may appear.
         for (const b of result.preset.bindings) {
-            expect(Object.keys(b).sort()).toEqual(["controlId", "fieldPath", "sourceEntityIndex", "valueMapping"]);
+            const allowed = ["controlId", "controlName", "controlType", "controlNameSource", "fieldPath", "sourceEntityIndex", "valueMapping"];
+            for (const k of Object.keys(b)) {
+                expect(allowed).toContain(k);
+            }
+            expect(Object.keys(b).sort()).toEqual(
+                expect.arrayContaining(["controlId", "fieldPath", "sourceEntityIndex", "valueMapping"]),
+            );
             expect(device.controls.has(b.controlId)).toBe(true);
+            // a knob/switch control must carry its descriptor; a runtime-only
+            // type (rotary) must NOT emit a controlType
+            const liveControl = device.controls.get(b.controlId)!;
+            if (liveControl.type === "knob" || liveControl.type === "switch") {
+                expect(b.controlName).toBe(liveControl.name);
+                expect(b.controlType).toBe(liveControl.type);
+            } else {
+                expect(b.controlType).toBeUndefined();
+            }
         }
         const json = serializeInstrumentPreset(result.preset);
         for (const s of input().bindings) {

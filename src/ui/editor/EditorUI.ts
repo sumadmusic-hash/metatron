@@ -9,6 +9,7 @@ import { MidiMapping } from "../../midi/MidiMapping";
 import { NexusLearn, LearnTimeoutError, LearnCancelledError } from "../../nexus/NexusLearn";
 import { createNexusValueMapping, mapNexusToNormalized } from "../../nexus/NexusValueMapping";
 import { MidiLearn, MidiLearnTimeoutError } from "../../midi/MidiLearn";
+import { applyLearnedControlName, buildLearnedControlName, resolveEntityDisplayName } from "../../nexus/ControlNaming";
 import { computeControlLayout, CONTROL_MIN_SIZE, contrastTextColor } from "../geometry";
 import { DeviceHistory } from "../../core/history/DeviceHistory";
 import { patchesEqual } from "../../core/history/HistoryAction";
@@ -16,6 +17,11 @@ import type { DeviceStatePatch } from "../../core/history/HistoryAction";
 
 const SNAP = 20;
 const DRAG_THRESHOLD = 4;
+/** External group edit toolbar geometry (M20.11): the toolbar floats ABOVE
+ *  the group box with this clearance, and flips BELOW the box (with this
+ *  bottom gap) when the group sits near the canvas top edge. */
+const GROUP_TOOLS_OFFSET = 44;
+const GROUP_TOOLS_BELOW_GAP = 12;
 
 /**
  * The single active drag gesture. At most ONE drag exists at any time: a new
@@ -369,9 +375,17 @@ export class EditorUI {
         labelArea.appendChild(badge);
         el.appendChild(labelArea);
 
-        // Editing tools — a coherent bar shown below the control when selected.
+        // Editing tools — a compact TWO-ROW bar shown over the control when
+        // selected. Row 1 holds the normal edit/settings options, row 2 the
+        // color options, and the Delete/✕ action is pinned to the far right
+        // of row 2 (M20.8).
         const tools = document.createElement("div");
         tools.className = "control-tools";
+
+        const toolsRow1 = document.createElement("div");
+        toolsRow1.className = "control-tools-row";
+        const toolsRow2 = document.createElement("div");
+        toolsRow2.className = "control-tools-row";
 
         const colorInput = document.createElement("input");
         colorInput.type = "color";
@@ -446,17 +460,17 @@ export class EditorUI {
             // control re-captures the real start state instead of this stale one.
             this.clearColorGesture(`ctl:${control.id}`);
         });
-        tools.appendChild(colorInput);
-        tools.appendChild(hexLabel);
-        tools.appendChild(copyBtn);
-        tools.appendChild(pasteBtn);
+        toolsRow2.appendChild(colorInput);
+        toolsRow2.appendChild(hexLabel);
+        toolsRow2.appendChild(copyBtn);
+        toolsRow2.appendChild(pasteBtn);
 
         const del = document.createElement("button");
-        del.className = "tool-btn";
+        del.className = "tool-btn control-delete-btn";
         del.innerText = "✕";
         del.title = "Archive control";
         del.onclick = (e) => { e.stopPropagation(); this.deleteSelected(); };
-        tools.appendChild(del);
+        toolsRow2.appendChild(del);
 
         if (this.bindingManager && this.nexusAdapter) {
             const learnBtn = document.createElement("button");
@@ -464,7 +478,7 @@ export class EditorUI {
             learnBtn.innerText = "Learn";
             learnBtn.title = "Learn this control from Audiotool for the CURRENT project (§23/§24)";
             learnBtn.onclick = (e) => { e.stopPropagation(); void this.startNexusLearn(control); };
-            tools.appendChild(learnBtn);
+            toolsRow1.appendChild(learnBtn);
 
             const forget = document.createElement("button");
             forget.className = "tool-btn";
@@ -478,7 +492,7 @@ export class EditorUI {
                 Toast.show(`Binding removed from "${control.name}".`, "info");
                 this.render(this.container.parentElement!);
             };
-            tools.appendChild(forget);
+            toolsRow1.appendChild(forget);
         }
 
         if (this.midiAccess && this.midiMapping) {
@@ -487,7 +501,7 @@ export class EditorUI {
             midiBtn.innerText = "MIDI";
             midiBtn.title = "MIDI-learn a hardware CC for this control (§25-27)";
             midiBtn.onclick = (e) => { e.stopPropagation(); void this.startMidiLearn(control); };
-            tools.appendChild(midiBtn);
+            toolsRow1.appendChild(midiBtn);
         }
 
         const membership = document.createElement("select");
@@ -515,7 +529,9 @@ export class EditorUI {
             this.deviceLibrary.saveCurrentDevice();
             this.render(this.container.parentElement!);
         };
-        tools.appendChild(membership);
+        toolsRow1.appendChild(membership);
+        tools.appendChild(toolsRow1);
+        tools.appendChild(toolsRow2);
         el.appendChild(tools);
 
         // Resize handle
@@ -571,13 +587,14 @@ export class EditorUI {
 
         const layout = computeControlLayout(control.size, control.type);
 
-        // Flip the toolbar below when the control sits near the canvas top
-        // so it does not clip or overlap groups above.
+        // Flip the two-row toolbar below when the control sits near the
+        // canvas top so it does not clip or overlap groups above. The offset
+        // accounts for the full height of BOTH toolbar rows (M20.8).
         const tools = el.querySelector<HTMLElement>(".control-tools");
         if (tools) {
             const flipBelow = control.position.y < 42;
-            tools.style.top = flipBelow ? "auto" : "-36px";
-            tools.style.bottom = flipBelow ? "-36px" : "auto";
+            tools.style.top = flipBelow ? "auto" : "-64px";
+            tools.style.bottom = flipBelow ? "-64px" : "auto";
         }
 
         const widget = el.querySelector<HTMLElement>(".knob-body, .switch-body");
@@ -632,19 +649,7 @@ export class EditorUI {
             e.stopPropagation();
             this.beginRename(groupNameSpan, group);
         });
-        const deleteBtnInHeader = document.createElement("button");
-        deleteBtnInHeader.className = "group-delete-btn";
-        deleteBtnInHeader.title = "Delete group";
-        deleteBtnInHeader.textContent = "✕";
-        deleteBtnInHeader.addEventListener("pointerdown", (e) => e.stopPropagation());
-        deleteBtnInHeader.addEventListener("click", (e) => {
-            e.stopPropagation();
-            this.selectedGroupId = group.id;
-            this.selectedControlId = null;
-            this.deleteSelected();
-        });
         groupHeader.appendChild(groupNameSpan);
-        groupHeader.appendChild(deleteBtnInHeader);
         el.insertBefore(groupHeader, el.firstChild);
 
         // Group color picker (§15)
@@ -719,8 +724,33 @@ export class EditorUI {
         colorInput.addEventListener("blur", () => {
             this.clearColorGesture(`grp:${group.id}`);
         });
-        el.appendChild(colorInput);
-        el.appendChild(hexRow);
+        // External edit toolbar — M20.11: all group edit affordances live
+        // OUTSIDE the group box as a sibling (`parent > .group-box +
+        // .group-tools`), so the box itself carries no color/hex/delete
+        // furniture and never has its surface covered by them.
+        const tools = document.createElement("div");
+        tools.className = "group-tools";
+        tools.dataset.grpToolsFor = group.id;
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "group-delete-btn";
+        deleteBtn.title = "Delete group";
+        deleteBtn.textContent = "✕";
+        deleteBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+        deleteBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.selectedGroupId = group.id;
+            this.selectedControlId = null;
+            this.syncSelection();
+            this.deleteSelected();
+        });
+
+        tools.appendChild(colorInput);
+        tools.appendChild(hexRow);
+        // Delete must sit clearly at the RIGHT end of the toolbar.
+        tools.appendChild(deleteBtn);
+
+        this.positionGroupToolbar(tools, group);
 
         // Resize handle
         const resizeH = document.createElement("div");
@@ -761,6 +791,23 @@ export class EditorUI {
         });
 
         parent.appendChild(el);
+        // The toolbar must come right after its box (adjacent sibling) so the
+        // `+` hover-reveal rule and the drag-follow structure hold.
+        parent.appendChild(tools);
+    }
+
+    /**
+     * Positions the external group edit toolbar (sibling of the group box)
+     * ABOVE the box, or BELOW it when the group sits near the canvas top edge
+     * so the toolbar never escapes the canvas or hides behind the editor
+     * toolbar — mirroring the control-toolbar flip. Re-invoked on every
+     * group move/resize during a drag (§applyDrag) so the toolbar stays
+     * glued to its box.
+     */
+    private positionGroupToolbar(tools: HTMLElement, group: any) {
+        const flipBelow = group.position.y < GROUP_TOOLS_OFFSET;
+        tools.style.left = `${group.position.x}px`;
+        tools.style.top = `${flipBelow ? group.position.y + group.size.height + GROUP_TOOLS_BELOW_GAP : group.position.y - GROUP_TOOLS_OFFSET}px`;
     }
 
     // ---------- drag ----------
@@ -980,6 +1027,7 @@ export class EditorUI {
                 const memberEl = this.container.querySelector(`[data-ctl-id="${member.id}"]`) as HTMLElement | null;
                 if (memberEl) this.applyControlLayout(memberEl, member);
             });
+            this.syncGroupToolbar(target);
         } else { // group-resize
             const device = this.deviceLibrary.currentDevice!;
             const w = Math.max(60, this.snapPos(initialWidth + dx));
@@ -987,7 +1035,15 @@ export class EditorUI {
             device.resizeGroup(target.id, w, h);
             el.style.width = `${target.size.width}px`;
             el.style.height = `${target.size.height}px`;
+            this.syncGroupToolbar(target);
         }
+    }
+
+    /** Keeps the external group edit toolbar positioned with its box after a
+     *  move or resize changes the group geometry. */
+    private syncGroupToolbar(group: any) {
+        const toolsEl = this.container.querySelector(`[data-grp-tools-for="${group.id}"]`) as HTMLElement | null;
+        if (toolsEl) this.positionGroupToolbar(toolsEl, group);
     }
 
     /** Terminates the active gesture: commit, persist, release, clear.
@@ -1052,6 +1108,9 @@ export class EditorUI {
             if (name && name !== target.name) {
                 const device = this.deviceLibrary.currentDevice!;
                 const before = this.history?.captureDeviceState(device);
+                if (target instanceof Control) {
+                    target.nameSource = "manual";
+                }
                 target.name = name;
                 const after = this.history?.captureDeviceState(device);
                 if (this.history && before && after && !patchesEqual(before, after)) {
@@ -1103,6 +1162,15 @@ export class EditorUI {
             this.nexusLearn = null;
             this.nexusLearningId = null;
             this.bindingManager.applyLearnResult(control.id, result);
+            // Automatic naming (M4): manual-named controls are never overwritten.
+            applyLearnedControlName(
+                control,
+                buildLearnedControlName(
+                    resolveEntityDisplayName(this.nexusAdapter.document, result.entityId),
+                    result.entityType,
+                    result.fieldPath,
+                ),
+            );
             this.nexusAdapter.subscribeBoundControl(control.id);
             this.deviceLibrary.saveCurrentDevice();
             // Reflect the learned value immediately (§23: value applied, normalized 0..1)

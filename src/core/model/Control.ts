@@ -28,6 +28,15 @@ export class Control {
     public midiBindingDefinition?: MidiBindingDefinition;
 
     /**
+     * Origin of the current `name`:
+     * - "manual"  — explicitly renamed by the user; never overwritten by Learn.
+     * - "auto"    — automatically assigned by Learn after a successful binding.
+     * - undefined — legacy/new control with no explicit manual-naming marker;
+     *   eligible for automatic Learn naming on the first successful binding.
+     */
+    public nameSource?: "auto" | "manual";
+
+    /**
      * Tracks which layout generation this Control's geometry belongs to.
      * `undefined` or `1` means the Control was created before the geometry
      * repair (legacy 60×60 default). `2` (CURRENT_LAYOUT_VERSION) means the
@@ -83,6 +92,7 @@ export class Control {
             visualDefinition: this.visualDefinition,
             audiotoolBindingDefinition: this.audiotoolBindingDefinition,
             midiBindingDefinition: this.midiBindingDefinition,
+            nameSource: this.nameSource,
             archived: this.archived,
             layoutVersion: this.layoutVersion
         };
@@ -97,6 +107,7 @@ export class Control {
         c.visualDefinition = data.visualDefinition || {};
         c.audiotoolBindingDefinition = data.audiotoolBindingDefinition;
         c.midiBindingDefinition = data.midiBindingDefinition;
+        c.nameSource = data.nameSource;
         c.archived = data.archived || false;
         c.activeBindingState = data.audiotoolBindingDefinition ? "DISCONNECTED" : "UNCONFIGURED";
 

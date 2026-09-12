@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+
+<svg
+   version="1.1"
+   id="svg1"
+   width="1600"
+   height="1600"
+   viewBox="0 0 1600 1600"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1">
+    <!-- Tiefer schwarzer Hintergrund-Verlauf -->
+    <radialGradient id="bg_grad" cx="50%" cy="50%" r="75%">
+      <stop offset="0%" stop-color="#040612" />
+      <stop offset="65%" stop-color="#010206" />
+      <stop offset="100%" stop-color="#000000" />
+    </radialGradient>
+
+
+    <!-- Neon-Leuchteffekt (Glow Filter) -->
+    <filter id="neon_glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="10" result="blur1" />
+      <feGaussianBlur stdDeviation="3" result="blur2" />
+      <feMerge>
+        <feMergeNode in="blur1" />
+        <feMergeNode in="blur2" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+
+    <!-- Scharfer Kanten-Glow Filter -->
+    <filter id="rim_glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="2" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+
+    <!-- Verläufe für das obere schwebende Dach (Path 21) -->
+    <linearGradient id="roof_left_grad" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3bf0ff" />
+      <stop offset="50%" stop-color="#1b52e8" />
+      <stop offset="100%" stop-color="#0d2699" />
+    </linearGradient>
+    <linearGradient id="roof_right_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3bf0ff" />
+      <stop offset="50%" stop-color="#1b52e8" />
+      <stop offset="100%" stop-color="#0d2699" />
+    </linearGradient>
+
+
+    <!-- Verläufe für den Haupt-M-Körper (Path 20) -->
+    <linearGradient id="m_top_left" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4df3ff" />
+      <stop offset="40%" stop-color="#1f58f4" />
+      <stop offset="100%" stop-color="#0c25a3" />
+    </linearGradient>
+
+
+    <linearGradient id="m_top_right" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4df3ff" />
+      <stop offset="40%" stop-color="#1f58f4" />
+      <stop offset="100%" stop-color="#0c25a3" />
+    </linearGradient>
+
+
+    <linearGradient id="m_bot_left" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1f58f4" />
+      <stop offset="60%" stop-color="#7b16ff" />
+      <stop offset="100%" stop-color="#d000ff" />
+    </linearGradient>
+
+
+    <linearGradient id="m_bot_right" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1f58f4" />
+      <stop offset="60%" stop-color="#7b16ff" />
+      <stop offset="100%" stop-color="#d000ff" />
+    </linearGradient>
+  </defs>
+
+
+  <!-- Schwarzer Gesamthintergrund -->
+  <rect width="1600" height="1600" fill="url(#bg_grad)" />
+
+
+  <!-- Logo-Gruppe mit Glow -->
+  <g id="g1" filter="url(#neon_glow)">
+
+
+    <!-- PATH 20: ÄUSSERER M-KÖRPER (Blau-Violetter 3D-Körper) -->
+    <g id="path20_body">
+      <!-- Obere linke Facette -->
+      <path fill="url(#m_top_left)"
+            d="M 315.9091,443.18182 L 802.27273,725.0 L 802.27273,1402.2727 L 322.72728,1145.4545 Z" />
+      
+      <!-- Obere rechte Facette -->
+      <path fill="url(#m_top_right)"
+            d="M 1281.8181,445.45455 L 802.27273,725.0 L 802.27273,1402.2727 L 1284.0909,1145.4545 Z" />
+
+
+      <!-- Untere linke Violett-Facette für 3D-Tiefe -->
+      <path fill="url(#m_bot_left)" opacity="0.85"
+            d="M 322.72728,1145.4545 L 802.27273,1402.2727 L 802.27273,725.0 Z" />
+
+
+      <!-- Untere rechte Violett-Facette für 3D-Tiefe -->
+      <path fill="url(#m_bot_right)" opacity="0.85"
+            d="M 1284.0909,1145.4545 L 802.27273,1402.2727 L 802.27273,725.0 Z" />
+    </g>
+
+
+    <!-- PATH 19: INNERER FREIRAUM (TIEFSCHWARZE AUSSPARUNG) -->
+    <g id="path19_freiraum">
+      <path id="path19" fill="#000000"
+            d="m 479.54545,706.81818 4.54546,345.45452 311.36364,177.2728 318.18185,-184.091 2.2727,-338.63632 -309.09092,188.63637 z" />
+      
+      <!-- Dezente Innenkanten-Lichter für eine scharfe Kontur -->
+      <path fill="none" stroke="#25d5ff" stroke-width="2" opacity="0.6" filter="url(#rim_glow)"
+            d="M 479.54545,706.81818 L 806.81818,895.45455 L 1115.9091,706.81818" />
+      <path fill="none" stroke="#b026ff" stroke-width="2.5" opacity="0.8" filter="url(#rim_glow)"
+            d="M 484.09091,1052.2727 L 795.45455,1229.5455 L 1113.6364,1045.4545" />
+    </g>
+
+
+    <!-- PATH 21: OBERES SCHWEBENDES DACH -->
+    <g id="path21_roof">
+      <!-- Linker Dachflügel -->
+      <path fill="url(#roof_left_grad)"
+            d="M 793.18182,193.18182 L 370.45455,436.36364 L 488.63636,509.09091 L 795.45455,327.27273 Z" />
+      
+      <!-- Rechter Dachflügel -->
+      <path fill="url(#roof_right_grad)"
+            d="M 793.18182,193.18182 L 1225.0,440.90909 L 1115.9091,504.54545 L 795.45455,327.27273 Z" />
+
+
+      <!-- Mittlere Falzkante -->
+      <line x1="793.18182" y1="193.18182" x2="795.45455" y2="327.27273" stroke="#52f3ff" stroke-width="2.5" opacity="0.9" />
+    </g>
+
+
+    <!-- NEON-HIGHLIGHTS UND LICHTKANTEN -->
+    <g id="neon_highlights" stroke-linejoin="round" stroke-linecap="round">
+      <!-- Obere Dachkante Cyan-Licht -->
+      <polyline points="370.45455,436.36364 793.18182,193.18182 1225.0,440.90909"
+                fill="none" stroke="#ffffff" stroke-width="2.5" opacity="0.95" />
+      <polyline points="370.45455,436.36364 793.18182,193.18182 1225.0,440.90909"
+                fill="none" stroke="#3bf0ff" stroke-width="6" opacity="0.5" filter="url(#rim_glow)" />
+
+
+      <!-- Obere M-Körper Kante Cyan-Licht -->
+      <polyline points="315.9091,443.18182 802.27273,725.0 1281.8181,445.45455"
+                fill="none" stroke="#ffffff" stroke-width="2.5" opacity="0.95" />
+      <polyline points="315.9091,443.18182 802.27273,725.0 1281.8181,445.45455"
+                fill="none" stroke="#3bf0ff" stroke-width="6" opacity="0.5" filter="url(#rim_glow)" />
+
+
+      <!-- Vertikale Außenkanten -->
+      <line x1="315.9091" y1="443.18182" x2="322.72728" y2="1145.4545" stroke="#26a0ff" stroke-width="3.5" />
+      <line x1="1281.8181" y1="445.45455" x2="1284.0909" y2="1145.4545" stroke="#26a0ff" stroke-width="3.5" />
+
+
+      <!-- Untere Außenkante Magenta-Glow -->
+      <polyline points="322.72728,1145.4545 802.27273,1402.2727 1284.0909,1145.4545"
+                fill="none" stroke="#e138ff" stroke-width="4" />
+      <polyline points="322.72728,1145.4545 802.27273,1402.2727 1284.0909,1145.4545"
+                fill="none" stroke="#ffffff" stroke-width="1.5" opacity="0.9" />
+
+
+      <!-- Mittellinie des M-Körpers -->
+      <line x1="802.27273" y1="725.0" x2="802.27273" y2="1402.2727" stroke="#ffffff" stroke-width="1.5" opacity="0.4" />
+    </g>
+
+
+  </g>
+</svg>

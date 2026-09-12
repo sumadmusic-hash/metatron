@@ -31,8 +31,13 @@ export class BindingManager {
         return this.device;
     }
 
-    /** Re-point the manager at another Device (device switching, Phase B). */
+    /** Re-point the manager at another Device (device switching, Phase B).
+     *  Same-instance refreshes (preset load, undo/redo, rename) must NOT
+     *  destroy the current project's live bindings. */
     public setDevice(device: Device) {
+        if (device === this.device) {
+            return;
+        }
         this.device = device;
         this.activeBindings.clear();
     }

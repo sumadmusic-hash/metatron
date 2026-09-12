@@ -213,7 +213,7 @@ describe("C1 follow-up FIX A — color-picker cancel never leaks a stale gesture
         device.addGroup(g);
         const { root } = mountApp(device);
 
-        const picker = root.querySelector<HTMLInputElement>(`[data-grp-id="${g.id}"] .group-color-input`)!;
+        const picker = root.querySelector<HTMLInputElement>(`[data-grp-tools-for="${g.id}"] .group-color-input`)!;
         picker.value = "#ff0000";
         picker.dispatchEvent(new Event("input", { bubbles: true }));
         expect(g.color).toBe("#ff0000");

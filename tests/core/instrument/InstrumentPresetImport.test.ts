@@ -419,3 +419,174 @@ describe("Phase C — controlled failures (I/J/K)", () => {
         expect(rec.message).toContain("no binding");
     });
 });
+
+describe("Phase C — M23.2 cross-project control remap (fresh destination device)", () => {
+    let snapshot: ChainSnapshot;
+    let sourceDevice: Device;
+    let sourceCutoff: Control;
+    let sourceActive: Control;
+    let preset: InstrumentPreset;
+    let pulvSourceId: string;
+
+    async function runImportInto(destination: Device): Promise<{
+        result: Awaited<ReturnType<typeof importInstrumentPreset>>;
+        target: any;
+        destination: Device;
+    }> {
+        const target: any = await freshTargetDoc();
+        const result = await importInstrumentPreset(preset, target, new BindingManager(destination));
+        return { result, target, destination };
+    }
+
+    beforeAll(async () => {
+        const source: any = await createOfflineDocument({ validated: true });
+        await source.modify((t: any) => {
+            t.create("pulverisateur", { displayName: "SYNTH" });
+        });
+        const pulv = source.queryEntities.get().find((e: any) => e.entityType === "pulverisateur") as any;
+        snapshot = createSnapshot(source, pulv.id);
+        pulvSourceId = snapshot.devices[0].sourceEntityId;
+
+        // SOURCE instrument (export side)
+        sourceDevice = new Device("Source Lead");
+        sourceCutoff = new Control("knob", "Cutoff");
+        sourceCutoff.value = 0.73;
+        sourceActive = new Control("switch", "Active");
+        sourceActive.value = 1;
+        sourceDevice.addControl(sourceCutoff);
+        sourceDevice.addControl(sourceActive);
+        sourceDevice.savePreset("Remap Me");
+
+        const exported = exportInstrumentPreset({
+            device: sourceDevice,
+            preset: Array.from(sourceDevice.presets.values())[0],
+            snapshot,
+            bindings: [
+                { controlId: sourceCutoff.id, sourceEntityId: pulvSourceId, fieldPath: "filter.cutoffFrequencyHz" },
+                { controlId: sourceActive.id, sourceEntityId: pulvSourceId, fieldPath: "isActive" },
+            ],
+        });
+        expect(exported.ok).toBe(true);
+        if (!exported.ok) return;
+        preset = exported.preset;
+
+        // the M23.2 addititive descriptor must be present on the exported bindings
+        const cutoffBinding = preset.bindings.find((b) => b.controlId === sourceCutoff.id)!;
+        expect(cutoffBinding.controlName).toBe("Cutoff");
+        expect(cutoffBinding.controlType).toBe("knob");
+        const activeBinding = preset.bindings.find((b) => b.controlId === sourceActive.id)!;
+        expect(activeBinding.controlName).toBe("Active");
+        expect(activeBinding.controlType).toBe("switch");
+    });
+
+    it("fresh device + UNIQUE name/type signature → signature remap, Control.value applied, Audiotool written", async () => {
+        const dest = new Device("Fresh Lead");
+        const destCutoff = new Control("knob", "Cutoff");
+        const destActive = new Control("switch", "Active");
+        dest.addControl(destCutoff);
+        dest.addControl(destActive);
+        expect(destCutoff.id).not.toBe(sourceCutoff.id);
+        expect(destActive.id).not.toBe(sourceActive.id);
+
+        const { result, target } = await runImportInto(dest);
+        expect(result.ok).toBe(true);
+        expect(result.sections.chain.ok).toBe(true);
+
+        // bindings remapped onto the DESTINATION control ids via signature
+        const cutoffRecord = result.bindings.find((r) => r.sourceControlId === sourceCutoff.id)!;
+        expect(cutoffRecord.ok).toBe(true);
+        expect(cutoffRecord.controlId).toBe(destCutoff.id);
+        expect(cutoffRecord.matchedBy).toBe("signature");
+        const activeRecord = result.bindings.find((r) => r.sourceControlId === sourceActive.id)!;
+        expect(activeRecord.ok).toBe(true);
+        expect(activeRecord.controlId).toBe(destActive.id);
+        expect(activeRecord.matchedBy).toBe("signature");
+
+        // M23.2 — the normalized value is reflected on the destination control
+        expect(destCutoff.value).toBe(0.73);
+        expect(destActive.value).toBe(1);
+
+        // controlValues traveled under the SOURCE id and applied to the DESTINATION id
+        const presetRec = result.presetValues.find((r) => r.sourceControlId === sourceCutoff.id)!;
+        expect(presetRec.ok).toBe(true);
+        expect(presetRec.controlId).toBe(destCutoff.id);
+        expect(valuesEqualFloat32(presetRec.nexusValue!, 18 + 0.73 * 15482)).toBe(true);
+
+        // the Audiotool parameter received the mapped value (0.73 → ≈11319.86)
+        const entity = (target.queryEntities as any).getEntity(cutoffRecord.targetEntityId);
+        expect(valuesEqualFloat32(entity.fields.filter.fields.cutoffFrequencyHz.value, 18 + 0.73 * 15482)).toBe(true);
+        expect(result.verification.preset.ok).toBe(true);
+    });
+
+    it("same-device import stays id-based (matchedBy id)", async () => {
+        const { result } = await runImportInto(sourceDevice);
+        expect(result.ok).toBe(true);
+        const cutoffRecord = result.bindings.find((r) => r.sourceControlId === sourceCutoff.id)!;
+        expect(cutoffRecord.controlId).toBe(sourceCutoff.id);
+        expect(cutoffRecord.matchedBy).toBe("id");
+        expect(sourceCutoff.value).toBe(0.73);
+    });
+
+    it("two identical signatures on the fresh device → binding UNRESOLVED (ambiguous, no guess)", async () => {
+        const dest = new Device("Fresh Dupe");
+        const a = new Control("knob", "Cutoff");
+        const b = new Control("knob", "Cutoff");
+        dest.addControl(a);
+        dest.addControl(b);
+        const { result } = await runImportInto(dest);
+        expect(result.ok).toBe(false);
+        const rec = result.bindings.find((r) => r.sourceControlId === sourceCutoff.id)!;
+        expect(rec.ok).toBe(false);
+        expect(rec.matchedBy).toBeUndefined();
+        expect(rec.controlId).toBe(sourceCutoff.id); // no remap
+        expect(String(rec.message)).toMatch(/unresolved|multiple/i);
+        expect(result.failures.some((f) => f.includes(sourceCutoff.id))).toBe(true);
+        // the unrelated "Cutoff" knobs must stay unbound
+        expect(a.value).not.toBe(0.73);
+        expect(b.value).not.toBe(0.73);
+    });
+
+    it("unique name but WRONG control type → type-mismatch UNRESOLVED", async () => {
+        const dest = new Device("Fresh Switch");
+        const s = new Control("switch", "Cutoff");
+        dest.addControl(s);
+        const { result } = await runImportInto(dest);
+        expect(result.ok).toBe(false);
+        const rec = result.bindings.find((r) => r.sourceControlId === sourceCutoff.id)!;
+        expect(rec.ok).toBe(false);
+        expect(String(rec.message)).toMatch(/type/i);
+        expect(result.failures.some((f) => f.includes("type"))).toBe(true);
+    });
+
+    it("no matching control → missing UNRESOLVED, no false binding", async () => {
+        const dest = new Device("Fresh Solo");
+        const r = new Control("knob", "Resonance");
+        dest.addControl(r);
+        const { result } = await runImportInto(dest);
+        expect(result.ok).toBe(false);
+        const rec = result.bindings.find((r) => r.sourceControlId === sourceCutoff.id)!;
+        expect(rec.ok).toBe(false);
+        expect(rec.controlId).toBe(sourceCutoff.id);
+        expect(String(rec.message)).toMatch(/unresolved|does not exist/i);
+        expect(r.value).not.toBe(0.73);
+    });
+
+    it("targetName is NEVER a match criterion (full import path proof)", async () => {
+        const dest = new Device("Fresh Target");
+        const t = new Control("knob", "Other");
+        // a destination control whose targetName would satisfy the OLD M23.1
+        // step-2 heuristic for this exact binding field — must be ignored.
+        (t as any).audiotoolBindingDefinition = { targetName: "pulverisateur / filter.cutoffFrequencyHz" };
+        dest.addControl(t);
+        const { result } = await runImportInto(dest);
+        expect(result.ok).toBe(false);
+        const rec = result.bindings.find((r) => r.sourceControlId === sourceCutoff.id)!;
+        expect(rec.ok).toBe(false);
+        expect(rec.controlId).toBe(sourceCutoff.id); // no remap happened
+        expect(rec.matchedBy).toBeUndefined();
+        // the "matching" targetName control must NOT be bound or touched
+        expect(t.value).not.toBe(0.73);
+        const bmActive = result.bindings.find((r) => r.sourceControlId === sourceActive.id)!;
+        expect(bmActive.ok).toBe(false);
+    });
+});

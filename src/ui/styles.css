@@ -44,6 +44,25 @@ body {
     -webkit-text-fill-color: transparent;
 }
 
+/* M20.12 — Metatron logo sits left of the title inside the same flex row.
+   Displayed as a square 28×28 without distortion; stays together with the
+   nowrap title at narrow widths. */
+.app-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 20px;
+    white-space: nowrap;
+}
+
+.app-title .app-logo {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 auto;
+    display: block;
+    object-fit: contain;
+}
+
 /* Glassmorphism Buttons */
 .btn {
     background: rgba(255, 255, 255, 0.05);
@@ -276,21 +295,71 @@ body {
     white-space: nowrap;
 }
 
-.group-box .group-color-input {
+/* Group edit toolbar (M20.11) — lives OUTSIDE the group box as a sibling
+   (`parent > .group-box + .group-tools`), so the box's own surface never
+   carries editor furniture. Positioned via JS `positionGroupToolbar()` to
+   flip below when the group sits near the canvas top edge. Revealed on group
+   hover and kept visible while hovered itself so its buttons stay clickable.
+   Inert when invisible so it never blocks clicks on the canvas. */
+.group-tools {
     position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 16px;
-    height: 16px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: rgba(10, 12, 16, 0.94);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    white-space: nowrap;
     opacity: 0;
+    pointer-events: none;
+    z-index: 25;
+    transition: opacity 0.12s ease;
 }
 
-.group-box:hover .group-color-input {
+.group-box:hover + .group-tools,
+.group-tools:hover {
     opacity: 1;
+    pointer-events: auto;
+}
+
+.group-tools .group-color-input {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.group-tools .group-hex-row {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+}
+
+/* Delete must sit clearly at the RIGHT END of the toolbar — and only there. */
+.group-tools .group-delete-btn {
+    margin-left: auto;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    font-size: 11px;
+    line-height: 20px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.group-tools .group-delete-btn:hover {
+    background: rgba(255, 60, 60, 0.85);
+    color: #fff;
 }
 
 .group-box .resize-handle {
@@ -303,29 +372,6 @@ body {
     border-radius: 50%;
     border: 2px solid #000;
     cursor: nwse-resize;
-}
-
-.group-box .group-delete-btn {
-    position: absolute;
-    top: 2px;
-    left: 4px;
-    min-width: 20px;
-    height: 20px;
-    padding: 0;
-    font-size: 12px;
-    line-height: 20px;
-    text-align: center;
-    background: rgba(255, 255, 255, 0.07);
-    color: #fff;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    cursor: pointer;
-    z-index: 2;
-}
-
-.group-box .group-delete-btn:hover {
-    background: rgba(255, 60, 60, 0.85);
-    color: #fff;
 }
 
 .group-box.use-group .group-hex-row {
@@ -361,51 +407,12 @@ body {
     line-height: 1.2;
 }
 
-.group-header .group-delete-btn {
-    position: static;
-    top: auto;
-    left: auto;
-    flex: 0 0 auto;
-    min-width: 20px;
-    height: 20px;
-    padding: 0 6px;
-    font-size: 11px;
-    line-height: 20px;
-    text-align: center;
-    background: rgba(255, 255, 255, 0.07);
-    color: #fff;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.group-header .group-delete-btn:hover {
-    background: var(--accent-color);
-    color: #000;
-}
-
 .color-hex-label {
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     font-size: 11px;
     letter-spacing: 0.4px;
     color: #9ae2ff;
     white-space: nowrap;
-}
-
-.group-box .group-hex-row {
-    position: absolute;
-    top: 3px;
-    right: 24px;
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    z-index: 2;
-    opacity: 0;
-    white-space: nowrap;
-}
-
-.group-box:hover .group-hex-row {
-    opacity: 1;
 }
 
 .group-hex-row .tool-btn {
@@ -471,32 +478,51 @@ body {
     z-index: 20;
 }
 
-/* Editing tools — a coherent horizontal bar that floats ABOVE the selected
+/* Editing tools — a compact TWO-ROW bar that floats ABOVE the selected
    control. It is a context overlay, not part of the Control's own measured
-   120×120 geometry. Positioned via JS `applyToolbarPosition()` to flip
-   below when the control sits near the canvas top edge. */
+   120×120 geometry. Row 1 = normal edit/settings options, row 2 = color
+   options with the Delete/✕ action pushed to the far right (M20.8).
+   Positioned via JS `applyToolbarPosition()` to flip below when the control
+   sits near the canvas top edge. */
 .control-tools {
     position: absolute;
     left: 50%;
     bottom: auto;
-    top: -36px;
+    top: -64px;
     transform: translateX(-50%);
     display: none;
-    flex-direction: row;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
     gap: 4px;
     padding: 3px 6px;
     background: rgba(10, 12, 16, 0.94);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-    white-space: nowrap;
     z-index: 30;
     pointer-events: auto;
 }
 
 .control-wrapper.selected .control-tools {
     display: flex;
+}
+
+.control-tools-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+/* The two rows stay fixed vertically independent of the control width:
+   whether a row is short or long, it never wraps into a third visual row. */
+.control-tools-row {
+    flex-wrap: nowrap;
+}
+
+/* Delete must sit clearly at the RIGHT END of row 2 — and only there. */
+.control-tools .control-delete-btn {
+    margin-left: auto;
 }
 
 .control-tools .tool-btn {
@@ -791,6 +817,13 @@ body {
 .mini-btn:hover {
     border-color: var(--accent-color);
     color: var(--accent-color);
+}
+
+.mini-btn.active {
+    background: var(--accent-color);
+    color: #000;
+    border-color: transparent;
+    font-weight: 700;
 }
 
 .status-dot {

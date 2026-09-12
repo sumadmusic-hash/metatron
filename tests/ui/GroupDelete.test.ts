@@ -37,9 +37,10 @@ describe("Group delete UI fix", () => {
         const { host, device, library, ui, history, member, group } = mount();
         const saveSpy = vi.spyOn(library, "saveCurrentDevice");
 
-        const groupEl = host.querySelector<HTMLElement>(`[data-grp-id="${group.id}"]`)!;
-        const deleteBtn = groupEl.querySelector<HTMLElement>(".group-delete-btn")!;
+        // Delete lives in the EXTERNAL edit toolbar (M20.11), not inside the box.
+        const deleteBtn = host.querySelector<HTMLElement>(`[data-grp-tools-for="${group.id}"] .group-delete-btn`)!;
         expect(deleteBtn).not.toBeNull();
+        expect(deleteBtn.parentElement!.classList.contains("group-tools")).toBe(true);
         expect(deleteBtn.title).toBe("Delete group");
 
         deleteBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
@@ -77,7 +78,7 @@ describe("Group delete UI fix", () => {
 
     it("Test 2 — group delete button does not start a group drag", () => {
         const { host, device, group } = mount();
-        const deleteBtn = host.querySelector<HTMLElement>(`[data-grp-id="${group.id}"] .group-delete-btn`)!;
+        const deleteBtn = host.querySelector<HTMLElement>(`[data-grp-tools-for="${group.id}"] .group-delete-btn`)!;
 
         deleteBtn.dispatchEvent(new PointerEvent("pointerdown", { pointerId: 1, clientX: 5, clientY: 5, button: 0, bubbles: true, cancelable: true }));
         document.dispatchEvent(new PointerEvent("pointermove", { pointerId: 1, clientX: 60, clientY: 60, bubbles: true, cancelable: true }));

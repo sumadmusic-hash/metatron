@@ -96,9 +96,9 @@ describe("Hex color copy/paste", () => {
     it("Test 2 — Group Copy writes the current hex value into the clipboard", async () => {
         installClipboardSeam();
         const { host, group } = mount();
-        const box = host.querySelector<HTMLElement>(`[data-grp-id="${group.id}"]`)!;
+        const toolbox = host.querySelector<HTMLElement>(`[data-grp-tools-for="${group.id}"]`)!;
 
-        clickBtn(findBtn(box, "Copy"));
+        clickBtn(findBtn(toolbox, "Copy"));
         await flush();
 
         expect(clipText).toBe("#00FF88");
@@ -141,14 +141,15 @@ describe("Hex color copy/paste", () => {
         const saveSpy = vi.spyOn(library, "saveCurrentDevice");
         const recordSpy = vi.spyOn(history, "record");
         const box = host.querySelector<HTMLElement>(`[data-grp-id="${group.id}"]`)!;
+        const tools = host.querySelector<HTMLElement>(`[data-grp-tools-for="${group.id}"]`)!;
 
-        clickBtn(findBtn(box, "Paste"));
+        clickBtn(findBtn(tools, "Paste"));
         await flush();
 
         expect(group.color).toBe("#123456");
         expect(box.querySelector<HTMLElement>(".group-header")!.style.background).toContain("rgba(18, 52, 86, 0.14)");
-        expect(box.querySelector<HTMLElement>(".group-hex-row .color-hex-label")!.textContent).toBe("#123456");
-        expect((box.querySelector<HTMLInputElement>(".group-color-input")!).value).toBe("#123456");
+        expect(tools.querySelector<HTMLElement>(".group-hex-row .color-hex-label")!.textContent).toBe("#123456");
+        expect((tools.querySelector<HTMLInputElement>(".group-color-input")!).value).toBe("#123456");
         expect(saveSpy).toHaveBeenCalledTimes(1);
         expect(recordSpy).toHaveBeenCalledTimes(1);
         expect(recordSpy.mock.calls[0][0].type).toBe("group.color");

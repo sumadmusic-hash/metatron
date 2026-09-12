@@ -153,7 +153,21 @@ export function exportInstrumentPreset(input: InstrumentPresetExportInput): Inst
             continue;
         }
 
-        exportedBindings.push({ controlId: binding.controlId, sourceEntityIndex, fieldPath: binding.fieldPath, valueMapping });
+        // M23.2 — carry the OPTIONAL Metatron control descriptors so a fresh
+        // destination device can remap the binding later via the unique
+        // name+type SIGNATURE fallback (never via any targetName). controlType
+        // is restricted to the knob|switch union the matcher understands; a
+        // runtime-only control type (e.g. "rotary") exports NO descriptor.
+        const control = device.getControl(binding.controlId);
+        exportedBindings.push({
+            controlId: binding.controlId,
+            sourceEntityIndex,
+            fieldPath: binding.fieldPath,
+            valueMapping,
+            controlName: control?.name,
+            controlType: control?.type === "knob" || control?.type === "switch" ? control.type : undefined,
+            controlNameSource: control?.nameSource,
+        });
     }
 
     if (errors.length > 0) {

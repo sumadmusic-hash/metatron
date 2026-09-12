@@ -24,8 +24,8 @@ import { resolveFieldByPath } from "./ChainPath";
 import { normalizeEntityId } from "./ChainDiscovery";
 import { discoverChainLive } from "./ChainLive";
 import { createSnapshot } from "./ChainSnapshot";
-import { planDevices, planParameters, planConnections } from "./ChainPlanning";
-import type { ResolveTargetFieldMeta, ResolveTargetSocket } from "./ChainPlanning";
+import { planDevices, planParameters, planConnections, planDeviceLayout } from "./ChainPlanning";
+import type { DevicePosition, ResolveTargetFieldMeta, ResolveTargetSocket } from "./ChainPlanning";
 import { buildTargetDigest, compareSnapshotWithTarget } from "./ChainVerify";
 import type {
     ChainSnapshot,
@@ -80,6 +80,7 @@ function fieldMetaOf(field: any): { primitiveType?: string; scalarType?: number;
 export async function createDevicesInDoc(
     targetDoc: SyncedDocument,
     devicePlans: DevicePlan[],
+    positions?: Map<string, DevicePosition>,
 ): Promise<{ idMap: Map<string, string>; failures: FailureRecord[] }> {
     const idMap = new Map<string, string>();
     const failures: FailureRecord[] = [];
@@ -92,6 +93,11 @@ export async function createDevicesInDoc(
                 try {
                     const args: Record<string, unknown> = {};
                     if (plan.displayName) args.displayName = plan.displayName;
+                    const pos = positions?.get(normalizeEntityId(plan.sourceId));
+                    if (pos) {
+                        args.positionX = pos.x;
+                        args.positionY = pos.y;
+                    }
                     const created = t.create(plan.entityType, args);
                     idMap.set(normalizeEntityId(plan.sourceId), created.id);
                 } catch (e) {
@@ -321,14 +327,19 @@ export function verifyClone(
     idMap: Map<string, string>,
 ): VerificationResult {
     const digest = buildTargetDigest(targetDoc);
-    let targetOrder: string[] = [];
-    const rootCandidate = snapshot.rootCandidates[0];
-    const targetRoot = rootCandidate ? idMap.get(normalizeEntityId(rootCandidate)) : undefined;
-    if (targetRoot) {
+    const targetOrder: string[] = [];
+    const visited = new Set<string>();
+    for (const candidate of snapshot.rootCandidates) {
+        const targetRoot = candidate ? idMap.get(normalizeEntityId(candidate)) : undefined;
+        if (!targetRoot) continue;
         try {
-            targetOrder = discoverChainLive(targetDoc, targetRoot, 32).result.order;
+            for (const id of discoverChainLive(targetDoc, targetRoot, 32).result.order) {
+                if (visited.has(id)) continue;
+                visited.add(id);
+                targetOrder.push(id);
+            }
         } catch {
-            targetOrder = [];
+            // a root that cannot be traversed is simply not visited
         }
     }
     const verification = compareSnapshotWithTarget(snapshot, digest, idMap, targetOrder);
@@ -461,8 +472,9 @@ export async function cloneChainFromSnapshot(
 ): Promise<CloneResult> {
     const devicePlans = planDevices(snapshot, KNOWN_CREATABLE_TYPES);
     const unsupportedTypes = devicePlans.filter((p) => p.action === "unsupported").map((p) => p.entityType);
+    const layout = planDeviceLayout(snapshot);
 
-    const { idMap, failures: deviceFailures } = await createDevicesInDoc(targetDoc, devicePlans);
+    const { idMap, failures: deviceFailures } = await createDevicesInDoc(targetDoc, devicePlans, layout);
     progress(options, `creating devices…`);
 
     const resolvers = buildTargetResolvers(targetDoc, idMap);

@@ -20,6 +20,7 @@ import {
 } from "./ChainLive";
 import { normalizeEntityId, extractAudioConnections } from "./ChainDiscovery";
 import type { ChainSnapshot, ConnectionSnapshot, DeviceSnapshot, FieldSnapshot } from "./ChainTypes";
+import type { ChainUnionResult } from "./ChainDiscovery";
 
 const LOG = "[METATRON CHAIN CLONE]";
 
@@ -107,6 +108,61 @@ export function createSnapshot(doc: SyncedDocument, rootId: string, maxDepth = 3
     };
     console.log(
         `${LOG} snapshot: devices=${devices.length} connections=${connectionsSnapshot.length} rootCandidates=${rootCandidates.length}`,
+    );
+    return snapshot;
+}
+
+/** Build a chain snapshot from a pre-computed union (binding-based selection). */
+export function createSnapshotFromUnion(
+    doc: SyncedDocument,
+    union: ChainUnionResult,
+): ChainSnapshot {
+    const entities = listEntitiesLive(doc);
+    const byId = new Map(entities.map((e) => [e.id, e]));
+    const deviceSet = new Set(union.devices);
+
+    const devices: DeviceSnapshot[] = union.devices.map((id) => {
+        const listed = byId.get(id);
+        const entity = (doc.queryEntities as any).getEntity(id) ?? listed;
+        const fields = entity?.fields ?? {};
+        const displayName = typeof fields.displayName === "object" && "value" in fields.displayName
+            ? String((fields.displayName as any).value ?? "")
+            : undefined;
+        return {
+            sourceEntityId: id,
+            entityType: entity?.entityType ?? listed?.entityType ?? "",
+            displayName: displayName || undefined,
+            schemaTargetType: listed?.schemaTypeKey ?? listed?.entityType,
+            fields: captureFields(fields),
+        };
+    });
+
+    const connectionsSnapshot: ConnectionSnapshot[] = [];
+    for (const cable of union.connections) {
+        const from = normalizeEntityId(cable.from.entityId);
+        const to = normalizeEntityId(cable.to.entityId);
+        if (!deviceSet.has(from) || !deviceSet.has(to)) continue;
+        connectionsSnapshot.push({
+            fromEntityId: from,
+            fromSocket: cable.from.socketField,
+            fromSocketPath: cable.from.socketPath,
+            toEntityId: to,
+            toSocket: cable.to.socketField,
+            toSocketPath: cable.to.socketPath,
+        });
+    }
+
+    const snapshot: ChainSnapshot = {
+        version: 1,
+        devices,
+        connections: connectionsSnapshot,
+        rootCandidates: union.rootCandidates,
+    };
+    if (union.truncated) {
+        console.warn(`${LOG} snapshot-from-union: depth limit reached (maxDepth=${union.maxDepth})`);
+    }
+    console.log(
+        `${LOG} snapshot-from-union: devices=${devices.length} connections=${connectionsSnapshot.length} rootCandidates=${union.rootCandidates.length}`,
     );
     return snapshot;
 }

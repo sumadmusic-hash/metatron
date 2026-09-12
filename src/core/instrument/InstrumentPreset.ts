@@ -30,6 +30,16 @@ export interface InstrumentPresetBinding {
     fieldPath: string;
     /** Reuses the existing NexusValueMapping model (no duplicate structure). */
     valueMapping: NexusValueMapping;
+    /**
+     * M23.2 — OPTIONAL, additive. Cross-project control descriptors.
+     * Never required; legacy v0.1 envelopes stay valid. They enable the
+     * convention-based SIGNATURE fallback only (name + type, unique). They
+     * must NEVER be read as an entity-verified identity — `targetName`
+     * equivalents are deliberately NOT stored here (M23.1.1).
+     */
+    controlName?: string;
+    controlType?: "knob" | "switch";
+    controlNameSource?: "auto" | "manual";
 }
 
 /** Serializable, Nexus-free exchange format of a complete Metatron instrument. */
@@ -186,6 +196,17 @@ export function validateInstrumentPreset(input: unknown): InstrumentPresetValida
                 } else if (mapping.min > mapping.max) {
                     errors.push(`${at}.valueMapping: min must be <= max`);
                 }
+            }
+
+            // M23.2 — OPTIONAL descriptor type checks (missing = valid envelope).
+            if (binding.controlName !== undefined && !isNonEmptyString(binding.controlName)) {
+                errors.push(`${at}.controlName: expected a non-empty string when present`);
+            }
+            if (binding.controlType !== undefined && binding.controlType !== "knob" && binding.controlType !== "switch") {
+                errors.push(`${at}.controlType: expected "knob" | "switch" when present`);
+            }
+            if (binding.controlNameSource !== undefined && binding.controlNameSource !== "auto" && binding.controlNameSource !== "manual") {
+                errors.push(`${at}.controlNameSource: expected "auto" | "manual" when present`);
             }
         });
     }
