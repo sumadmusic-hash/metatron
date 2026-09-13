@@ -367,15 +367,20 @@ body {
     border-radius: 50%;
     box-sizing: border-box;
     background:
-        radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.08) 0%, transparent 50%),
-        linear-gradient(160deg, #5a6270 0%, #3b4252 40%, #2a2f38 70%, #1f2328 100%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+        linear-gradient(155deg,
+            #525a64 0%,
+            #3d444e 30%,
+            #2c3139 60%,
+            #1e2228 100%);
+    border: 1.5px solid rgba(255, 255, 255, 0.1);
     box-shadow:
-        6px 6px 14px rgba(0, 0, 0, 0.5),
-        -4px -4px 10px rgba(255, 255, 255, 0.04),
-        inset 1px 1px 3px rgba(255, 255, 255, 0.12),
-        inset -1px -1px 3px rgba(0, 0, 0, 0.3),
-        inset 0 0 8px rgba(0, 0, 0, 0.15);
+        4px 6px 12px rgba(0, 0, 0, 0.5),
+        -2px -2px 6px rgba(255, 255, 255, 0.03),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+        inset 1px 0 2px rgba(255, 255, 255, 0.05),
+        inset -1px 0 2px rgba(0, 0, 0, 0.12),
+        inset 0 0 8px rgba(0, 0, 0, 0.1);
     position: relative;
     display: flex;
     justify-content: center;
@@ -390,19 +395,18 @@ body {
     inset: 0;
     border-radius: 50%;
     background:
+        radial-gradient(
+            ellipse at 35% 30%,
+            rgba(255, 255, 255, 0.12) 0%,
+            rgba(255, 255, 255, 0.03) 30%,
+            transparent 55%
+        ),
         repeating-linear-gradient(
             105deg,
             transparent 0px,
-            rgba(255, 255, 255, 0.015) 1px,
+            rgba(255, 255, 255, 0.008) 1px,
             transparent 2px,
-            transparent 4px
-        ),
-        linear-gradient(
-            150deg,
-            transparent 30%,
-            rgba(255, 255, 255, 0.15) 42%,
-            rgba(255, 255, 255, 0.03) 48%,
-            transparent 58%
+            transparent 5px
         );
     pointer-events: none;
     z-index: 1;
