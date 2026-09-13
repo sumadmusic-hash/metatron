@@ -57,7 +57,9 @@ private container!: HTMLElement;
 
     public render(parent: HTMLElement) {
         this.container = document.createElement("div");
-        this.container.className = "editor-canvas";
+        // The USE surface is a performance UI, not the EDIT layout canvas: it
+        // must never show the snap grid, regardless of the EDIT-side Snap state.
+        this.container.className = "editor-canvas editor-canvas--nogrid";
 
         // Deselect when clicking the empty canvas (mirrors EDIT-mode behavior)
         this.container.addEventListener("mousedown", (e) => {
