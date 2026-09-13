@@ -366,12 +366,16 @@ body {
     aspect-ratio: 1 / 1;
     border-radius: 50%;
     box-sizing: border-box;
-    background: linear-gradient(135deg, #6b7280 0%, #3b4252 100%);
+    background:
+        radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.08) 0%, transparent 50%),
+        linear-gradient(160deg, #5a6270 0%, #3b4252 40%, #2a2f38 70%, #1f2328 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow:
-        6px 6px 12px rgba(0, 0, 0, 0.5),
-        -6px -6px 12px rgba(255, 255, 255, 0.05),
-        inset 2px 2px 5px rgba(255, 255, 255, 0.15),
-        inset -2px -2px 5px rgba(0, 0, 0, 0.4);
+        6px 6px 14px rgba(0, 0, 0, 0.5),
+        -4px -4px 10px rgba(255, 255, 255, 0.04),
+        inset 1px 1px 3px rgba(255, 255, 255, 0.12),
+        inset -1px -1px 3px rgba(0, 0, 0, 0.3),
+        inset 0 0 8px rgba(0, 0, 0, 0.15);
     position: relative;
     display: flex;
     justify-content: center;
@@ -383,18 +387,23 @@ body {
 .knob-body::before {
     content: "";
     position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(
-        45deg,
-        transparent 40%,
-        rgba(255, 255, 255, 0.2) 45%,
-        rgba(255, 255, 255, 0.05) 50%,
-        transparent 55%
-    );
-    transform: rotate(0deg);
+    inset: 0;
+    border-radius: 50%;
+    background:
+        repeating-linear-gradient(
+            105deg,
+            transparent 0px,
+            rgba(255, 255, 255, 0.015) 1px,
+            transparent 2px,
+            transparent 4px
+        ),
+        linear-gradient(
+            150deg,
+            transparent 30%,
+            rgba(255, 255, 255, 0.15) 42%,
+            rgba(255, 255, 255, 0.03) 48%,
+            transparent 58%
+        );
     pointer-events: none;
     z-index: 1;
 }
