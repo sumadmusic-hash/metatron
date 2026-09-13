@@ -430,9 +430,11 @@ private container!: HTMLElement;
             widget.style.borderRadius = "50%";
             const pos = el.querySelector<HTMLElement>(".knob-position");
             if (pos) {
-                pos.style.top = `${layout.widgetWidth * 0.10}px`;
-                pos.style.transformOrigin = `50% ${layout.widgetWidth / 2}px`;
-                pos.style.height = `${Math.max(6, Math.round(layout.widgetWidth * 0.20))}px`;
+                const topPct = 0.18;
+                const heightPct = 0.18;
+                pos.style.top = `${layout.widgetWidth * topPct}px`;
+                pos.style.height = `${Math.max(6, Math.round(layout.widgetWidth * heightPct))}px`;
+                pos.style.transformOrigin = `50% ${layout.widgetWidth * (0.5 - topPct)}px`;
             }
         } else {
             widget.style.borderRadius = `${layout.widgetWidth / 2}px`;
