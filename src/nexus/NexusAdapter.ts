@@ -103,30 +103,6 @@ export class NexusAdapter {
         await this.document!.start();
     }
 
-    public async updateParameter(entityId: string, fieldName: string, value: any) {
-        if (!this.document) return;
-
-        const entity = this.document.queryEntities.getEntity(entityId);
-        if (!entity) {
-            console.error(`NexusAdapter: Entity ${entityId} not found`);
-            return;
-        }
-
-        const field = (entity.fields as any)[fieldName];
-        if (!field) {
-            console.error(`NexusAdapter: Field ${fieldName} not found on entity ${entityId}`);
-            return;
-        }
-
-        try {
-            await this.document.modify(t => {
-                t.update(field, value);
-            });
-        } catch (e) {
-            console.error(`NexusAdapter: Failed to update parameter:`, e);
-        }
-    }
-
     /** Writes a value for a control's active binding. Input `value` is the
      *  NORMALIZED Metatron value 0..1; it is mapped into the real Nexus range
      *  via the binding's value mapping (schema-derived) before the write.
@@ -189,32 +165,6 @@ export class NexusAdapter {
             return current;
         }
         return undefined;
-    }
-
-    public subscribeToParameter(controlId: string, entityId: string, fieldName: string) {
-        if (!this.document) return;
-
-        // Cleanup existing listener for this control if any
-        this.unsubscribeFromParameter(controlId);
-
-        const entity = this.document.queryEntities.getEntity(entityId);
-        if (!entity) return;
-
-        const field = (entity.fields as any)[fieldName] as any;
-        if (!field || field.mutable === false) return;
-
-        const cleanup = this.document!.events.onUpdate(field, (newValue: any) => {
-            if (this.onNexusValueChanged) {
-                // We assume numeric values for knobs/switches in v0.1
-                this.onNexusValueChanged(controlId, Number(newValue));
-            }
-        });
-
-        if (typeof cleanup === "function") {
-            this.updateListeners.set(controlId, cleanup);
-        } else if (cleanup && typeof cleanup.terminate === "function") {
-            this.updateListeners.set(controlId, () => cleanup.terminate());
-        }
     }
 
     /** Subscribes a control's active binding field so remote changes flow to the UI. */
