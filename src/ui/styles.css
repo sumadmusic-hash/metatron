@@ -365,26 +365,50 @@ body {
 .knob-body {
     aspect-ratio: 1 / 1;
     border-radius: 50%;
-    background: linear-gradient(145deg, #222630, #15181e);
+    box-sizing: border-box;
+    background:
+        radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.10), transparent 55%),
+        linear-gradient(145deg, #2a2f38, #15181e);
     box-shadow:
-        inset 0 2px 4px rgba(255, 255, 255, 0.1),
+        inset 0 2px 4px rgba(255, 255, 255, 0.15),
+        inset 0 -3px 6px rgba(0, 0, 0, 0.45),
         0 4px 8px rgba(0, 0, 0, 0.5),
-        0 8px 16px rgba(0, 0, 0, 0.4);
+        0 8px 16px rgba(0, 0, 0, 0.3);
     position: relative;
-    border: 2px solid var(--knob-border);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
     justify-content: center;
     align-items: center;
     flex: 0 0 auto;
 }
 
+.knob-ticks {
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    background: repeating-conic-gradient(
+        from -135deg,
+        rgba(255, 255, 255, 0.35) 0deg 1.2deg,
+        transparent 1.2deg 10deg
+    );
+    -webkit-mask-image:
+        conic-gradient(from -135deg, #000 0deg 270deg, transparent 270deg 360deg),
+        radial-gradient(closest-side, transparent 76%, #000 78%);
+    -webkit-mask-composite: source-in;
+    mask-image:
+        conic-gradient(from -135deg, #000 0deg 270deg, transparent 270deg 360deg),
+        radial-gradient(closest-side, transparent 76%, #000 78%);
+    mask-composite: intersect;
+    pointer-events: none;
+}
+
 .knob-indicator {
     position: absolute;
-    width: 4px;
-    height: 16px;
-    background: var(--accent-color);
+    width: 3px;
     border-radius: 2px;
-    box-shadow: 0 0 8px var(--accent-color);
+    background: linear-gradient(180deg, var(--accent-color), var(--accent-hover));
+    box-shadow: 0 0 8px var(--accent-color), 0 0 16px rgba(0, 229, 255, 0.35);
+    /* top, height und transform-origin werden ausschließlich durch applyControlLayout() gesetzt */
 }
 
 /* Switch Component (a vertical rail; its thumb stays circular) */
@@ -1057,4 +1081,12 @@ body {
 
 .control-wrapper.use-mode {
     pointer-events: auto;
+}
+
+.control-wrapper:hover {
+    box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.25), 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.group-box.use-group {
+    border-color: rgba(0, 229, 255, 0.28);
 }

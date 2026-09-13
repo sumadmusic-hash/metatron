@@ -195,6 +195,11 @@ private container!: HTMLElement;
             const body = document.createElement("div");
             body.className = "knob-body";
 
+            const ticks = document.createElement("div");
+            ticks.className = "knob-ticks";
+            ticks.setAttribute("aria-hidden", "true");
+            body.appendChild(ticks);
+
             const indicator = document.createElement("div");
             indicator.className = "knob-indicator";
 
@@ -431,6 +436,12 @@ private container!: HTMLElement;
             if (indicator) {
                 indicator.style.top = `${layout.widgetWidth * 0.08}px`;
                 indicator.style.transformOrigin = `50% ${layout.widgetWidth / 2}px`;
+                indicator.style.height = `${Math.max(6, Math.round(layout.widgetWidth * 0.22))}px`;
+            }
+
+            const ticks = el.querySelector<HTMLElement>(".knob-ticks");
+            if (ticks) {
+                ticks.style.inset = `-${Math.max(4, Math.round(layout.widgetWidth * 0.11))}px`;
             }
         } else {
             widget.style.borderRadius = `${layout.widgetWidth / 2}px`;
