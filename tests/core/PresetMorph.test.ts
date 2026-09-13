@@ -98,15 +98,15 @@ describe("morphControlValues (M9)", () => {
     it("12 — inputs are not mutated", () => {
         const a = preset("A", DEV, { k: 0.2, sw: 0.2 });
         const b = preset("B", DEV, { k: 0.8, sw: 0.8 });
-        const beforeA = JSON.stringify(a.controlValues);
-        const beforeB = JSON.stringify(b.controlValues);
+        const beforeA = { ...a.controlValues };
+        const beforeB = { ...b.controlValues };
 
         morphControlValues(a, b, 0.5, { sw: "switch" });
         morphControlValues(a, b, 1.5, { sw: "switch" });
         morphControlValues(a, b, -0.5, { sw: "switch" });
 
-        expect(JSON.stringify(a.controlValues)).toBe(beforeA);
-        expect(JSON.stringify(b.controlValues)).toBe(beforeB);
+        expect(a.controlValues).toEqual(beforeA);
+        expect(b.controlValues).toEqual(beforeB);
         expect(a.name).toBe("A");
         expect(b.name).toBe("B");
     });
@@ -114,9 +114,7 @@ describe("morphControlValues (M9)", () => {
     it("13 — result is deterministic", () => {
         const a = preset("A", DEV, { k: 0.2, onlyA: 0.1 });
         const b = preset("B", DEV, { k: 0.8, onlyB: 0.9 });
-        for (let i = 0; i < 5; i++) {
-            expect(morphControlValues(a, b, 0.37)).toEqual(morphControlValues(a, b, 0.37));
-        }
+        expect(morphControlValues(a, b, 0.37)).toEqual(morphControlValues(a, b, 0.37));
     });
 
     it("14 — no NaN/Infinity is produced", () => {
@@ -128,5 +126,12 @@ describe("morphControlValues (M9)", () => {
                 expect(Number.isFinite(v)).toBe(true);
             }
         }
+    });
+
+    it("15 — switch at the exact 0.5 boundary quantizes ON (>= 0.5)", () => {
+        const a = preset("A", DEV, { sw: 0 });
+        const b = preset("B", DEV, { sw: 1 });
+        const out = morphControlValues(a, b, 0.5, { sw: "switch" });
+        expect(out.sw).toBe(1); // 0 + 0.5 * (1 - 0) is exactly 0.5 → >= 0.5 → 1
     });
 });

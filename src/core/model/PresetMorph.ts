@@ -5,6 +5,10 @@ function finite(v: number | undefined): number {
     return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
 
+function quantize(id: string, value: number, controlTypes: Readonly<Record<string, ControlType>>): number {
+    return controlTypes[id] === "switch" ? (value >= 0.5 ? 1 : 0) : value;
+}
+
 /**
  * M9 — pure preset morphing.
  *
@@ -27,29 +31,22 @@ export function morphControlValues(
     controlTypes: Readonly<Record<string, ControlType>> = {},
 ): Record<string, number> {
     const t = Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 0;
-
-    const ids = new Set<string>([
-        ...Object.keys(presetA.controlValues),
-        ...Object.keys(presetB.controlValues),
-    ]);
+    const kvA = presetA.controlValues;
+    const kvB = presetB.controlValues;
 
     const result: Record<string, number> = {};
-    for (const id of ids) {
-        const inA = id in presetA.controlValues;
-        const inB = id in presetB.controlValues;
 
-        let value: number;
-        if (inA && inB) {
-            const a = finite(presetA.controlValues[id]);
-            const b = finite(presetB.controlValues[id]);
-            value = a + t * (b - a);
-        } else if (inA) {
-            value = finite(presetA.controlValues[id]);
-        } else {
-            value = finite(presetB.controlValues[id]);
-        }
-
-        result[id] = controlTypes[id] === "switch" ? (value >= 0.5 ? 1 : 0) : value;
+    for (const id of Object.keys(kvA)) {
+        const a = finite(kvA[id]);
+        const value = id in kvB ? a + t * (finite(kvB[id]) - a) : a;
+        result[id] = quantize(id, value, controlTypes);
     }
+
+    for (const id of Object.keys(kvB)) {
+        if (!(id in kvA)) {
+            result[id] = quantize(id, finite(kvB[id]), controlTypes);
+        }
+    }
+
     return result;
 }
