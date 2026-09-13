@@ -998,6 +998,7 @@ body {
     cursor: pointer;
     margin-left: 4px;
     line-height: 1.6;
+    flex-shrink: 0;
 }
 
 .mini-btn:hover {

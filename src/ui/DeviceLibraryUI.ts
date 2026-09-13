@@ -438,13 +438,16 @@ export class DeviceLibraryUI {
 
         const exportRow = document.createElement("div");
         exportRow.style.display = "flex";
+        exportRow.style.flexWrap = "wrap";
         exportRow.style.gap = "6px";
+        exportRow.style.boxSizing = "border-box";
 
         const input = document.createElement("input");
         input.className = "text-input";
         input.placeholder = "Instrument preset name";
         input.value = device.name;
-        input.style.flex = "1";
+        input.style.flex = "1 1 100%";
+        input.style.boxSizing = "border-box";
         input.style.padding = "5px 8px";
         input.style.fontSize = "12px";
         input.title = "Name stored as the envelope name (v0.1)";
@@ -459,12 +462,15 @@ export class DeviceLibraryUI {
         downloadBtn.className = "btn small";
         downloadBtn.innerText = "Export .json";
         downloadBtn.title = "Same export as 'Export', additionally downloaded as .json via the file bridge (D1)";
+        downloadBtn.style.flex = "1";
         downloadBtn.onclick = () => void this.runInstrumentFileExport(input.value.trim() || device.name);
 
         const importFileBtn = document.createElement("button");
         importFileBtn.className = "btn small";
         importFileBtn.innerText = "Import .json";
         importFileBtn.title = "Pick a .metatron-preset.json file and import it into the connected TARGET project (confirmed first)";
+        importFileBtn.style.flex = "1 1 100%";
+        importFileBtn.style.boxSizing = "border-box";
         importFileBtn.onclick = () => this.pickInstrumentFile();
 
         exportRow.appendChild(input);
