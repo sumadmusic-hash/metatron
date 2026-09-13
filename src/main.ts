@@ -3,6 +3,7 @@ import { NexusAdapter } from "./nexus/NexusAdapter";
 import { MidiAccess } from "./midi/MidiAccess";
 import { BindingManager } from "./core/BindingManager";
 import { AppUI } from "./ui/AppUI";
+import { Toast } from "./ui/Toast";
 
 async function bootstrap() {
     console.log("Starting Metatron...");
@@ -12,12 +13,17 @@ async function bootstrap() {
     
     // Restore largest-recently-used device if any exist; do NOT auto-create a
     // placeholder — a brand-new device must come from the UI (§20/§48).
-    const savedDevices = deviceLibrary.listDevices();
-    if (savedDevices.length > 0) {
-        deviceLibrary.loadDevice(savedDevices[0].id);
-        console.log(`Loaded device: ${deviceLibrary.currentDevice?.name}`);
-    } else {
-        console.log("No saved devices — awaiting creation via Device Library UI.");
+    try {
+        const savedDevices = deviceLibrary.listDevices();
+        if (savedDevices.length > 0) {
+            deviceLibrary.loadDevice(savedDevices[0].id);
+            console.log(`Loaded device: ${deviceLibrary.currentDevice?.name}`);
+        } else {
+            console.log("No saved devices — awaiting creation via Device Library UI.");
+        }
+    } catch (e) {
+        console.error("Failed to restore saved devices", e);
+        Toast.show("Speicherfehler: Geräte konnten nicht geladen werden. Starte mit leerem Zustand.", "error");
     }
 
     // 2. Initialize Nexus Adapter
