@@ -229,7 +229,12 @@ export class DeviceHistory {
         const current = this.library.currentDevice;
         for (const meta of this.library.listDevices()) {
             const id = meta.id;
-            const live = current?.id === id ? current : Storage.loadDevice(id);
+            let live: Device | undefined;
+            try {
+                live = current?.id === id ? current : Storage.loadDevice(id);
+            } catch (e) {
+                console.warn(`[METATRON HISTORY] Failed to load device ${id} for snapshot:`, e);
+            }
             if (live) devices[id] = captureDeviceState(live);
         }
         return { devices, activeDeviceId: current?.id ?? null };
