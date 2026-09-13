@@ -115,6 +115,10 @@ private container!: HTMLElement;
         if (ring) {
             ring.style.setProperty("--knob-arc-end", `${value * 270}deg`);
         }
+        const pos = el.querySelector(".knob-position") as HTMLElement | null;
+        if (pos) {
+            pos.style.transform = `rotate(${-135 + (value * 270)}deg)`;
+        }
         const sw = el.querySelector(".switch-body") as HTMLElement | null;
         if (sw) {
             sw.classList.toggle("on", value > 0.5);
@@ -198,6 +202,11 @@ private container!: HTMLElement;
             ring.className = "knob-led-ring";
             ring.style.setProperty("--knob-arc-end", `${control.value * 270}deg`);
             body.appendChild(ring);
+
+            const position = document.createElement("div");
+            position.className = "knob-position";
+            position.style.transform = `rotate(${-135 + (control.value * 270)}deg)`;
+            body.appendChild(position);
             visualArea.appendChild(body);
 
             this.attachKnobDrag(body, control);
@@ -419,6 +428,12 @@ private container!: HTMLElement;
 
         if (control.type === "knob") {
             widget.style.borderRadius = "50%";
+            const pos = el.querySelector<HTMLElement>(".knob-position");
+            if (pos) {
+                pos.style.top = `${layout.widgetWidth * 0.10}px`;
+                pos.style.transformOrigin = `50% ${layout.widgetWidth / 2}px`;
+                pos.style.height = `${Math.max(6, Math.round(layout.widgetWidth * 0.20))}px`;
+            }
         } else {
             widget.style.borderRadius = `${layout.widgetWidth / 2}px`;
             const toggle = el.querySelector<HTMLElement>(".switch-toggle");

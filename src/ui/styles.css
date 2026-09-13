@@ -418,6 +418,19 @@ body {
     z-index: 1;
 }
 
+.knob-position {
+    position: absolute;
+    left: 50%;
+    margin-left: -1.5px;
+    width: 3px;
+    border-radius: 1px;
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 0 2px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+    z-index: 2;
+    /* top, height und transform-origin werden ausschließlich durch applyControlLayout() gesetzt; transform = Drehung */
+}
+
 /* LED-Lichtkranz: Leuchtender Bogen um den Knob, der den aktuellen Wert
    als Akzent-Arc darstellt. Start bei -135°, Ende = --knob-arc-end (Winkel).
    Außerhalb des 270°-Bereichs (unten) ist der Ring transparent. */
