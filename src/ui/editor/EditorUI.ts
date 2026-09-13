@@ -334,7 +334,7 @@ export class EditorUI {
 
             const ring = document.createElement("div");
             ring.className = "knob-led-ring";
-            ring.style.setProperty("--knob-arc-end", `${Math.round(control.value * 128) * (270 / 128)}deg`);
+            ring.style.setProperty("--knob-arc-end", `${control.value * 270}deg`);
             body.appendChild(ring);
             visualArea.appendChild(body);
         } else {
