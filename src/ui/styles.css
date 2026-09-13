@@ -403,9 +403,9 @@ body {
     position: absolute;
     width: 4px;
     height: 25%;
-    background: #ff3b30;
+    background: var(--accent-color);
     border-radius: 2px;
-    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 0 6px var(--accent-color), 0 0 12px rgba(0, 229, 255, 0.3);
     z-index: 2;
     /* top, height und transform-origin werden ausschließlich durch applyControlLayout() gesetzt */
 }
