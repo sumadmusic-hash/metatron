@@ -615,11 +615,6 @@ export class EditorUI {
                 indicator.style.transformOrigin = `50% ${layout.widgetWidth / 2}px`;
                 indicator.style.height = `${Math.max(6, Math.round(layout.widgetWidth * 0.22))}px`;
             }
-
-            const ticks = el.querySelector<HTMLElement>(".knob-ticks");
-            if (ticks) {
-                ticks.style.inset = `-${Math.max(4, Math.round(layout.widgetWidth * 0.11))}px`;
-            }
         } else {
             widget.style.borderRadius = `${layout.widgetWidth / 2}px`;
             const toggle = el.querySelector<HTMLElement>(".switch-toggle");

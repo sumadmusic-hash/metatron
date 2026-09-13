@@ -366,40 +366,47 @@ body {
     aspect-ratio: 1 / 1;
     border-radius: 50%;
     box-sizing: border-box;
-    background:
-        radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.10), transparent 55%),
-        linear-gradient(145deg, #2a2f38, #15181e);
+    background: var(--knob-bg);
     box-shadow:
-        inset 0 2px 4px rgba(255, 255, 255, 0.15),
-        inset 0 -3px 6px rgba(0, 0, 0, 0.45),
-        0 4px 8px rgba(0, 0, 0, 0.5),
-        0 8px 16px rgba(0, 0, 0, 0.3);
+        -3px -3px 7px rgba(255, 255, 255, 0.04),
+        3px 3px 7px rgba(0, 0, 0, 0.6),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.02);
     position: relative;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: none;
     display: flex;
     justify-content: center;
     align-items: center;
     flex: 0 0 auto;
+    transition: box-shadow 0.1s ease;
+}
+
+.knob-body:active, .knob-body.dragging {
+    box-shadow:
+        inset 3px 3px 7px rgba(0, 0, 0, 0.6),
+        inset -3px -3px 7px rgba(255, 255, 255, 0.04);
 }
 
 .knob-ticks {
     position: absolute;
-    inset: -8px;
+    inset: -6px;
     border-radius: 50%;
+    pointer-events: none;
     background: repeating-conic-gradient(
         from -135deg,
-        rgba(255, 255, 255, 0.35) 0deg 1.2deg,
-        transparent 1.2deg 10deg
+        rgba(0, 0, 0, 0.4) 0deg 1deg,
+        transparent 1deg 10deg
     );
-    -webkit-mask-image:
-        conic-gradient(from -135deg, #000 0deg 270deg, transparent 270deg 360deg),
-        radial-gradient(closest-side, transparent 76%, #000 78%);
-    -webkit-mask-composite: source-in;
-    mask-image:
-        conic-gradient(from -135deg, #000 0deg 270deg, transparent 270deg 360deg),
-        radial-gradient(closest-side, transparent 76%, #000 78%);
-    mask-composite: intersect;
-    pointer-events: none;
+    -webkit-mask-image: conic-gradient(
+        from -135deg,
+        black 0deg 270deg,
+        transparent 270deg 360deg
+    );
+    mask-image: conic-gradient(
+        from -135deg,
+        black 0deg 270deg,
+        transparent 270deg 360deg
+    );
+    box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.5);
 }
 
 .knob-indicator {
@@ -407,7 +414,9 @@ body {
     width: 3px;
     border-radius: 2px;
     background: linear-gradient(180deg, var(--accent-color), var(--accent-hover));
-    box-shadow: 0 0 8px var(--accent-color), 0 0 16px rgba(0, 229, 255, 0.35);
+    box-shadow:
+        0 0 6px var(--accent-color),
+        0 0 12px rgba(0, 229, 255, 0.3);
     /* top, height und transform-origin werden ausschließlich durch applyControlLayout() gesetzt */
 }
 
