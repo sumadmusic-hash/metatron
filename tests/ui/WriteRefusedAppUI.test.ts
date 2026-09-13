@@ -9,6 +9,8 @@ import { BindingManager } from "../../src/core/BindingManager";
 import { AppUI } from "../../src/ui/AppUI";
 import type { MidiBindingDefinition } from "../../src/core/model/types";
 
+const settle = (ms = 150) => new Promise<void>((r) => setTimeout(r, ms));
+
 /**
  * M6 — AppUI keeps the local Metatron control value even when the Nexus write
  * is refused (updateBoundControl resolves false). No crashes, no losing the
@@ -66,12 +68,15 @@ describe("M6 — AppUI keeps local control value when the Nexus write returns fa
 
         midi.trigger(1, 20, 64);
 
-        // Local value + persistence happen regardless of the refused write.
+        // Local value + attempted write happen synchronously, regardless of
+        // the refused write.
         expect(ctrl.value).toBeCloseTo(64 / 127, 10);
-        expect(saveSpy).toHaveBeenCalled();
-        // The write was attempted and its result surfaced, not discarded as void.
         expect(adapter.writeCalls).toEqual(["k1"]);
         expect(adapter.writeCalls.length).toBe(1);
+        // VALUE-path persistence is debounced (P4): the trailing save lands
+        // after the burst window — never lost, never thrown.
+        await settle(150);
+        expect(saveSpy).toHaveBeenCalled();
     });
 
     it("7b. repeated refused writes during a drag do not create new notifications and never crash", async () => {

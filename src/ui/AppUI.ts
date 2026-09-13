@@ -14,6 +14,11 @@ import { Toast } from "./Toast";
 import { WRITE_REFUSED_CLASS, WRITE_REFUSED_TITLE } from "./writeRefusal";
 import "./styles.css";
 
+/** P4 — trailing debounce window for VALUE-path persistence (MIDI stream,
+ *  surface drag, Nexus sync). A burst of rapid value changes collapses into a
+ *  single trailing save instead of one synchronous full-device write per step. */
+const VALUE_SAVE_DEBOUNCE_MS = 100;
+
 /**
  * M21.8 — pure take-summary helpers (unit-testable without a DOM). A track with
  * zero captured events is rendered as "<name> (0 events)"; otherwise the control
@@ -71,6 +76,13 @@ export class AppUI {
     private connectionUrl = "";
     private recorder: AutomationRecorder;
 
+    // P4 — the VALUE path (MIDI stream / surface drag / Nexus sync) debounces
+    // its persistence: a burst of rapid value changes collapses into one
+    // trailing save. The last value is ALWAYS persisted — a pending save is
+    // flushed on render (mode/device switch) and on unload.
+    private valueSaveTimer?: ReturnType<typeof setTimeout>;
+    private valueSavePending = false;
+
     // M21.8 — pure UI-side state for the automation strip. `recordingStartPerf`
     // drives a cosmetic elapsed timer; none of it touches the recorder's clock.
     private recordingStartPerf = 0;
@@ -112,7 +124,7 @@ export class AppUI {
             const control = this.deviceLibrary.currentDevice?.getControl(controlId);
             if (!control) return;
             control.value = newValue;
-            this.deviceLibrary.saveCurrentDevice();
+            this.scheduleValueSave();
             this.surfaceUI.applyNexusValue(controlId, newValue);
         };
 
@@ -162,6 +174,7 @@ export class AppUI {
         );
 
         window.addEventListener("keydown", this.handleKeydown);
+        window.addEventListener("beforeunload", this.flushValueSave);
     }
 
     /**
@@ -204,11 +217,36 @@ export class AppUI {
         if (this.redoBtn) this.redoBtn.disabled = !this.history.canRedoOnCurrentDevice;
     }
 
+    /** P4 — schedule the trailing value-path save; only one timer ever runs. */
+    private scheduleValueSave = () => {
+        this.valueSavePending = true;
+        if (this.valueSaveTimer !== undefined) return;
+        this.valueSaveTimer = setTimeout(() => this.flushValueSave(), VALUE_SAVE_DEBOUNCE_MS);
+    };
+
+    /** P4 — persist a pending value-path save immediately (trailing end of a
+     *  burst, render/switch, unload). Storage errors surface as a toast but
+     *  never propagate into the gesture that triggered the value change. */
+    private flushValueSave = () => {
+        if (this.valueSaveTimer !== undefined) {
+            clearTimeout(this.valueSaveTimer);
+            this.valueSaveTimer = undefined;
+        }
+        if (!this.valueSavePending) return;
+        this.valueSavePending = false;
+        try {
+            this.deviceLibrary.saveCurrentDevice();
+        } catch (e) {
+            console.warn("[METATRON STORAGE] value-path persistence failed — control layout unaffected, next save will retry.", e);
+            Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
+        }
+    };
+
     private applyValueToDevice(controlId: string, value: number) {
         const control = this.deviceLibrary.currentDevice?.getControl(controlId);
         if (!control) return;
         control.value = value;
-        this.deviceLibrary.saveCurrentDevice();
+        this.scheduleValueSave();
         this.surfaceUI.applyNexusValue(controlId, value);
         // M21.2: record Metatron's own control movement (surface + MIDI). The
         // automation capture is a passive observer — the Nexus write below is
@@ -452,6 +490,15 @@ export class AppUI {
     private onDeviceChanged() {
         const device = this.deviceLibrary.currentDevice;
         if (device) {
+            // Real device switch (compared by id — `loadDevice` rehydrates a
+            // fresh instance even for the same device): drop the previous
+            // device's Nexus subscriptions BEFORE re-pointing the binding
+            // manager — a stale Nexus event for an old control id must never
+            // bleed into the newly active device. Same-device refreshes
+            // (preset load, undo/redo, rename) keep their live subscriptions.
+            if (this.bindingManager.deviceRef.id !== device.id) {
+                this.nexusAdapter.clearBoundControlSubscriptions();
+            }
             this.bindingManager.setDevice(device);
             this.midiMapping.updateDevice(device);
         }
@@ -473,6 +520,9 @@ export class AppUI {
     }
 
     public render() {
+        // P4 — a pending value-path save is flushed before the DOM is rebuilt
+        // (covers mode switch + device switch, both surface changes here).
+        this.flushValueSave();
         // M21.8 — the elapsed interval belongs to the previous DOM; tear it
         // down before every rebuild. buildAutomationStrip restarts it only
         // while RECORDING.

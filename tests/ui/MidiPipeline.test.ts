@@ -9,6 +9,8 @@ import { BindingManager } from "../../src/core/BindingManager";
 import { AppUI } from "../../src/ui/AppUI";
 import type { MidiBindingDefinition } from "../../src/core/model/types";
 
+const settle = (ms = 150) => new Promise<void>((r) => setTimeout(r, ms));
+
 /** Captures the handler AppUI installs so tests can drive the MIDI pipeline. */
 class FakeMidiAccess extends MidiAccess {
     public installedHandler: ((channel: number, cc: number, value: number) => void) | null = null;
@@ -87,7 +89,7 @@ describe("Midi→AppUI pipeline — single normalization point via applyMidiScal
         expect(ctrl.value).toBeCloseTo(1, 10);
     });
 
-    it("result lands on the correct Control.value and the saveCurrentDevice path stays active", () => {
+    it("result lands on the correct Control.value and the saveCurrentDevice path stays active", async () => {
         const device = new Device("T");
         const target = addKnob(device, "a", { channel: 1, cc: 23 });
         addKnob(device, "b", { channel: 1, cc: 24 });
@@ -97,6 +99,9 @@ describe("Midi→AppUI pipeline — single normalization point via applyMidiScal
         midi.trigger(1, 24, 64);
         expect(target.value).toBe(0); // sibling untouched
         expect(device.getControl("b")!.value).toBeCloseTo(64 / 127, 10);
+        // VALUE-path persistence is debounced (P4): the trailing save lands
+        // after the burst window.
+        await settle(150);
         expect(saveSpy).toHaveBeenCalled();
     });
 

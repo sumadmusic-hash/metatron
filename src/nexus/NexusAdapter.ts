@@ -206,6 +206,15 @@ export class NexusAdapter {
         }
     }
 
+    /** Drop EVERY live parameter subscription. Called on a real device switch:
+     *  once the previous device's active bindings are gone (BindingManager
+     *  semantics), its field listeners must not outlive it — a stale Nexus
+     *  event for an old control id must never bleed into the newly active
+     *  device (or leak listener closures). */
+    public clearBoundControlSubscriptions(): void {
+        this.clearAllListeners();
+    }
+
     private clearAllListeners() {
         this.updateListeners.forEach(cleanup => cleanup());
         this.updateListeners.clear();
