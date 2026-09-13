@@ -366,12 +366,12 @@ body {
     aspect-ratio: 1 / 1;
     border-radius: 50%;
     box-sizing: border-box;
-    background: linear-gradient(135deg, #e0e5ec 0%, #a0a5ac 100%);
+    background: linear-gradient(135deg, #6b7280 0%, #3b4252 100%);
     box-shadow:
-        6px 6px 12px rgba(0, 0, 0, 0.4),
-        -6px -6px 12px rgba(255, 255, 255, 0.1),
-        inset 2px 2px 5px rgba(255, 255, 255, 0.6),
-        inset -2px -2px 5px rgba(0, 0, 0, 0.2);
+        6px 6px 12px rgba(0, 0, 0, 0.5),
+        -6px -6px 12px rgba(255, 255, 255, 0.05),
+        inset 2px 2px 5px rgba(255, 255, 255, 0.15),
+        inset -2px -2px 5px rgba(0, 0, 0, 0.4);
     position: relative;
     display: flex;
     justify-content: center;
@@ -390,8 +390,8 @@ body {
     background: linear-gradient(
         45deg,
         transparent 40%,
-        rgba(255, 255, 255, 0.4) 45%,
-        rgba(255, 255, 255, 0.1) 50%,
+        rgba(255, 255, 255, 0.2) 45%,
+        rgba(255, 255, 255, 0.05) 50%,
         transparent 55%
     );
     transform: rotate(0deg);
@@ -411,8 +411,8 @@ body {
         from -135deg,
         var(--accent-color) 0deg,
         var(--accent-color) var(--knob-arc-end, -135deg),
-        rgba(0, 0, 0, 0.12) var(--knob-arc-end, -135deg),
-        rgba(0, 0, 0, 0.12) 270deg,
+        rgba(255, 255, 255, 0.08) var(--knob-arc-end, -135deg),
+        rgba(255, 255, 255, 0.08) 270deg,
         transparent 270deg
     );
     mask-image: radial-gradient(closest-side, transparent 80%, black 83%, black 95%, transparent 98%);
