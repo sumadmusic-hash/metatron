@@ -413,17 +413,17 @@ body {
     background:
         repeating-conic-gradient(
             from -135deg,
-            rgba(0, 0, 0, 0.8) 0deg,
-            rgba(0, 0, 0, 0.8) 0.12deg,
-            transparent 0.12deg,
-            transparent 2.109375deg
+            transparent 0deg,
+            transparent 2.05deg,
+            rgba(0, 0, 0, 0.5) 2.05deg,
+            rgba(0, 0, 0, 0.5) 2.11deg
         ),
         conic-gradient(
             from -135deg,
             var(--accent-color) 0deg,
             var(--accent-color) var(--knob-arc-end, 0deg),
-            rgba(255, 255, 255, 0.06) var(--knob-arc-end, 0deg),
-            rgba(255, 255, 255, 0.06) 270deg,
+            rgba(255, 255, 255, 0.08) var(--knob-arc-end, 0deg),
+            rgba(255, 255, 255, 0.08) 270deg,
             transparent 270deg
         );
     mask-image: radial-gradient(closest-side, transparent 80%, black 83%, black 95%, transparent 98%);
