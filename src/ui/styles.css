@@ -403,22 +403,29 @@ body {
     z-index: 1;
 }
 
-/* LED-Lichtkranz: Leuchtender Bogen um den Knob, der den aktuellen Wert
-   als Akzent-Arc darstellt. Start bei -135°, Ende = --knob-arc-end (Winkel).
-   Außerhalb des 270°-Bereichs (unten) ist der Ring transparent. */
+/* LED-Lichtkranz: 128 MIDI-Segmente (0–127). Leuchtende Akzent-Arc
+   mit sichtbaren Segmenttrennlinien. --knob-arc-end = snapped Winkel. */
 .knob-led-ring {
     position: absolute;
     inset: 0;
     border-radius: 50%;
     pointer-events: none;
-    background: conic-gradient(
-        from -135deg,
-        var(--accent-color) 0deg,
-        var(--accent-color) var(--knob-arc-end, -135deg),
-        rgba(255, 255, 255, 0.08) var(--knob-arc-end, -135deg),
-        rgba(255, 255, 255, 0.08) 270deg,
-        transparent 270deg
-    );
+    background:
+        repeating-conic-gradient(
+            from -135deg,
+            transparent 0deg,
+            transparent 2.05deg,
+            rgba(0, 0, 0, 0.5) 2.05deg,
+            rgba(0, 0, 0, 0.5) 2.11deg
+        ),
+        conic-gradient(
+            from -135deg,
+            var(--accent-color) 0deg,
+            var(--accent-color) var(--knob-arc-end, 0deg),
+            rgba(255, 255, 255, 0.08) var(--knob-arc-end, 0deg),
+            rgba(255, 255, 255, 0.08) 270deg,
+            transparent 270deg
+        );
     mask-image: radial-gradient(closest-side, transparent 80%, black 83%, black 95%, transparent 98%);
     -webkit-mask-image: radial-gradient(closest-side, transparent 80%, black 83%, black 95%, transparent 98%);
     z-index: 2;
