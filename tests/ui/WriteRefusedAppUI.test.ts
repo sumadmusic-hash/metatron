@@ -41,7 +41,11 @@ function mount(device: Device, midi: CapturingMidi, adapter: RefusingAdapter): {
     lib.saveCurrentDevice();
     const root = document.createElement("div");
     document.body.appendChild(root);
-    const app = new AppUI(root, lib, adapter, midi, new BindingManager(device));
+    const bm = new BindingManager(device);
+    for (const ctrl of device.controls.values()) {
+        bm.setBinding(ctrl.id, "p1", "f1");
+    }
+    const app = new AppUI(root, lib, adapter, midi, bm);
     app.render();
     const toggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find(
         (b) => b.innerText === "USE",

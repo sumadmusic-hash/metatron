@@ -203,11 +203,6 @@ private container!: HTMLElement;
             const indicator = document.createElement("div");
             indicator.className = "knob-indicator";
 
-            if (control.visualDefinition?.color) {
-                indicator.style.background = control.visualDefinition.color;
-                indicator.style.boxShadow = `0 0 8px ${control.visualDefinition.color}`;
-            }
-
             const rotation = -135 + (control.value * 270);
             indicator.style.transform = `rotate(${rotation}deg)`;
             body.appendChild(indicator);

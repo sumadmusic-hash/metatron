@@ -252,6 +252,12 @@ export class AppUI {
         // automation capture is a passive observer — the Nexus write below is
         // unchanged and this recorder never writes to Nexus itself.
         this.recorder.capture(control.id, value, control.type);
+        // FIX: Write-Refused-Badge nur setzen, wenn tatsächlich ein aktives Binding
+        // existiert. Ohne aktives Binding gibt es kein Audiotool-Ziel — keine Verweigerung möglich.
+        if (!this.bindingManager.getActiveBinding(controlId)) {
+            this.setWriteRefused(controlId, false);
+            return;
+        }
         // The Nexus write may be refused (disconnected/immutable/unbound/unsupported).
         // The local value stays — but the failure must be observable, not discarded.
         this.nexusAdapter.updateBoundControl(controlId, value).then(

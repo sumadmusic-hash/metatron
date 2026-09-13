@@ -42,7 +42,7 @@ function addKnob(device: Device, name: string, cc: number, id = `${name.toLowerC
     return c;
 }
 
-async function mount(device: Device): Promise<{ root: HTMLElement; midi: CapturingMidi; adapter: ToggleAdapter }> {
+async function mount(device: Device, boundIds: string[] = []): Promise<{ root: HTMLElement; midi: CapturingMidi; adapter: ToggleAdapter }> {
     const doc: any = await createOfflineDocument({ validated: true });
     const lib = new DeviceLibrary();
     lib.currentDevice = device;
@@ -51,7 +51,11 @@ async function mount(device: Device): Promise<{ root: HTMLElement; midi: Capturi
     document.body.appendChild(root);
     const midi = new CapturingMidi();
     const adapter = new ToggleAdapter(doc);
-    const app = new AppUI(root, lib, adapter, midi, new BindingManager(device));
+    const bm = new BindingManager(device);
+    for (const id of boundIds) {
+        bm.setBinding(id, "p1", "f1");
+    }
+    const app = new AppUI(root, lib, adapter, midi, bm);
     app.render();
     const toggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) =>
         b.innerText === "USE",
@@ -84,7 +88,7 @@ describe("G-04: silent write-refusal indicator on Controls", () => {
     it("1. a refused write marks the correct Control with the refusal class", async () => {
         const device = new Device("G4-1");
         const c = addKnob(device, "Cut", 20);
-        const { root, midi, adapter } = await mount(device);
+        const { root, midi, adapter } = await mount(device, [c.id]);
         adapter.refusing = true;
 
         expect(wrapper(root, c.id).classList.contains(WRITE_REFUSED_CLASS)).toBe(false);
@@ -98,7 +102,7 @@ describe("G-04: silent write-refusal indicator on Controls", () => {
     it("2. the refusal state exposes the user-facing explanation via title", async () => {
         const device = new Device("G4-2");
         const c = addKnob(device, "Cut", 20);
-        const { root, midi, adapter } = await mount(device);
+        const { root, midi, adapter } = await mount(device, [c.id]);
         adapter.refusing = true;
 
         expect(wrapper(root, c.id).hasAttribute("title")).toBe(false);
@@ -113,7 +117,7 @@ describe("G-04: silent write-refusal indicator on Controls", () => {
     it("3. a successful subsequent write clears the refusal", async () => {
         const device = new Device("G4-3");
         const c = addKnob(device, "Cut", 20);
-        const { root, midi, adapter } = await mount(device);
+        const { root, midi, adapter } = await mount(device, [c.id]);
         adapter.refusing = true;
 
         midi.trigger(1, 20, 100);
@@ -132,7 +136,7 @@ describe("G-04: silent write-refusal indicator on Controls", () => {
         const device = new Device("G4-4");
         const a = addKnob(device, "Cut", 20);
         const b = addKnob(device, "Res", 21);
-        const { root, midi, adapter } = await mount(device);
+        const { root, midi, adapter } = await mount(device, [a.id]);
         adapter.refusing = true;
 
         midi.trigger(1, 20, 100);
@@ -146,7 +150,7 @@ describe("G-04: silent write-refusal indicator on Controls", () => {
     it("5. repeated refused writes produce no toast notifications", async () => {
         const device = new Device("G4-5");
         const c = addKnob(device, "Cut", 20);
-        const { root, midi, adapter } = await mount(device);
+        const { root, midi, adapter } = await mount(device, [c.id]);
         adapter.refusing = true;
 
         for (let i = 0; i < 6; i++) {
@@ -172,5 +176,18 @@ describe("G-04: silent write-refusal indicator on Controls", () => {
         expect(wrapper(root, c.id).hasAttribute("title")).toBe(false);
         expect(c.value).toBeCloseTo(100 / 127, 2);
         expect(device.getControl(c.id)!.value).toBeCloseTo(100 / 127, 2);
+    });
+
+    it("7. an unbound Control never gets the refusal badge — even when the adapter would refuse", async () => {
+        const device = new Device("G4-7");
+        const c = addKnob(device, "Cut", 20);
+        const { root, midi, adapter } = await mount(device);
+        adapter.refusing = true;
+
+        midi.trigger(1, 20, 100);
+        await settle();
+
+        expect(wrapper(root, c.id).classList.contains(WRITE_REFUSED_CLASS)).toBe(false);
+        expect(wrapper(root, c.id).hasAttribute("title")).toBe(false);
     });
 });

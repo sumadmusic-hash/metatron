@@ -339,10 +339,6 @@ export class EditorUI {
 
             const indicator = document.createElement("div");
             indicator.className = "knob-indicator";
-            if (control.visualDefinition?.color) {
-                indicator.style.background = control.visualDefinition.color;
-                indicator.style.boxShadow = `0 0 8px ${control.visualDefinition.color}`;
-            }
 
             const rotation = -135 + (control.value * 270);
             indicator.style.transform = `rotate(${rotation}deg)`;
@@ -429,11 +425,6 @@ export class EditorUI {
                 control.visualDefinition = control.visualDefinition || {};
                 control.visualDefinition.color = hex;
                 visualArea.style.background = hex;
-                const indicator = el.querySelector<HTMLElement>(".knob-indicator");
-                if (indicator) {
-                    indicator.style.background = hex;
-                    indicator.style.boxShadow = `0 0 8px ${hex}`;
-                }
                 colorInput.value = hex;
                 hexLabel.textContent = hex;
             });
