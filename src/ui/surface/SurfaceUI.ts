@@ -113,8 +113,7 @@ private container!: HTMLElement;
 
         const ring = el.querySelector(".knob-led-ring") as HTMLElement | null;
         if (ring) {
-            const rotation = -135 + (value * 270);
-            ring.style.setProperty("--knob-arc-end", `${rotation}deg`);
+            ring.style.setProperty("--knob-arc-end", `${value * 270}deg`);
         }
         const sw = el.querySelector(".switch-body") as HTMLElement | null;
         if (sw) {
@@ -197,8 +196,7 @@ private container!: HTMLElement;
 
             const ring = document.createElement("div");
             ring.className = "knob-led-ring";
-            const rotation = -135 + (control.value * 270);
-            ring.style.setProperty("--knob-arc-end", `${rotation}deg`);
+            ring.style.setProperty("--knob-arc-end", `${control.value * 270}deg`);
             body.appendChild(ring);
             visualArea.appendChild(body);
 

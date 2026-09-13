@@ -72,6 +72,6 @@ describe("EDIT mode MIDI handling", () => {
         expect(c.value).toBe(1);
         const ring = root.querySelector(`[data-ctl-id="${c.id}"] .knob-led-ring`) as HTMLElement | null;
         expect(ring).not.toBeNull();
-        expect(ring!.style.getPropertyValue("--knob-arc-end")).toBe("135deg");
+        expect(ring!.style.getPropertyValue("--knob-arc-end")).toBe("270deg");
     });
 });

@@ -156,12 +156,12 @@ describe("M14 — Morph slider connected to the Morph engine", () => {
         slotBtn(root, "P-A", "A").click();
         slotBtn(root, "P-B", "B").click();
 
-        // knob rotation = -135 + value*270
-        expect(knobValue(root, "cutoff")).toBe("0deg"); // live value 0.5 before morph
+        // knob arc = value * 270
+        expect(knobValue(root, "cutoff")).toBe("135deg"); // live value 0.5 before morph
         move(slider(root), "0");
-        expect(knobValue(root, "cutoff")).toBe("-81deg");
+        expect(knobValue(root, "cutoff")).toBe("54deg"); // P-A cutoff = 0.2 → 54
         move(slider(root), "1");
-        expect(knobValue(root, "cutoff")).toBe("81deg");
+        expect(knobValue(root, "cutoff")).toBe("216deg"); // P-B cutoff = 0.8 → 216
     });
 
     it("5. connected controls invoke updateBoundControl", () => {
