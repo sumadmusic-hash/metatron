@@ -366,33 +366,53 @@ body {
     aspect-ratio: 1 / 1;
     border-radius: 50%;
     box-sizing: border-box;
-    background: var(--knob-bg);
+    background: linear-gradient(135deg, #e0e5ec 0%, #a0a5ac 100%);
     box-shadow:
-        -4px -4px 10px rgba(255, 255, 255, 0.08),
-        4px 4px 10px rgba(0, 0, 0, 0.6),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+        6px 6px 12px rgba(0, 0, 0, 0.4),
+        -6px -6px 12px rgba(255, 255, 255, 0.1),
+        inset 2px 2px 5px rgba(255, 255, 255, 0.6),
+        inset -2px -2px 5px rgba(0, 0, 0, 0.2);
     position: relative;
     display: flex;
     justify-content: center;
     align-items: center;
     flex: 0 0 auto;
-    transition: box-shadow 0.1s ease;
+    overflow: hidden;
+}
+
+.knob-body::before {
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+        45deg,
+        transparent 40%,
+        rgba(255, 255, 255, 0.4) 45%,
+        rgba(255, 255, 255, 0.1) 50%,
+        transparent 55%
+    );
+    transform: rotate(0deg);
+    pointer-events: none;
+    z-index: 1;
 }
 
 .knob-body:active, .knob-body.dragging {
     box-shadow:
-        inset 4px 4px 10px rgba(0, 0, 0, 0.6),
-        inset -4px -4px 10px rgba(255, 255, 255, 0.08);
+        inset 4px 4px 10px rgba(0, 0, 0, 0.4),
+        inset -4px -4px 10px rgba(255, 255, 255, 0.1);
 }
 
 .knob-ticks {
     position: absolute;
-    inset: -6px;
+    inset: -4px;
     border-radius: 50%;
     pointer-events: none;
     background: repeating-conic-gradient(
         from -135deg,
-        rgba(255, 255, 255, 0.4) 0deg 1deg,
+        rgba(0, 0, 0, 0.1) 0deg 1deg,
         transparent 1deg 10deg
     );
     -webkit-mask-image: conic-gradient(
@@ -405,16 +425,17 @@ body {
         black 0deg 270deg,
         transparent 270deg 360deg
     );
+    z-index: 0;
 }
 
 .knob-indicator {
     position: absolute;
-    width: 3px;
+    width: 4px;
+    height: 25%;
+    background: #ff3b30;
     border-radius: 2px;
-    background: linear-gradient(180deg, var(--accent-color), var(--accent-hover));
-    box-shadow:
-        0 0 6px var(--accent-color),
-        0 0 12px rgba(0, 229, 255, 0.3);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+    z-index: 2;
     /* top, height und transform-origin werden ausschließlich durch applyControlLayout() gesetzt */
 }
 
