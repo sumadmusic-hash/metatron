@@ -50,6 +50,24 @@ body {
     margin-left: auto;
 }
 
+/* Project URL input — compact but still usable: fills available space up to
+   260px and never shrinks below 140px. Width control lives in CSS, not JS. */
+.url-input {
+    flex: 1;
+    min-width: 140px;
+    max-width: 260px;
+}
+
+/* Connection status — stays permanently visible; the longest label truncates
+   with an ellipsis instead of expanding the header. The full text is exposed
+   via the native title tooltip (kept in sync by AppUI.applyStatusText). */
+.connection-status {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Secondary bar housing the automation strip below the main header */
 .automation-bar {
     background: var(--bg-panel);

@@ -64,6 +64,11 @@ export class AppUI {
     private connectionUnsub?: () => void;
     private connectionStatusEl?: HTMLSpanElement;
     private currentConnectionStatus?: { text: string; color: string };
+    // Runtime-only mirror of the project URL. `render()` rebuilds the DOM, so
+    // the input value would otherwise vanish on every rebuild (EDIT/USE,
+    // Library, Undo/Redo, preset/automation actions). The value is restored
+    // into a newly created input and is NOT a trigger for any auto-connect.
+    private connectionUrl = "";
     private recorder: AutomationRecorder;
 
     // M21.8 — pure UI-side state for the automation strip. `recordingStartPerf`
@@ -462,6 +467,7 @@ export class AppUI {
         this.currentConnectionStatus = { text, color };
         if (this.connectionStatusEl) {
             this.connectionStatusEl.innerText = text;
+            this.connectionStatusEl.title = text;
             this.connectionStatusEl.style.color = color;
         }
     }
@@ -521,14 +527,19 @@ toolbarLeft.appendChild(libraryBtn);
         const urlInput = document.createElement("input");
         urlInput.type = "text";
         urlInput.placeholder = "Audiotool Project URL...";
-        urlInput.style.flex = "1";
-        urlInput.style.maxWidth = "400px";
+        // Compact by CSS: fills available space up to 260px, never below 140px.
+        urlInput.className = "url-input";
         urlInput.style.padding = "8px 12px";
         urlInput.style.backgroundColor = "rgba(0,0,0,0.2)";
         urlInput.style.color = "white";
         urlInput.style.border = "1px solid var(--border-color)";
         urlInput.style.borderRadius = "6px";
         urlInput.style.outline = "none";
+        // Mirror edits into runtime state so the value survives `render()`.
+        urlInput.value = this.connectionUrl;
+        urlInput.addEventListener("input", () => {
+            this.connectionUrl = urlInput.value;
+        });
         
         const connectBtn = document.createElement("button");
         connectBtn.className = "btn";
@@ -539,6 +550,7 @@ toolbarLeft.appendChild(libraryBtn);
         connectionStatus.style.fontSize = "12px";
         connectionStatus.style.color = this.currentConnectionStatus?.color ?? "var(--text-secondary)";
         connectionStatus.innerText = this.currentConnectionStatus?.text ?? this.connectionLabel();
+        connectionStatus.title = connectionStatus.innerText;
         this.connectionStatusEl = connectionStatus;
 
         connectBtn.onclick = async () => {
