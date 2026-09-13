@@ -367,15 +367,18 @@ body {
     border-radius: 50%;
     box-sizing: border-box;
     background:
-        radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.08) 0%, transparent 50%),
-        linear-gradient(160deg, #5a6270 0%, #3b4252 40%, #2a2f38 70%, #1f2328 100%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+        radial-gradient(circle at 38% 30%, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0.05) 35%, transparent 60%),
+        radial-gradient(circle at 70% 80%, rgba(0, 0, 0, 0.3) 0%, transparent 50%),
+        linear-gradient(155deg, #6e7783 0%, #4a5260 25%, #333a45 50%, #232830 75%, #1a1e24 100%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow:
-        6px 6px 14px rgba(0, 0, 0, 0.5),
-        -4px -4px 10px rgba(255, 255, 255, 0.04),
-        inset 1px 1px 3px rgba(255, 255, 255, 0.12),
-        inset -1px -1px 3px rgba(0, 0, 0, 0.3),
-        inset 0 0 8px rgba(0, 0, 0, 0.15);
+        5px 5px 15px rgba(0, 0, 0, 0.55),
+        -3px -3px 8px rgba(255, 255, 255, 0.04),
+        inset 0 2px 4px rgba(255, 255, 255, 0.2),
+        inset 0 -2px 4px rgba(0, 0, 0, 0.35),
+        inset 2px 0 6px rgba(255, 255, 255, 0.06),
+        inset -2px 0 6px rgba(0, 0, 0, 0.2),
+        inset 0 0 10px rgba(0, 0, 0, 0.12);
     position: relative;
     display: flex;
     justify-content: center;
@@ -390,19 +393,23 @@ body {
     inset: 0;
     border-radius: 50%;
     background:
+        linear-gradient(
+            160deg,
+            rgba(255, 255, 255, 0.3) 0%,
+            rgba(255, 255, 255, 0.08) 20%,
+            transparent 40%
+        ),
+        radial-gradient(
+            ellipse at 30% 25%,
+            rgba(255, 255, 255, 0.2) 0%,
+            transparent 40%
+        ),
         repeating-linear-gradient(
             105deg,
             transparent 0px,
-            rgba(255, 255, 255, 0.015) 1px,
+            rgba(255, 255, 255, 0.01) 1px,
             transparent 2px,
             transparent 4px
-        ),
-        linear-gradient(
-            150deg,
-            transparent 30%,
-            rgba(255, 255, 255, 0.15) 42%,
-            rgba(255, 255, 255, 0.03) 48%,
-            transparent 58%
         );
     pointer-events: none;
     z-index: 1;
