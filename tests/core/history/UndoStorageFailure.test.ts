@@ -3,6 +3,7 @@ import { Device } from "../../../src/core/model/Device";
 import { Control } from "../../../src/core/model/Control";
 import { DeviceLibrary } from "../../../src/core/DeviceLibrary";
 import { DeviceHistory } from "../../../src/core/history/DeviceHistory";
+import { Storage } from "../../../src/persistence/Storage";
 
 // Minimal localStorage shim so Storage can persist between calls in Node.
 class FakeStorage implements Storage {
@@ -29,14 +30,26 @@ function addKnob(device: Device, name: string, x: number, y: number): Control {
     return c;
 }
 
+/** Fail exactly the N-th localStorage write; let every other write through. */
+function failNthWrite(nth: number) {
+    const real = storage.setItem.bind(storage);
+    let writes = 0;
+    const spy = vi.spyOn(storage, "setItem").mockImplementation((k: string, v: string) => {
+        writes++;
+        if (writes === nth) throw new DOMException("quota exceeded", "QuotaExceededError");
+        real(k, v);
+    });
+    return spy;
+}
+
 beforeEach(() => {
     storage = new FakeStorage();
     (globalThis as any).localStorage = storage;
 });
 
-describe("DeviceHistory — StorageError in apply() (undo keeps the action)", () => {
+describe("DeviceHistory — transactional apply() on StorageError (P2)", () => {
 
-    it("device-scope undo returns false and keeps the action when persistence fails", () => {
+    it("device-scope undo leaves in-memory + persisted unchanged on failure and retries cleanly", () => {
         const device = new Device("D");
         const a = addKnob(device, "A", 100, 100);
         const lib = makeLibrary(device);
@@ -48,45 +61,58 @@ describe("DeviceHistory — StorageError in apply() (undo keeps the action)", ()
         history.record({ type: "control.move", scope: "device", deviceId: device.id, before, after });
         expect(history.undoLength).toBe(1);
 
-        const spy = vi.spyOn(storage, "setItem").mockImplementation(() => {
-            throw new DOMException("quota exceeded", "QuotaExceededError");
-        });
+        // First attempt fails storage.
+        const spy = failNthWrite(1);
 
-        let result: boolean;
         expect(() => {
-            result = history.undo();
+            history.undo();
         }).not.toThrow();
-        // A failed undo keeps the action so the UI can retry — and the failure
-        // is never surfaced as an exception (apply() returns false).
-        expect(result).toBe(false);
         expect(history.undoLength).toBe(1);
+        // In-memory state unchanged: the pre-undo move is still applied (no
+        // partial restore was committed).
+        expect(a.position).toEqual({ x: 200, y: 150 });
+        // Persisted state unchanged: the device was never written.
+        expect(Storage.getAllDevices().size).toBe(0);
+
+        // Retry succeeds once storage is writable again.
+        expect(history.undo()).toBe(true);
+        expect(a.position).toEqual({ x: 100, y: 100 });
+        expect(Storage.loadDevice(device.id)?.getControl(a.id)?.position).toEqual({ x: 100, y: 100 });
 
         spy.mockRestore();
     });
 
-    it("library-scope undo returns false without throwing when restore persistence fails", () => {
+    it("library-scope undo rolls back live + persisted state on failure and retries cleanly", () => {
         const lib = new DeviceLibrary();
-        lib.createNewDevice("A");
+        const a = lib.createNewDevice("A");
         lib.saveCurrentDevice();
         const history = new DeviceHistory(lib);
 
         const before = history.captureLibraryState();
-        lib.createNewDevice("B");
+        const b = lib.createNewDevice("B");
         lib.saveCurrentDevice();
         const after = history.captureLibraryState();
         history.record({ type: "device.create", scope: "library", deviceId: null, before, after });
-        expect(history.undoLength).toBe(1);
+        expect(lib.listDevices().map((d) => d.name).sort()).toEqual(["A", "B"]);
+        expect(lib.currentDevice?.id).toBe(b.id);
+        // Fail on the SECOND write: the target device was already persisted
+        // as deleted, so without a rollback the persisted map would lose "B".
+        const spy = failNthWrite(2);
 
-        const spy = vi.spyOn(storage, "setItem").mockImplementation(() => {
-            throw new DOMException("quota exceeded", "QuotaExceededError");
-        });
-
-        let result: boolean;
         expect(() => {
-            result = history.undo();
+            history.undo();
         }).not.toThrow();
-        expect(result).toBe(false);
         expect(history.undoLength).toBe(1);
+        // Rollback restored both layers: the persisted device list AND the
+        // live active device are exactly as they were before the attempt.
+        expect(lib.currentDevice?.id).toBe(b.id);
+        expect(lib.listDevices().map((d) => d.name).sort()).toEqual(["A", "B"]);
+        expect(Storage.getAllDevices().size).toBe(2);
+
+        // Retry succeeds once storage is writable again.
+        expect(history.undo()).toBe(true);
+        expect(lib.listDevices().map((d) => d.name)).toEqual(["A"]);
+        expect(lib.currentDevice?.id).toBe(a.id);
 
         spy.mockRestore();
     });

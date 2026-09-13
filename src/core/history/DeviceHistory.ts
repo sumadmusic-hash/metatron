@@ -2,6 +2,7 @@ import { Device } from "../model/Device";
 import { Control } from "../model/Control";
 import { Group } from "../model/Group";
 import { Preset } from "../model/Preset";
+import type { DeviceData } from "../model/types";
 import { DeviceLibrary } from "../DeviceLibrary";
 import { Storage, StorageError } from "../../persistence/Storage";
 import {
@@ -27,7 +28,8 @@ import {
  * - "device" actions are applied IN PLACE onto the live Device objects
  *   (`restoreDeviceState`). Object identity is preserved, so live Bearings such
  *   as Nexus subscriptions and the BindingManager keep working. `undo()`/`redo()`
- *   persist through the existing `DeviceLibrary.saveCurrentDevice()` path.
+ *   persist transactionally (two-phase): the captured state is staged and
+ *   written FIRST, and only a successful write allows the in-place live restore.
  * - "library" actions (device create/delete) restore the whole device list +
  *   active device through the existing `DeviceLibrary`/`Storage` engines.
  *
@@ -103,6 +105,16 @@ export function restoreDeviceState(device: Device, patch: DeviceStatePatch): voi
         if (!(id in patch.groups)) device.removeGroup(id);
     }
 
+    // Remove stale controls BEFORE (re)adding targets: during a full swap
+    // restore (before/after share no control ids) the 32-active cap must never
+    // be exceeded transiently — an add-first restore would silently refuse at
+    // the limit instead of reaching the captured target state. Existing
+    // controls are still updated IN PLACE below, so object identity (live
+    // bindings/subscriptions) is preserved exactly as before.
+    for (const id of Array.from(device.controls.keys())) {
+        if (!(id in patch.controls)) device.removeControl(id, true);
+    }
+
     for (const [id, data] of Object.entries(patch.controls)) {
         const control = device.controls.get(id);
         if (control) {
@@ -128,9 +140,6 @@ export function restoreDeviceState(device: Device, patch: DeviceStatePatch): voi
                 console.error(`[METATRON HISTORY] refusing to restore control ${id}: max active controls reached`);
             }
         }
-    }
-    for (const id of Array.from(device.controls.keys())) {
-        if (!(id in patch.controls)) device.removeControl(id, true);
     }
 
     for (const [id, data] of Object.entries(patch.presets)) {
@@ -318,12 +327,35 @@ export class DeviceHistory {
 
     private apply(action: HistoryAction, which: "before" | "after"): boolean {
         if (action.scope === "library") {
+            const target = action[which] as LibraryStatePatch;
+
+            // Transactional guard: the persisted device map and the live
+            // library state are snapshotted BEFORE the mutation so a failed
+            // restore can be rolled back completely (in-memory AND persisted
+            // stay untouched) instead of leaving a partial write behind.
+            let beforePersisted: Map<string, DeviceData>;
+            let beforeLive: LibraryStatePatch;
             try {
-                this.restoreLibraryState(action[which] as LibraryStatePatch);
+                beforePersisted = Storage.getAllDevices();
+                beforeLive = this.captureLibraryState();
             } catch (e) {
                 if (e instanceof StorageError) {
                     console.warn(
-                        `[METATRON HISTORY] library action "${action.type}" could not be applied — storage failure, action kept.`,
+                        `[METATRON HISTORY] library action "${action.type}" could not be prepared — storage failure, action kept.`,
+                        e,
+                    );
+                    return false;
+                }
+                throw e;
+            }
+
+            try {
+                this.restoreLibraryState(target);
+            } catch (e) {
+                if (e instanceof StorageError) {
+                    this.rollbackLibraryState(beforeLive, beforePersisted);
+                    console.warn(
+                        `[METATRON HISTORY] library action "${action.type}" could not be applied — storage failure, pre-attempt state restored, action kept.`,
                         e,
                     );
                     // Return false so undo()/redo() re-push the action onto the
@@ -345,23 +377,66 @@ export class DeviceHistory {
             );
             return false;
         }
-        restoreDeviceState(device, action[which] as DeviceStatePatch);
+
+        const patch = action[which] as DeviceStatePatch;
+
+        // Transactional two-phase apply: the captured target state is staged
+        // and persisted FIRST; the live device is only mutated in place after
+        // the write succeeded. A storage failure therefore leaves both the
+        // live in-memory state AND the persisted map unchanged — undo()/redo()
+        // return false and the action stays on the stack for a clean retry.
+        const staged = realizeDevice(device.id, patch);
         try {
-            this.library.saveCurrentDevice();
+            Storage.saveDevice(staged);
         } catch (e) {
             if (e instanceof StorageError) {
                 console.warn(
-                    `[METATRON HISTORY] device action "${action.type}" could not be persisted — storage failure, action kept.`,
+                    `[METATRON HISTORY] device action "${action.type}" could not be persisted — storage failure, live device untouched, action kept.`,
                     e,
                 );
-                // Return false so undo()/redo() re-push the action onto the
-                // stack: it stays valid and the UI can retry once storage
-                // is writable again.
                 return false;
             }
             throw e;
         }
+
+        restoreDeviceState(device, patch);
         return true;
+    }
+
+    /**
+     * Best-effort rollback for a FAILED library-scope apply: rewrites the
+     * persisted device map back to the pre-attempt snapshot and re-activates
+     * the device that was active before the attempt. Every step is guarded —
+     * if the storage failure persists, some writes may stay partially applied,
+     * but the action remains on the undo stack for a later retry.
+     */
+    private rollbackLibraryState(beforeLive: LibraryStatePatch, beforePersisted: Map<string, DeviceData>): void {
+        try {
+            for (const [, data] of beforePersisted) {
+                try {
+                    Storage.saveDevice(Device.deserialize({ ...data }));
+                } catch {
+                    // best effort — storage may still be unwritable
+                }
+            }
+            for (const meta of this.library.listDevices()) {
+                if (!beforePersisted.has(meta.id)) {
+                    try {
+                        this.library.deleteDevice(meta.id);
+                    } catch {
+                        // best effort
+                    }
+                }
+            }
+            const activeId = beforeLive.activeDeviceId;
+            if (activeId && beforeLive.devices[activeId]) {
+                this.library.currentDevice = realizeDevice(activeId, beforeLive.devices[activeId]);
+            } else {
+                this.library.currentDevice = undefined;
+            }
+        } catch (e) {
+            console.warn("[METATRON HISTORY] library rollback incomplete:", e);
+        }
     }
 }
 

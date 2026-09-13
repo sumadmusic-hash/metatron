@@ -25,7 +25,7 @@ export class Storage {
      * @throws {StorageError} when LocalStorage cannot be written
      */
     public static saveDevice(device: Device): void {
-        const devices = this.loadAllDevices();
+        const devices = this.getAllDevices();
         devices.set(device.id, device.serialize());
 
         try {
@@ -42,7 +42,7 @@ export class Storage {
      * @throws {StorageError} when the stored payload cannot be parsed
      */
     public static loadDevice(id: string): Device | undefined {
-        const devices = this.loadAllDevices();
+        const devices = this.getAllDevices();
         const data = devices.get(id);
         if (data) {
             return Device.deserialize(data);
@@ -57,7 +57,7 @@ export class Storage {
      * @throws {StorageError} when LocalStorage cannot be written
      */
     public static deleteDevice(id: string): void {
-        const devices = this.loadAllDevices();
+        const devices = this.getAllDevices();
         if (devices.has(id)) {
             devices.delete(id);
             try {
@@ -75,7 +75,7 @@ export class Storage {
      * @throws {StorageError} when the stored payload cannot be parsed
      */
     public static listDevices(): { id: string, name: string }[] {
-        const devices = this.loadAllDevices();
+        const devices = this.getAllDevices();
         const result: { id: string, name: string }[] = [];
 
         devices.forEach((data, id) => {
@@ -89,9 +89,12 @@ export class Storage {
      * Read and parse the full device map from LocalStorage. An absent key is
      * not an error — it yields an empty map. A corrupted payload is.
      *
+     * Exposed so the history layer can snapshot the persisted map for a
+     * best-effort rollback after a failed library-scope restore.
+     *
      * @throws {StorageError} when the stored payload cannot be parsed
      */
-    private static loadAllDevices(): Map<string, DeviceData> {
+    public static getAllDevices(): Map<string, DeviceData> {
         const data = localStorage.getItem(this.STORAGE_KEY);
         if (!data) {
             return new Map();

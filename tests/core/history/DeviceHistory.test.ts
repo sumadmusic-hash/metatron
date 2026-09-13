@@ -539,3 +539,65 @@ describe("DeviceHistory — per-device executability (follow-up C)", () => {
         expect(history.redo()).toBe(true);
     });
 });
+
+describe("DeviceHistory — restore at the 32-control cap (P1/I1)", () => {
+
+    it("a full 32→32 control swap never exceeds the cap and restores every target", () => {
+        const live = new Device("Live");
+        for (let i = 0; i < 32; i++) {
+            live.addControl(new Control("knob", `Old-${i}`, { x: i, y: i }, `old-${i}`));
+        }
+        expect(live.getActiveControlCount()).toBe(32);
+
+        const target = new Device("Target");
+        for (let i = 0; i < 32; i++) {
+            target.addControl(new Control("knob", `New-${i}`, { x: 100 + i, y: 50 }, `new-${i}`));
+        }
+        const patch = captureDeviceState(target);
+
+        const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        restoreDeviceState(live, patch);
+
+        // Restore must reach the captured target state, not silently refuse at
+        // the transiently-exceeded cap (removal happens BEFORE (re)adding).
+        expect(errorSpy).not.toHaveBeenCalled();
+        expect(live.getActiveControlCount()).toBe(32);
+        expect(Array.from(live.controls.keys()).sort()).toEqual(
+            Object.keys(patch.controls).sort(),
+        );
+        for (const [id, data] of Object.entries(patch.controls)) {
+            expect(live.getControl(id)?.name).toBe(data.name);
+            expect(live.getControl(id)?.position).toEqual(data.position);
+        }
+
+        errorSpy.mockRestore();
+    });
+
+    it("a swap that keeps half the controls keeps their OBJECT IDENTITY", () => {
+        const live = new Device("Live");
+        for (let i = 0; i < 32; i++) {
+            live.addControl(new Control("knob", `Keep-${i}`, { x: i, y: i }, `keep-${i}`));
+        }
+        // Half of the target controls already exist on the live device.
+        const target = new Device("Target");
+        for (let i = 0; i < 16; i++) {
+            target.addControl(new Control("knob", `Keep-${i}`, { x: 10 + i, y: 20 }, `keep-${i}`));
+        }
+        for (let i = 0; i < 16; i++) {
+            target.addControl(new Control("knob", `New-${i}`, { x: 200 + i, y: 30 }, `new-${i}`));
+        }
+        const patch = captureDeviceState(target);
+
+        restoreDeviceState(live, patch);
+
+        for (let i = 0; i < 16; i++) {
+            expect(live.getControl(`keep-${i}`)?.name).toBe(`Keep-${i}`);
+            expect(live.getControl(`keep-${i}`)?.position).toEqual({ x: 10 + i, y: 20 });
+        }
+        for (let i = 0; i < 16; i++) {
+            expect(live.getControl(`new-${i}`)?.name).toBe(`New-${i}`);
+        }
+        expect(live.getActiveControlCount()).toBe(32);
+    });
+});
