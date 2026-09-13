@@ -1,19 +1,5 @@
 import { Device } from "../core/model/Device";
-
-/**
- * Serialized Device shape as produced by {@link Device.serialize} and consumed
- * by {@link Device.deserialize}. This is what the Storage layer persists under
- * the LocalStorage key — in-memory Device instances never touch the store
- * directly.
- */
-export interface DeviceData {
-    id: string;
-    name: string;
-    schemaVersion: number;
-    controls: unknown[];
-    groups: unknown[];
-    presets: unknown[];
-}
+import type { DeviceData } from "../core/model/types";
 
 /**
  * Error thrown by Storage operations when the underlying LocalStorage read,

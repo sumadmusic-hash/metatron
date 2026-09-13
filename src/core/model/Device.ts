@@ -2,6 +2,7 @@ import { Control } from "./Control";
 import { Group } from "./Group";
 import { Preset } from "./Preset";
 import { generateId } from "./types";
+import type { DeviceData } from "./types";
 import { GROUP_PADDING, migratedGroupRect } from "../../ui/geometry";
 
 export class Device {
@@ -167,7 +168,7 @@ export class Device {
 
     // --- SERIALIZATION ---
 
-    public serialize(): object {
+    public serialize(): DeviceData {
         const serializedControls = Array.from(this.controls.values()).map(c => c.serialize());
         const serializedGroups = Array.from(this.groups.values()).map(g => g.serialize());
         const serializedPresets = Array.from(this.presets.values()).map(p => p.serialize());

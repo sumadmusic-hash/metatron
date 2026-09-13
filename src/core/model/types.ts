@@ -5,6 +5,27 @@ export type ControlType = "knob" | "switch";
 
 export type BindingState = "UNCONFIGURED" | "DISCONNECTED" | "CONNECTED";
 
+/**
+ * Serialized Device shape as produced by Device.serialize and consumed by
+ * Device.deserialize. The Storage layer (src/persistence/Storage.ts) persists
+ * this shape under the LocalStorage key — in-memory Device instances never
+ * touch the store directly.
+ */
+export interface DeviceData {
+    id: string;
+    name: string;
+    schemaVersion: number;
+    /**
+     * Serialized control/group/preset payloads. Deliberately `unknown[]`:
+     * Control.serialize, Group.serialize, and Preset.serialize still declare
+     * `object` return types, so precise shapes are not available at this
+     * layer yet — typing them would require changing those classes first.
+     */
+    controls: unknown[];
+    groups: unknown[];
+    presets: unknown[];
+}
+
 /** 
  * Unique ID generator for stable references.
  * We use randomUUID but slice it short for readability as per spec.
