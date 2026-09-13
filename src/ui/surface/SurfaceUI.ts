@@ -421,7 +421,6 @@ private container!: HTMLElement;
 
         if (control.type === "knob") {
             widget.style.borderRadius = "50%";
-            widget.style.setProperty("--knob-arc-inset", `-${Math.max(3, Math.round(layout.widgetWidth * 0.06))}px`);
         } else {
             widget.style.borderRadius = `${layout.widgetWidth / 2}px`;
             const toggle = el.querySelector<HTMLElement>(".switch-toggle");
