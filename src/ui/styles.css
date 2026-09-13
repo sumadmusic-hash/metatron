@@ -428,8 +428,8 @@ body {
     pointer-events: none;
     background: conic-gradient(
         from -135deg,
-        var(--accent-color) 0deg,
-        var(--accent-color) var(--knob-arc-end, -135deg),
+        color-mix(in srgb, var(--accent-color) 72%, #0f1012) 0deg,
+        color-mix(in srgb, var(--accent-color) 72%, #0f1012) var(--knob-arc-end, -135deg),
         rgba(255, 255, 255, 0.08) var(--knob-arc-end, -135deg),
         rgba(255, 255, 255, 0.08) 270deg,
         transparent 270deg
