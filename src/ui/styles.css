@@ -368,19 +368,19 @@ body {
     box-sizing: border-box;
     background:
         linear-gradient(155deg,
-            #525a64 0%,
-            #3d444e 30%,
-            #2c3139 60%,
-            #1e2228 100%);
-    border: 1.5px solid rgba(255, 255, 255, 0.1);
+            #3a4048 0%,
+            #2a2f36 30%,
+            #1c2025 60%,
+            #13161a 100%);
+    border: 1px solid rgba(255, 255, 255, 0.06);
     box-shadow:
-        4px 6px 12px rgba(0, 0, 0, 0.5),
-        -2px -2px 6px rgba(255, 255, 255, 0.03),
-        inset 0 1px 0 rgba(255, 255, 255, 0.18),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.25),
-        inset 1px 0 2px rgba(255, 255, 255, 0.05),
-        inset -1px 0 2px rgba(0, 0, 0, 0.12),
-        inset 0 0 8px rgba(0, 0, 0, 0.1);
+        4px 6px 12px rgba(0, 0, 0, 0.6),
+        -2px -2px 6px rgba(255, 255, 255, 0.02),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+        inset 1px 0 2px rgba(255, 255, 255, 0.03),
+        inset -1px 0 2px rgba(0, 0, 0, 0.15),
+        inset 0 0 8px rgba(0, 0, 0, 0.12);
     position: relative;
     display: flex;
     justify-content: center;
@@ -397,8 +397,8 @@ body {
     background:
         radial-gradient(
             ellipse at 35% 30%,
-            rgba(255, 255, 255, 0.12) 0%,
-            rgba(255, 255, 255, 0.03) 30%,
+            rgba(255, 255, 255, 0.08) 0%,
+            rgba(255, 255, 255, 0.02) 30%,
             transparent 55%
         ),
         repeating-linear-gradient(
