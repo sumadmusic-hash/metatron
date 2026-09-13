@@ -7,10 +7,14 @@ import { Toast } from "./Toast";
 import { NexusAdapter } from "../nexus/NexusAdapter";
 import { BindingManager } from "../core/BindingManager";
 import { InstrumentPresetLibrary } from "../persistence/InstrumentPresetLibrary";
+import { exportPresetToFile, importPresetFromFile } from "../persistence/FileAdapter";
 import {
     exportInstrumentToLibrary,
-    importInstrumentFromLibrary,
+    loadAndParseInstrumentPreset,
 } from "../integration/InstrumentPresetIntegration";
+import type { InstrumentImportOutcome } from "../integration/InstrumentPresetIntegration";
+import { importInstrumentPreset } from "../core/instrument/InstrumentPresetImport";
+import type { InstrumentPreset } from "../core/instrument/InstrumentPreset";
 import {
     renderInstrumentExportOutcome,
     renderInstrumentImportOutcome,
@@ -450,8 +454,23 @@ export class DeviceLibraryUI {
         exportBtn.innerText = "Export";
         exportBtn.title = "Capture the connected project chain + this device's bound controls (SOURCE is read-only)";
         exportBtn.onclick = () => void this.runInstrumentExport(input.value.trim() || device.name);
+
+        const downloadBtn = document.createElement("button");
+        downloadBtn.className = "btn small";
+        downloadBtn.innerText = "Export .json";
+        downloadBtn.title = "Same export as 'Export', additionally downloaded as .json via the file bridge (D1)";
+        downloadBtn.onclick = () => void this.runInstrumentFileExport(input.value.trim() || device.name);
+
+        const importFileBtn = document.createElement("button");
+        importFileBtn.className = "btn small";
+        importFileBtn.innerText = "Import .json";
+        importFileBtn.title = "Pick a .metatron-preset.json file and import it into the connected TARGET project (confirmed first)";
+        importFileBtn.onclick = () => this.pickInstrumentFile();
+
         exportRow.appendChild(input);
         exportRow.appendChild(exportBtn);
+        exportRow.appendChild(downloadBtn);
+        exportRow.appendChild(importFileBtn);
         panel.appendChild(exportRow);
 
         const emptyHint = "Connected project = SOURCE for export, TARGET for import. Connect first.";
@@ -485,7 +504,7 @@ export class DeviceLibraryUI {
                 importBtn.title = "Import into the connected TARGET project (creates devices/cables — confirmed first)";
                 importBtn.onclick = (e) => {
                     e.stopPropagation();
-                    this.confirmInstrumentImport(entry);
+                    this.confirmInstrumentImport(entry.name, () => void this.runInstrumentImport(entry.id));
                 };
 
                 const delBtn = document.createElement("button");
@@ -543,7 +562,7 @@ export class DeviceLibraryUI {
     }
 
     /** Confirmation before mutating the connected project (P2 gate). */
-    private confirmInstrumentImport(entry: { id: string; name: string }) {
+    private confirmInstrumentImport(name: string, onConfirm: () => void) {
         this.render(this.container); // clear pending bars
         const bar = document.createElement("div");
         bar.className = "confirm-bar danger";
@@ -552,7 +571,7 @@ export class DeviceLibraryUI {
         bar.style.transform = "translateX(-50%)";
 
         const label = document.createElement("span");
-        label.innerText = `Import "${entry.name}" into the connected project? This creates devices and cables there.`;
+        label.innerText = `Import "${name}" into the connected project? This creates devices and cables there.`;
         bar.appendChild(label);
 
         const yes = document.createElement("button");
@@ -561,7 +580,7 @@ export class DeviceLibraryUI {
         yes.style.marginLeft = "8px";
         yes.onclick = () => {
             bar.remove();
-            void this.runInstrumentImport(entry.id);
+            void onConfirm();
         };
         bar.appendChild(yes);
 
@@ -576,6 +595,77 @@ export class DeviceLibraryUI {
 
     private async runInstrumentImport(libraryId: string) {
         this.instrumentResultArea?.lastElementChild?.remove();
+        const loaded = loadAndParseInstrumentPreset(libraryId);
+        if (!loaded.ok) {
+            Toast.show(loaded.errors[0] ?? "Instrument preset import failed.", "error");
+            return;
+        }
+        await this.commitInstrumentImport(loaded.preset);
+    }
+
+    /** D1 file export: same envelope as the library export (via the existing
+     *  `exportInstrumentToLibrary` path), additionally downloaded as .json
+     *  through the FileAdapter bridge. */
+    private async runInstrumentFileExport(name: string) {
+        this.instrumentResultArea?.lastElementChild?.remove();
+        const device = this.deviceLibrary.currentDevice;
+        if (!device) {
+            Toast.show("No active device to export.", "error");
+            return;
+        }
+        if (!this.nexusAdapter?.document) {
+            Toast.show("Connect to an Audiotool project first — the connected project is the SOURCE.", "error");
+            return;
+        }
+        if (!this.bindingManager) {
+            Toast.show("No binding manager available.", "error");
+            return;
+        }
+        const outcome = await exportInstrumentToLibrary(this.nexusAdapter.document, device, this.bindingManager, name);
+        if (outcome.ok) {
+            exportPresetToFile(outcome.preset!);
+            Toast.show(`Instrument preset "${name}" exported to library and downloaded as .json.`, "success");
+        } else {
+            Toast.show("Instrument preset export failed.", "error");
+        }
+        this.render(this.container);
+        this.instrumentResultArea?.appendChild(renderInstrumentExportOutcome(outcome));
+    }
+
+    /** Open a hidden file picker for a .json envelope (D1 import). */
+    private pickInstrumentFile() {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".json,application/json";
+        input.style.display = "none";
+        input.onchange = () => {
+            const file = input.files?.[0];
+            input.remove();
+            if (!file) return;
+            void this.runInstrumentFileImport(file);
+        };
+        document.body.appendChild(input);
+        input.click();
+    }
+
+    /** D1 file import: parse the picked file, then gate + import like the
+     *  library flow. */
+    private async runInstrumentFileImport(file: File) {
+        this.instrumentResultArea?.lastElementChild?.remove();
+        let preset: InstrumentPreset;
+        try {
+            preset = await importPresetFromFile(file);
+        } catch (e) {
+            Toast.show(e instanceof Error ? e.message : "Import file invalid.", "error");
+            return;
+        }
+        this.confirmInstrumentImport(preset.name, () => void this.commitInstrumentImport(preset));
+    }
+
+    /** P2 — run the import ENGINE on an already parsed envelope (library or
+     *  file). Mutations are limited to the TARGET document + the transient
+     *  BindingManager. */
+    private async commitInstrumentImport(preset: InstrumentPreset) {
         const doc = this.nexusAdapter?.document;
         if (!doc) {
             Toast.show("Connect to the TARGET project first — import clones into the connected project.", "error");
@@ -594,7 +684,13 @@ export class DeviceLibraryUI {
         const device = this.deviceLibrary.currentDevice;
         if (!device) return;
         const before = this.currentPatch(device);
-        const outcome = await importInstrumentFromLibrary(libraryId, doc, this.bindingManager);
+        let outcome: InstrumentImportOutcome;
+        try {
+            const result = await importInstrumentPreset(preset, doc, this.bindingManager);
+            outcome = result.ok ? { ok: true, import: result } : { ok: false, import: result, errors: result.failures };
+        } catch (e) {
+            outcome = { ok: false, errors: [e instanceof Error ? e.message : String(e)] };
+        }
         // M23.3.1: persist the imported device state and re-render the surface
         // so the imported Control.value becomes visible — the exact
         // save/refresh pattern used by preset.load. Exactly ONE history action
