@@ -405,29 +405,6 @@ body {
         inset -4px -4px 10px rgba(255, 255, 255, 0.1);
 }
 
-.knob-ticks {
-    position: absolute;
-    inset: -4px;
-    border-radius: 50%;
-    pointer-events: none;
-    background: repeating-conic-gradient(
-        from -135deg,
-        rgba(0, 0, 0, 0.1) 0deg 1deg,
-        transparent 1deg 10deg
-    );
-    -webkit-mask-image: conic-gradient(
-        from -135deg,
-        black 0deg 270deg,
-        transparent 270deg 360deg
-    );
-    mask-image: conic-gradient(
-        from -135deg,
-        black 0deg 270deg,
-        transparent 270deg 360deg
-    );
-    z-index: 0;
-}
-
 .knob-indicator {
     position: absolute;
     width: 4px;

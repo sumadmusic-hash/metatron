@@ -195,11 +195,6 @@ private container!: HTMLElement;
             const body = document.createElement("div");
             body.className = "knob-body";
 
-            const ticks = document.createElement("div");
-            ticks.className = "knob-ticks";
-            ticks.setAttribute("aria-hidden", "true");
-            body.appendChild(ticks);
-
             const indicator = document.createElement("div");
             indicator.className = "knob-indicator";
 
