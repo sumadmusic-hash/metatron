@@ -3,7 +3,7 @@ import { Control } from "../model/Control";
 import { Group } from "../model/Group";
 import { Preset } from "../model/Preset";
 import { DeviceLibrary } from "../DeviceLibrary";
-import { Storage } from "../../persistence/Storage";
+import { Storage, StorageError } from "../../persistence/Storage";
 import {
     HISTORY_LIMIT,
     patchesEqual,
@@ -318,7 +318,21 @@ export class DeviceHistory {
 
     private apply(action: HistoryAction, which: "before" | "after"): boolean {
         if (action.scope === "library") {
-            this.restoreLibraryState(action[which] as LibraryStatePatch);
+            try {
+                this.restoreLibraryState(action[which] as LibraryStatePatch);
+            } catch (e) {
+                if (e instanceof StorageError) {
+                    console.warn(
+                        `[METATRON HISTORY] library action "${action.type}" could not be applied — storage failure, action kept.`,
+                        e,
+                    );
+                    // Return false so undo()/redo() re-push the action onto the
+                    // stack: it stays valid and the UI can retry once storage
+                    // is writable again.
+                    return false;
+                }
+                throw e;
+            }
             return true;
         }
 
@@ -332,7 +346,21 @@ export class DeviceHistory {
             return false;
         }
         restoreDeviceState(device, action[which] as DeviceStatePatch);
-        this.library.saveCurrentDevice();
+        try {
+            this.library.saveCurrentDevice();
+        } catch (e) {
+            if (e instanceof StorageError) {
+                console.warn(
+                    `[METATRON HISTORY] device action "${action.type}" could not be persisted — storage failure, action kept.`,
+                    e,
+                );
+                // Return false so undo()/redo() re-push the action onto the
+                // stack: it stays valid and the UI can retry once storage
+                // is writable again.
+                return false;
+            }
+            throw e;
+        }
         return true;
     }
 }

@@ -121,7 +121,12 @@ export class DeviceLibraryUI {
             save.innerText = "Save";
             save.style.flex = "1";
             save.onclick = () => {
-                this.deviceLibrary.saveCurrentDevice();
+                try {
+                    this.deviceLibrary.saveCurrentDevice();
+                } catch (e) {
+                    Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
+                    return;
+                }
                 Toast.show("Device saved.", "success");
                 this.onDeviceChanged(); // refresh active highlight
             };
@@ -183,7 +188,12 @@ export class DeviceLibraryUI {
             }
             const before = this.currentPatch(device);
             device.savePreset(name);
-            this.deviceLibrary.saveCurrentDevice();
+            try {
+                this.deviceLibrary.saveCurrentDevice();
+            } catch (e) {
+                Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
+                return;
+            }
             const after = this.currentPatch(device);
             this.recordDeviceAction("preset.save", device, before, after);
             Toast.show(`Preset "${name}" saved.`, "success");
@@ -228,7 +238,12 @@ export class DeviceLibraryUI {
                         if (name && name !== preset.name) {
                             const before = this.currentPatch(device);
                             preset.name = name;
-                            this.deviceLibrary.saveCurrentDevice();
+                            try {
+                                this.deviceLibrary.saveCurrentDevice();
+                            } catch (e) {
+                                Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
+                                return;
+                            }
                             const after = this.currentPatch(device);
                             this.recordDeviceAction("preset.rename", device, before, after);
                             Toast.show("Preset renamed.", "success");
@@ -252,7 +267,12 @@ export class DeviceLibraryUI {
                     e.stopPropagation();
                     const before = this.currentPatch(device);
                     device.loadPreset(preset.id);
-                    this.deviceLibrary.saveCurrentDevice();
+                    try {
+                        this.deviceLibrary.saveCurrentDevice();
+                    } catch (e) {
+                        Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
+                        return;
+                    }
                     const after = this.currentPatch(device);
                     this.recordDeviceAction("preset.load", device, before, after);
                     // Push restored values to Nexus ONLY for controls connected
@@ -308,7 +328,12 @@ export class DeviceLibraryUI {
                     if (this.morphB === preset.id) this.morphB = undefined;
                     const before = this.currentPatch(device);
                     device.deletePreset(preset.id);
-                    this.deviceLibrary.saveCurrentDevice();
+                    try {
+                        this.deviceLibrary.saveCurrentDevice();
+                    } catch (e) {
+                        Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
+                        return;
+                    }
                     const after = this.currentPatch(device);
                     this.recordDeviceAction("preset.delete", device, before, after);
                     Toast.show(`Preset "${preset.name}" deleted.`, "info");
@@ -374,7 +399,12 @@ export class DeviceLibraryUI {
             });
             // Persist the RESULTING control.value state only (morph slots and the
             // amount stay transient and are never serialized).
-            this.deviceLibrary.saveCurrentDevice();
+            try {
+                this.deviceLibrary.saveCurrentDevice();
+            } catch (e) {
+                Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
+                return;
+            }
         };
 
         const percent = document.createElement("div");
@@ -701,7 +731,12 @@ export class DeviceLibraryUI {
         // so the imported Control.value becomes visible — the exact
         // save/refresh pattern used by preset.load. Exactly ONE history action
         // remains: recordDeviceAction is called once, nothing else records.
-        this.deviceLibrary.saveCurrentDevice();
+        try {
+            this.deviceLibrary.saveCurrentDevice();
+        } catch (e) {
+            Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
+            return;
+        }
         const after = this.currentPatch(device);
         this.recordDeviceAction("instrument.import", device, before, after);
         // Re-render FIRST so the result box lands in the fresh result area
@@ -751,7 +786,12 @@ export class DeviceLibraryUI {
         const count = this.deviceLibrary.listDevices().length;
         const before = this.history?.captureLibraryState();
         this.deviceLibrary.createNewDevice(count === 0 ? "My Device" : `My Device ${count + 1}`);
-        this.deviceLibrary.saveCurrentDevice();
+        try {
+            this.deviceLibrary.saveCurrentDevice();
+        } catch (e) {
+            Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
+            return;
+        }
         const after = this.history?.captureLibraryState();
         if (this.history && before && after && !patchesEqual(before, after)) {
             this.history.record({ type: "device.create", scope: "library", deviceId: null, before, after });
@@ -763,7 +803,12 @@ export class DeviceLibraryUI {
     private openDevice(id: string) {
         // Save current before switching so nothing is lost
         if (this.deviceLibrary.currentDevice) {
-            this.deviceLibrary.saveCurrentDevice();
+            try {
+                this.deviceLibrary.saveCurrentDevice();
+            } catch (e) {
+                Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
+                return;
+            }
         }
         const loaded = this.deviceLibrary.loadDevice(id);
         if (loaded) {
