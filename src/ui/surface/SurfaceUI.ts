@@ -111,10 +111,10 @@ private container!: HTMLElement;
         const el = this.container.querySelector(`[data-ctl-id="${controlId}"]`) as HTMLElement | null;
         if (!el) return;
 
-        const knob = el.querySelector(".knob-indicator") as HTMLElement | null;
-        if (knob) {
+        const ring = el.querySelector(".knob-led-ring") as HTMLElement | null;
+        if (ring) {
             const rotation = -135 + (value * 270);
-            knob.style.transform = `rotate(${rotation}deg)`;
+            ring.style.setProperty("--knob-arc-end", `${rotation}deg`);
         }
         const sw = el.querySelector(".switch-body") as HTMLElement | null;
         if (sw) {
@@ -195,12 +195,11 @@ private container!: HTMLElement;
             const body = document.createElement("div");
             body.className = "knob-body";
 
-            const indicator = document.createElement("div");
-            indicator.className = "knob-indicator";
-
+            const ring = document.createElement("div");
+            ring.className = "knob-led-ring";
             const rotation = -135 + (control.value * 270);
-            indicator.style.transform = `rotate(${rotation}deg)`;
-            body.appendChild(indicator);
+            ring.style.setProperty("--knob-arc-end", `${rotation}deg`);
+            body.appendChild(ring);
             visualArea.appendChild(body);
 
             this.attachKnobDrag(body, control);
@@ -422,12 +421,7 @@ private container!: HTMLElement;
 
         if (control.type === "knob") {
             widget.style.borderRadius = "50%";
-            const indicator = el.querySelector<HTMLElement>(".knob-indicator");
-            if (indicator) {
-                indicator.style.top = `${layout.widgetWidth * 0.08}px`;
-                indicator.style.transformOrigin = `50% ${layout.widgetWidth / 2}px`;
-                indicator.style.height = `${Math.max(6, Math.round(layout.widgetWidth * 0.22))}px`;
-            }
+            widget.style.setProperty("--knob-arc-inset", `-${Math.max(3, Math.round(layout.widgetWidth * 0.06))}px`);
         } else {
             widget.style.borderRadius = `${layout.widgetWidth / 2}px`;
             const toggle = el.querySelector<HTMLElement>(".switch-toggle");

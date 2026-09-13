@@ -106,9 +106,9 @@ function move(s: HTMLInputElement, value: string) {
 }
 
 function knobValue(root: HTMLElement, controlId: string): string {
-    const el = root.querySelector<HTMLElement>(`[data-ctl-id="${controlId}"] .knob-indicator`);
+    const el = root.querySelector<HTMLElement>(`[data-ctl-id="${controlId}"] .knob-led-ring`);
     expect(el).toBeTruthy();
-    return el!.style.transform;
+    return el!.style.getPropertyValue("--knob-arc-end");
 }
 
 beforeEach(() => {
@@ -157,11 +157,11 @@ describe("M14 — Morph slider connected to the Morph engine", () => {
         slotBtn(root, "P-B", "B").click();
 
         // knob rotation = -135 + value*270
-        expect(knobValue(root, "cutoff")).toBe("rotate(0deg)"); // live value 0.5 before morph
+        expect(knobValue(root, "cutoff")).toBe("0deg"); // live value 0.5 before morph
         move(slider(root), "0");
-        expect(knobValue(root, "cutoff")).toBe("rotate(-81deg)");
+        expect(knobValue(root, "cutoff")).toBe("-81deg");
         move(slider(root), "1");
-        expect(knobValue(root, "cutoff")).toBe("rotate(81deg)");
+        expect(knobValue(root, "cutoff")).toBe("81deg");
     });
 
     it("5. connected controls invoke updateBoundControl", () => {

@@ -70,8 +70,8 @@ describe("EDIT mode MIDI handling", () => {
         midi.trigger(1, 20, 127);
 
         expect(c.value).toBe(1);
-        const indicator = root.querySelector(`[data-ctl-id="${c.id}"] .knob-indicator`) as HTMLElement | null;
-        expect(indicator).not.toBeNull();
-        expect(indicator!.style.transform).toBe("rotate(135deg)");
+        const ring = root.querySelector(`[data-ctl-id="${c.id}"] .knob-led-ring`) as HTMLElement | null;
+        expect(ring).not.toBeNull();
+        expect(ring!.style.getPropertyValue("--knob-arc-end")).toBe("135deg");
     });
 });
