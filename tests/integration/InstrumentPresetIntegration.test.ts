@@ -360,6 +360,61 @@ describe("P4 — Instrument Preset integration (library persistence, D1)", () =>
     });
 });
 
+describe("Corrupt-data report: instrument preset library (§49)", () => {
+    beforeEach(() => {
+        const storage = new FakeStorage();
+        storage.clear();
+        (globalThis as any).localStorage = storage;
+    });
+
+    it("loadAll returns filteredOut count when some entries have invalid shape", () => {
+        // Seed two valid entries plus one corrupt one directly in localStorage.
+        const validA = { id: "ipst_v1", name: "A", deviceId: "dev1", createdAt: 1000, presetJson: "{}" };
+        const validB = { id: "ipst_v2", name: "B", deviceId: "dev2", createdAt: 2000, presetJson: "{}" };
+        const corrupt = { id: "ipst_bad", name: 42 };   // missing required fields
+        localStorage.setItem(INSTRUMENT_PRESET_LIBRARY_KEY, JSON.stringify([validA, validB, corrupt]));
+
+        const r = InstrumentPresetLibrary.report();
+        expect(r.storeUnreadable).toBe(false);
+        expect(r.filteredOut).toBe(1);
+        expect(r.entries.map((e) => e.id).sort()).toEqual(["ipst_v1", "ipst_v2"]);
+
+        // list/get see the valid subset only
+        expect(InstrumentPresetLibrary.list().length).toBe(2);
+        expect(InstrumentPresetLibrary.get("ipst_bad")).toBeUndefined();
+        expect(InstrumentPresetLibrary.get("ipst_v1")?.id).toBe("ipst_v1");
+    });
+
+    it("returns storeUnreadable for non-array store", () => {
+        localStorage.setItem(INSTRUMENT_PRESET_LIBRARY_KEY, JSON.stringify({ not: "an array" }));
+        const r = InstrumentPresetLibrary.report();
+        expect(r.storeUnreadable).toBe(true);
+        expect(r.entries).toHaveLength(0);
+        expect(r.filteredOut).toBe(0);
+    });
+
+    it("returns storeUnreadable for malformed JSON", () => {
+        localStorage.setItem(INSTRUMENT_PRESET_LIBRARY_KEY, "{invalid json");
+        const r = InstrumentPresetLibrary.report();
+        expect(r.storeUnreadable).toBe(true);
+        expect(r.entries).toHaveLength(0);
+    });
+
+    it("after a corrupt store is rewritten, report().storeUnreadable becomes false", () => {
+        // Simulate a completely corrupted store.
+        localStorage.setItem(INSTRUMENT_PRESET_LIBRARY_KEY, "%%%");
+        expect(InstrumentPresetLibrary.report().storeUnreadable).toBe(true);
+
+        // Overwrite with a valid entry (simulates what save() would do after loadAll returns []).
+        const validEntry = { id: "ipst_after", name: "After", deviceId: "dev1", createdAt: 3000, presetJson: "{}" };
+        localStorage.setItem(INSTRUMENT_PRESET_LIBRARY_KEY, JSON.stringify([validEntry]));
+        const r = InstrumentPresetLibrary.report();
+        expect(r.storeUnreadable).toBe(false);
+        expect(r.entries.length).toBe(1);
+        expect(r.entries[0].id).toBe("ipst_after");
+    });
+});
+
 describe("P4 — Instrument Preset export (binding-based union selection, M19.3)", () => {
     beforeEach(() => {
         const storage = new FakeStorage();

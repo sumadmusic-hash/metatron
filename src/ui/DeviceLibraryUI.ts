@@ -516,7 +516,16 @@ export class DeviceLibraryUI {
         hint.innerText = emptyHint;
         panel.appendChild(hint);
 
-        const list = InstrumentPresetLibrary.list();
+        const report = InstrumentPresetLibrary.report();
+        const list = report.entries;
+        if (report.filteredOut > 0 || report.storeUnreadable) {
+            const warn = document.createElement("div");
+            warn.style.cssText = "color:var(--accent);font-size:11px;padding:6px 2px;";
+            warn.innerText = report.storeUnreadable
+                ? "Warnung: Gespeicherte Instrument-Presets konnten nicht gelesen werden (beschädigte Daten)."
+                : `Warnung: ${report.filteredOut} beschädigte(r) Eintrag/Einträge im Preset-Library übersprungen.`;
+            panel.appendChild(warn);
+        }
         if (list.length === 0) {
             const empty = document.createElement("div");
             empty.style.cssText = "color:var(--text-secondary);font-size:12px;padding:8px 4px;";

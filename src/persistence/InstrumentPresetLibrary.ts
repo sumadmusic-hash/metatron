@@ -32,6 +32,27 @@ export interface InstrumentPresetLibraryInfo {
     createdAt: number;
 }
 
+/** Result of a `save` attempt: `ok: true` only when the envelope was actually
+ *  written to local storage. A storage failure is NEVER reported as success. */
+export type InstrumentPresetSaveResult =
+    | { ok: true; entry: InstrumentPresetLibraryEntry }
+    | { ok: false; errors: string[] };
+
+/** Result of reading the library store. Corrupt data is never swallowed
+ *  silently: the caller sees exactly what happened instead of only a
+ *  console.error. Derived views (`list`, `get`, `save`) keep working on the
+ *  valid subset so a corrupt entry cannot take the whole library down. */
+export interface InstrumentPresetLibraryLoadReport {
+    /** Valid, shape-checked entries that are safe to use. */
+    entries: InstrumentPresetLibraryEntry[];
+    /** Entries that were present in the array but failed the shape check
+     *  and were therefore dropped. */
+    filteredOut: number;
+    /** True when the whole stored payload could not be read (JSON parse
+     *  failure or not an array). In that case `entries` is empty. */
+    storeUnreadable: boolean;
+}
+
 function isEntry(value: unknown): value is InstrumentPresetLibraryEntry {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
     const e = value as Record<string, unknown>;
@@ -43,12 +64,6 @@ function isEntry(value: unknown): value is InstrumentPresetLibraryEntry {
         typeof e.presetJson === "string"
     );
 }
-
-/** Result of a `save` attempt: `ok: true` only when the envelope was actually
- *  written to local storage. A storage failure is NEVER reported as success. */
-export type InstrumentPresetSaveResult =
-    | { ok: true; entry: InstrumentPresetLibraryEntry }
-    | { ok: false; errors: string[] };
 
 export class InstrumentPresetLibrary {
     public static readonly KEY = INSTRUMENT_PRESET_LIBRARY_KEY;
@@ -63,7 +78,7 @@ export class InstrumentPresetLibrary {
             createdAt: Date.now(),
             presetJson: serializeInstrumentPreset(preset),
         };
-        const entries = this.loadAll();
+        const entries = this.loadAll().entries;
         entries.push(entry);
         try {
             localStorage.setItem(this.KEY, JSON.stringify(entries));
@@ -80,7 +95,7 @@ export class InstrumentPresetLibrary {
 
     /** Minimal metadata for every stored instrument preset (no parsing). */
     public static list(): InstrumentPresetLibraryInfo[] {
-        return this.loadAll().map((e) => ({
+        return this.loadAll().entries.map((e) => ({
             id: e.id,
             name: e.name,
             deviceId: e.deviceId,
@@ -90,11 +105,18 @@ export class InstrumentPresetLibrary {
 
     /** Raw entry (serialized envelope) for one id. */
     public static get(id: string): InstrumentPresetLibraryEntry | undefined {
-        return this.loadAll().find((e) => e.id === id);
+        return this.loadAll().entries.find((e) => e.id === id);
+    }
+
+    /** Full read report for the UI: valid entries PLUS a corruption/warning
+     *  summary. Consumers must render the `filteredOut`/`storeUnreadable`
+     *  numbers instead of silently ignoring dropped data. */
+    public static report(): InstrumentPresetLibraryLoadReport {
+        return this.loadAll();
     }
 
     public static delete(id: string): boolean {
-        const entries = this.loadAll();
+        const entries = this.loadAll().entries;
         if (!entries.some((e) => e.id === id)) return false;
         try {
             localStorage.setItem(this.KEY, JSON.stringify(entries.filter((e) => e.id !== id)));
@@ -104,19 +126,23 @@ export class InstrumentPresetLibrary {
         return true;
     }
 
-    private static loadAll(): InstrumentPresetLibraryEntry[] {
+    private static loadAll(): InstrumentPresetLibraryLoadReport {
         try {
             const data = localStorage.getItem(this.KEY);
-            if (!data) return [];
+            if (!data) return { entries: [], filteredOut: 0, storeUnreadable: false };
             const parsed = JSON.parse(data);
             if (!Array.isArray(parsed)) {
-                console.error("Failed to parse instrument presets from local storage: expected an array");
-                return [];
+                return { entries: [], filteredOut: 0, storeUnreadable: true };
             }
-            return parsed.filter(isEntry);
+            const valid = parsed.filter(isEntry);
+            return {
+                entries: valid,
+                filteredOut: parsed.length - valid.length,
+                storeUnreadable: false,
+            };
         } catch (e) {
             console.error("Failed to parse instrument presets from local storage:", e);
-            return [];
+            return { entries: [], filteredOut: 0, storeUnreadable: true };
         }
     }
 }
