@@ -28,6 +28,11 @@ export class NexusAdapter {
     private updateListeners: Map<string, () => void> = new Map();
     private connectionCleanup?: () => void;
 
+    /** URL of the last SUCCESSFULLY opened project (set after `client.open`).
+     *  Used to distinguish a same-URL RECONNECT from a genuinely new project:
+     *  reconnect must keep the user's active bindings (§40). */
+    private lastProjectUrl?: string;
+
     private STATUS_LOG = "[METATRON NEXUS]";
 
     // Callback when a value changes in Nexus, so Metatron can update the UI/Control
@@ -88,6 +93,12 @@ export class NexusAdapter {
             throw new Error("Client not authenticated");
         }
 
+        // §40 — reconnecting to the SAME project URL (e.g. after a short sync
+        // drop) is NOT a new project. Hard-resetting every binding
+        // (onProjectLoaded) would force the user to re-learn every control;
+        // a soft reconnect keeps the active bindings instead.
+        const sameProject = this.lastProjectUrl !== undefined && projectUrl === this.lastProjectUrl;
+
         if (this.document) {
             await this.document.stop();
             this.clearAllListeners();
@@ -95,12 +106,27 @@ export class NexusAdapter {
 
         this.document = await this.client.open(projectUrl);
         this.bindingManager = bindingManager;
-        
-        // Let the binding manager know a new project is loaded
-        this.bindingManager.onProjectLoaded();
 
-        // Start syncing
+        if (sameProject) {
+            // Soft reconnect: keep the active bindings, re-resolve each live
+            // field reference against the freshly opened document (same project
+            // → same entity ids, but NEW field wrapper objects) and re-own the
+            // parameter subscriptions so the reconnect is transparent.
+            this.bindingManager.rehydrateActiveBindings((entityId, fieldPath) =>
+                this.resolveFieldByEntityPath(entityId, fieldPath)
+            );
+            for (const controlId of this.bindingManager.getActiveBindingControlIds()) {
+                this.subscribeBoundControl(controlId);
+            }
+        } else {
+            // New project URL (or first connect): every configured control
+            // becomes DISCONNECTED until it is re-learned against this project.
+            this.bindingManager.onProjectLoaded();
+        }
+
         await this.document!.start();
+
+        this.lastProjectUrl = projectUrl;
     }
 
     /** Writes a value for a control's active binding. Input `value` is the
@@ -155,12 +181,17 @@ export class NexusAdapter {
      */
     private resolveField(binding: { field?: any; fieldPath?: string }) {
         if (binding.field) return binding.field;
-        if (!this.document) return undefined;
-        const entity = this.document.queryEntities.getEntity((binding as any).entityId);
+        return this.resolveFieldByEntityPath((binding as any).entityId, binding.fieldPath ?? (binding as any).fieldName);
+    }
+
+    /** Navigate `entity.fields` along `fieldPath` on the CURRENT document —
+     *  no stored (possibly stale) live reference involved. Used to re-resolve
+     *  field wrappers after a same-URL project reconnect. */
+    private resolveFieldByEntityPath(entityId: string, fieldPath: string | undefined): any {
+        if (!this.document || !fieldPath) return undefined;
+        const entity = this.document.queryEntities.getEntity(entityId);
         if (!entity) return undefined;
-        const path = (binding.fieldPath ?? (binding as any).fieldName) as string | undefined;
-        if (!path) return undefined;
-        const current = resolveFieldByPath(entity.fields, path);
+        const current = resolveFieldByPath(entity.fields, fieldPath);
         if (current && typeof current === "object" && "value" in current && "location" in current) {
             return current;
         }

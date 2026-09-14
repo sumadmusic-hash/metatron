@@ -358,6 +358,19 @@ describe("PROJECT CHANGE SEMANTICS (§39/§40, user decision: NO auto-reconnect,
         // No method exists to auto-resolve a saved definition to a new project's entity.
         const proto = Object.getOwnPropertyNames(BindingManager.prototype)
             .filter((m) => m !== "constructor" && m !== "deviceRef");
-        expect(proto).toEqual(["setDevice", "onProjectLoaded", "applyLearnResult", "setBinding", "clearBinding", "getActiveBinding"]);
+        // getActiveBindingControlIds / rehydrateActiveBindings are NOT fuzzy
+        // reconnect machinery: the soft same-URL path re-resolves each binding
+        // via an EXPLICIT resolver against the already-open document (NexusAdapter),
+        // never a name/entity search against a new project (§40).
+        expect(proto).toEqual([
+            "setDevice",
+            "onProjectLoaded",
+            "getActiveBindingControlIds",
+            "rehydrateActiveBindings",
+            "applyLearnResult",
+            "setBinding",
+            "clearBinding",
+            "getActiveBinding",
+        ]);
     });
 });

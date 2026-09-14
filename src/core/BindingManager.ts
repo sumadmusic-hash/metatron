@@ -58,6 +58,26 @@ export class BindingManager {
         });
     }
 
+    /** Ids of every control that currently carries an active binding (used by
+     *  NexusAdapter to re-establish subscriptions after a same-URL reconnect). */
+    public getActiveBindingControlIds(): string[] {
+        return Array.from(this.activeBindings.keys());
+    }
+
+    /**
+     * SOFT reconnect to the same project URL (§40). Unlike onProjectLoaded this
+     * keeps ALL active bindings; it only re-resolves each binding's live field
+     * reference against the freshly opened document (same project → same entity
+     * ids, but new field wrapper objects). `resolveField` returns the new field
+     * for an entity id + field path, or undefined when unresolvable.
+     */
+    public rehydrateActiveBindings(resolveField: (entityId: string, fieldPath: string) => any) {
+        this.activeBindings.forEach((binding) => {
+            const field = resolveField(binding.entityId, binding.fieldPath ?? binding.fieldName);
+            if (field) binding.field = field;
+        });
+    }
+
     /**
      * Create an active binding for the current project from a Learn result.
      * The live field object is stored so NexusAdapter can subscribe + write.
