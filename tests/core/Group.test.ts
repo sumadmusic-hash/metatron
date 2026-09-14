@@ -89,12 +89,55 @@ describe('Group model (Phase A)', () => {
         expect(resonance.position.x - group.position.x).toBe(relB.x);
         expect(resonance.position.y - group.position.y).toBe(relB.y);
 
-        // Movement never goes negative
+        // Movement never goes negative — the clamp applies ONCE at group level
+        // and members move by the SAME effective delta, so their relative
+        // offsets (spec §17) survive the edge hit.
         device.moveGroup(group.id, -9999, -9999);
         expect(group.position.x).toBe(0);
         expect(group.position.y).toBe(0);
-        expect(cutoff.position.x).toBe(0);
-        expect(cutoff.position.y).toBe(0);
+        expect(cutoff.position.x - group.position.x).toBe(relA.x);
+        expect(cutoff.position.y - group.position.y).toBe(relA.y);
+        expect(resonance.position.x - group.position.x).toBe(relB.x);
+        expect(resonance.position.y - group.position.y).toBe(relB.y);
+        expect(cutoff.position).toEqual({ x: relA.x, y: relA.y });
+    });
+
+    it('single effective clamp at the canvas edge keeps members aligned (§17)', () => {
+        const group = new Group('Filter', { x: 10, y: 10 }, { width: 200, height: 150 });
+        device.addGroup(group);
+
+        // Member offset to the LEFT of the group: << clamp on group only >>
+        const left = new Control('knob', 'Left', { x: 0, y: 10 });
+        // Member offset to the RIGHT of the group.
+        const right = new Control('knob', 'Right', { x: 200, y: 10 });
+        device.addControl(left);
+        device.addControl(right);
+        device.setControlGroup(left.id, group.id);
+        device.setControlGroup(right.id, group.id);
+
+        const relLeft = { x: left.position.x - group.position.x, y: left.position.y - group.position.y };
+        const relRight = { x: right.position.x - group.position.x, y: right.position.y - group.position.y };
+
+        // Pull the group hard towards the origin. Only the group is clamped;
+        // both members shift by the effective (clamped) delta.
+        device.moveGroup(group.id, -999, -999);
+        expect(group.position).toEqual({ x: 0, y: 0 });
+
+        const effLeft = { x: left.position.x - 0, y: left.position.y - 0 };
+        const effRight = { x: right.position.x - 0, y: right.position.y - 0 };
+        expect(effLeft).toEqual(relLeft);
+        expect(effRight).toEqual(relRight);
+
+        // The two-relative-offset vectors remain identical before/after.
+        expect(effLeft.x - effRight.x).toBe(relLeft.x - relRight.x);
+        expect(effLeft.y - effRight.y).toBe(relLeft.y - relRight.y);
+
+        // NO per-member clamp: a member left of the origin is preserved as the
+        // group's relative layout (a rightward negative move is fully applied).
+        device.moveGroup(group.id, 20, 20);
+        expect(group.position).toEqual({ x: 20, y: 20 });
+        expect(effLeft.x + 20 - group.position.x).toBe(relLeft.x);
+        expect(effRight.x + 20 - group.position.x).toBe(relRight.x);
     });
 
     it('moving a group leaves orphaned controls in place', () => {

@@ -101,18 +101,28 @@ export class Device {
     }
 
     /** Move a group and all its member controls by (dx, dy).
-     * Each member keeps its relative position within the group (spec §17). */
+     * Each member keeps its relative position within the group (spec §17).
+     *
+     * The canvas clamp is applied ONCE, at group level; every member is then
+     * shifted by the SAME effective delta — the amount the group actually
+     * moved. Independently clamping every member with Math.max(0, …) would
+     * collapse their relative offsets once the group hits the canvas edge. */
     public moveGroup(groupId: string, dx: number, dy: number) {
         const group = this.groups.get(groupId);
         if (!group) return;
 
-        group.position.x = Math.max(0, group.position.x + dx);
-        group.position.y = Math.max(0, group.position.y + dy);
+        const targetX = group.position.x + dx;
+        const targetY = group.position.y + dy;
+        const effDx = Math.max(0, targetX) - group.position.x;
+        const effDy = Math.max(0, targetY) - group.position.y;
+
+        group.position.x = Math.max(0, targetX);
+        group.position.y = Math.max(0, targetY);
 
         this.controls.forEach(c => {
             if (c.groupId === groupId) {
-                c.position.x = Math.max(0, c.position.x + dx);
-                c.position.y = Math.max(0, c.position.y + dy);
+                c.position.x += effDx;
+                c.position.y += effDy;
             }
         });
     }
