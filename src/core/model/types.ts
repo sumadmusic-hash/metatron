@@ -24,6 +24,12 @@ export interface DeviceData {
     controls: unknown[];
     groups: unknown[];
     presets: unknown[];
+    /**
+     * Serialized modulation matrix. Absent on devices persisted before Phase 1
+     * and treated as unknown by the deserialize path (FIX 4): the model falls
+     * back to the default matrix instead of trusting the payload shape.
+     */
+    modulation?: unknown;
 }
 
 /** 

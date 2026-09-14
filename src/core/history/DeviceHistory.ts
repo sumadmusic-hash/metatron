@@ -4,6 +4,7 @@ import { Group } from "../model/Group";
 import { Preset } from "../model/Preset";
 import type { DeviceData } from "../model/types";
 import { DeviceLibrary } from "../DeviceLibrary";
+import { cloneModulationMatrix } from "../modulation/ModulationTypes";
 import { Storage, StorageError } from "../../persistence/Storage";
 import {
     HISTORY_LIMIT,
@@ -78,7 +79,7 @@ export function captureDeviceState(device: Device): DeviceStatePatch {
         };
     });
 
-    return { name: device.name, controls, groups, presets };
+    return { name: device.name, controls, groups, presets, modulation: cloneModulationMatrix(device.modulation) };
 }
 
 /**
@@ -156,6 +157,7 @@ export function restoreDeviceState(device: Device, patch: DeviceStatePatch): voi
     }
 
     device.name = patch.name;
+    device.modulation = cloneModulationMatrix(patch.modulation);
 }
 
 /** Reconstruct a full Device from a captured library-level patch. */
@@ -168,6 +170,7 @@ function realizeDevice(id: string, patch: DeviceStatePatch): Device {
         groups: Object.values(patch.groups),
         presets: Object.values(patch.presets),
     });
+    device.modulation = cloneModulationMatrix(patch.modulation);
     for (const [controlId, controlPatch] of Object.entries(patch.controls)) {
         const control = device.getControl(controlId);
         if (control) control.value = controlPatch.value;

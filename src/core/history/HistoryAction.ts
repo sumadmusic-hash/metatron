@@ -6,6 +6,7 @@ import type {
     Size,
     VisualDefinition,
 } from "../model/types";
+import type { ModulationMatrixConfig } from "../modulation/ModulationTypes";
 
 /**
  * METATRON HISTORY — action model for the transitive, session-scoped undo/redo
@@ -65,6 +66,9 @@ export interface DeviceStatePatch {
     controls: Record<string, ControlStatePatch>;
     groups: Record<string, GroupStatePatch>;
     presets: Record<string, PresetStatePatch>;
+    /** Phase 1: modulation matrix (FIX 3) — captured/restored with the rest so
+     *  undo/redo and library restore keep the matrix exact. */
+    modulation: ModulationMatrixConfig;
 }
 
 export interface LibraryStatePatch {

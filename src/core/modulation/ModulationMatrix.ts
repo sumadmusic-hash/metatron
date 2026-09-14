@@ -1,0 +1,139 @@
+import {
+    MAX_MOD_SLOTS,
+    MAX_MOD_SOURCES,
+    cloneModulationMatrix,
+    createDefaultMatrix,
+} from "./ModulationTypes";
+import type {
+    ModSlot,
+    ModSource,
+    ModulationMatrixConfig,
+} from "./ModulationTypes";
+
+/**
+ * METATRON MODULATION — persistence layer (FIX 4 "Don't-Trust-Persistence").
+ *
+ * The matrix is stored inside the serialized Device payload, i.e. it arrives
+ * from LocalStorage on every load. That payload is arbitrary JSON that may be
+ * old, hand-edited, or corrupt, so the parse path is HIGH-DEFENSIVE:
+ * `parseModulationMatrix` sanitizes every field and never throws for malformed
+ * field VALUES. It throws `ModulationConfigError` ONLY for structurally invalid
+ * configs (too many sources / too many slots), which the model's deserialize
+ * path catches and falls back to the default matrix for.
+ */
+
+/** Thrown when a persisted modulation configuration is structurally invalid
+ *  (source/slot counts beyond the hard caps). Callers decide the fallback. */
+export class ModulationConfigError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "ModulationConfigError";
+    }
+}
+
+function clamp(v: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, v));
+}
+
+/** Finite-or-default number helper. `null` and `""` coerce to 0 via Number(),
+ *  so they are treated as absent and get the fallback. */
+function finiteNum(value: unknown, fallback: number): number {
+    if (value === null || value === undefined || value === "") return fallback;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return n;
+}
+
+/** LFO rate: absent/garbage → 1 Hz, out-of-range values clamped to [0.01, 20]. */
+function sanitizeRate(value: unknown): number {
+    return clamp(finiteNum(value, 1), 0.01, 20);
+}
+
+/** Bipolar amount/drift: absent/garbage → 0, values clamped to [-1, 1]. */
+function sanitizeAmount(value: unknown): number {
+    return clamp(finiteNum(value, 0), -1, 1);
+}
+
+/** Phase: absent/garbage → 0, values clamped to [0, 1]. */
+function clampPhase(value: unknown): number {
+    return clamp(finiteNum(value, 0), 0, 1);
+}
+
+function sanitizeSource(source: unknown, index: number): ModSource {
+    const record = (typeof source === "object" && source !== null ? source : {}) as Record<string, unknown>;
+    const id = typeof record.id === "string" && record.id.length > 0 ? record.id : `mod${index + 1}`;
+    const type: ModSource["type"] =
+        record.type === "macro" ||
+        record.type === "sampleHold" ||
+        record.type === "smoothRandom" ||
+        record.type === "random"
+            ? record.type
+            : "lfo";
+    const waveform: ModSource["waveform"] =
+        record.waveform === "sine" ||
+        record.waveform === "triangle" ||
+        record.waveform === "saw" ||
+        record.waveform === "square"
+            ? record.waveform
+            : "sine";
+    return {
+        id,
+        type,
+        waveform,
+        rateHz: sanitizeRate(record.rateHz),
+        bpmSync: record.bpmSync === true,
+        bpmOfSync: finiteNum(record.bpmOfSync, 120),
+        noteDivision: finiteNum(record.noteDivision, 4),
+        phase: clampPhase(record.phase),
+        drift: sanitizeAmount(record.drift),
+        disabled: record.disabled === true,
+        sourceId: typeof record.sourceId === "string" ? record.sourceId : "",
+        sampleRate: Math.max(0.001, finiteNum(record.sampleRate, 0.1)),
+    };
+}
+
+function sanitizeSlot(slot: unknown, index: number): ModSlot {
+    const record = (typeof slot === "object" && slot !== null ? slot : {}) as Record<string, unknown>;
+    const id = typeof record.id === "string" && record.id.length > 0 ? record.id : `slot${index + 1}`;
+    return {
+        id,
+        enabled: record.enabled === true,
+        sourceId: typeof record.sourceId === "string" ? record.sourceId : "",
+        destControlId: typeof record.destControlId === "string" ? record.destControlId : "",
+        amount: sanitizeAmount(record.amount),
+    };
+}
+
+/** Parse a persisted matrix: sanitize every field, never throw for malformed
+ *  field values. Falls back to the default matrix for absent payloads and
+ *  throws `ModulationConfigError` only when the structural caps are exceeded. */
+export function parseModulationMatrix(value: unknown): ModulationMatrixConfig {
+    const config = (typeof value === "object" && value !== null ? value : null) as
+        | Record<string, unknown>
+        | null;
+    const sources = config && Array.isArray(config.sources) ? (config.sources as unknown[]) : undefined;
+    const slots = config && Array.isArray(config.slots) ? (config.slots as unknown[]) : undefined;
+    if (!sources || !slots) {
+        return createDefaultMatrix();
+    }
+    if (sources.length > MAX_MOD_SOURCES) {
+        throw new ModulationConfigError(
+            `modulation matrix: too many sources (${sources.length} > ${MAX_MOD_SOURCES})`,
+        );
+    }
+    if (slots.length > MAX_MOD_SLOTS) {
+        throw new ModulationConfigError(
+            `modulation matrix: too many slots (${slots.length} > ${MAX_MOD_SLOTS})`,
+        );
+    }
+    return {
+        sources: sources.map((s, i) => sanitizeSource(s, i)),
+        slots: slots.map((s, i) => sanitizeSlot(s, i)),
+    };
+}
+
+/** Serialize the current matrix into the Device payload shape. Returns a
+ *  clone so the stored JSON can never alias the live Device matrix. */
+export function serializeModulationMatrix(matrix: ModulationMatrixConfig): unknown {
+    return cloneModulationMatrix(matrix);
+}

@@ -3,6 +3,12 @@ import { Group } from "./Group";
 import { Preset } from "./Preset";
 import { generateId } from "./types";
 import type { DeviceData } from "./types";
+import {
+    parseModulationMatrix,
+    serializeModulationMatrix,
+} from "../modulation/ModulationMatrix";
+import { createDefaultMatrix } from "../modulation/ModulationTypes";
+import type { ModulationMatrixConfig } from "../modulation/ModulationTypes";
 import { GROUP_PADDING, migratedGroupRect } from "../../ui/geometry";
 
 export class Device {
@@ -13,6 +19,9 @@ export class Device {
     public controls: Map<string, Control> = new Map();
     public groups: Map<string, Group> = new Map();
     public presets: Map<string, Preset> = new Map();
+    /** Phase 1 modulation matrix. Always present (defaults on construct) and
+     *  persisted through `serialize`/`deserialize`. */
+    public modulation: ModulationMatrixConfig = createDefaultMatrix();
 
     public readonly MAX_ACTIVE_CONTROLS = 32; // I1
 
@@ -189,7 +198,8 @@ export class Device {
             schemaVersion: this.schemaVersion,
             controls: serializedControls,
             groups: serializedGroups,
-            presets: serializedPresets
+            presets: serializedPresets,
+            modulation: serializeModulationMatrix(this.modulation)
         };
     }
 
@@ -228,6 +238,16 @@ export class Device {
             data.presets.forEach((pData: any) => {
                 d.presets.set(pData.id, Preset.deserialize(pData));
             });
+        }
+
+        // FIX 4 Don't-Trust-Persistence: the persisted matrix is arbitrary
+        // payload. A structurally invalid block (caps exceeded) or a corrupt
+        // shape must NEVER break Device load — fall back to defaults instead.
+        try {
+            d.modulation = parseModulationMatrix(data.modulation);
+        } catch (e) {
+            console.warn("[METATRON MODULATION] invalid persisted matrix — falling back to defaults.", e);
+            d.modulation = createDefaultMatrix();
         }
 
         return d;
