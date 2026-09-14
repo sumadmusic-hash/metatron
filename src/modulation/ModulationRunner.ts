@@ -133,29 +133,31 @@ export class ModulationRunner {
             macroActive
         );
 
-        destinations.forEach((modulated, controlId) => {
-            // FIX 2 — a live knob drag owns this control: no display move, no
-            // write, no capture while the takeover is active.
-            if (this.gestureTakeover.get(controlId)) return;
-
-            this.surfaceUI.applyModDisplay(controlId, modulated);
+        destinations.forEach((value, controlId) => {
             this.activeDestinationIds.add(controlId);
-
-            // Capture-Arbitration: the modulated destination is recorded by the
-            // runner (and only while RECORDING). The base-value capture in
-            // applyValueToDevice is suppressed for modulated controls.
+            this.surfaceUI.applyModDisplay(controlId, value);
+            // Recording-Kontinuität: während Gesture-Takeover ist der HÖRBARE Wert
+            // der Gesten-(Base-)Wert — genau den capturen, damit ein Take nie
+            // ausdünnt, während der User eine modulierte Control override-t (B11).
             if (this.recorder.currentState === "RECORDING") {
-                this.recorder.capture(controlId, modulated);
+                const control = device.getControl(controlId);
+                if (control) {
+                    const captured = this.gestureTakeover.get(controlId)
+                        ? (baseValues[controlId] ?? value)
+                        : value;
+                    this.recorder.capture(controlId, captured, control.type);
+                }
             }
-
-            this.writeControl(controlId, modulated);
+            if (this.gestureTakeover.get(controlId)) return;
+            if (!this.bindingManager.getActiveBinding(controlId)) return;
+            this.writeControl(controlId, value, baseValues[controlId] ?? 0);
         });
     }
 
     /** Writes a modulated value to Nexus (FIX 8 write-cap + in-flight guard +
      *  delta-epsilon jitter gate). The echo of this write is suppressed via
      *  beginSuppressEcho (FIX 1). */
-    private writeControl(controlId: string, modulated: number): void {
+    private writeControl(controlId: string, value: number, baseValue: number): void {
         if (this.inFlight.has(controlId)) return;
 
         const device = this.getDevice();
@@ -165,12 +167,12 @@ export class ModulationRunner {
 
         const now = performance.now();
         if (now - this.lastWriteMs < WRITE_INTERVAL_MS) return;
-        if (Math.abs(modulated - control.value) < DELTA_EPSILON) return;
+        if (Math.abs(value - baseValue) < DELTA_EPSILON) return;
 
         this.lastWriteMs = now;
         this.inFlight.add(controlId);
-        this.nexusAdapter.beginSuppressEcho(controlId, modulated);
-        this.nexusAdapter.updateBoundControl(controlId, modulated).finally(() => {
+        this.nexusAdapter.beginSuppressEcho(controlId, value);
+        this.nexusAdapter.updateBoundControl(controlId, value).finally(() => {
             this.inFlight.delete(controlId);
         });
     }

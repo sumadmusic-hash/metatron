@@ -146,7 +146,7 @@ describe("ModulationRunner — Capture-Arbitration", () => {
         expect(recorder.capture).not.toHaveBeenCalled();
     });
 
-    it("runner does NOT capture when takeover is active for the same control", () => {
+    it("runner captures the BASE value during gesture-takeover when RECORDING (B11)", () => {
         const device = makeModDevice();
         const { runner, recorder } = makeRunner(device, "RECORDING");
         runner.setGestureTakeover("cutoff", true);
@@ -154,9 +154,15 @@ describe("ModulationRunner — Capture-Arbitration", () => {
         runner.start();
         (runner as any).tick(performance.now());
 
-        // Takeover active → tick returns early for this control → no capture
-        expect(runner.isModulated("cutoff")).toBe(false);
-        expect(recorder.capture).not.toHaveBeenCalled();
+        // B11: during takeover, activeDestinationIds is set FIRST (control is
+        // still "modulated"), but the audible value is the gesture base value
+        // — exactly that is captured, so a take never thins out.
+        expect(runner.isModulated("cutoff")).toBe(true);
+        expect(recorder.capture).toHaveBeenCalledTimes(1);
+        const [id, captured, type] = recorder.capture.mock.calls[0];
+        expect(id).toBe("cutoff");
+        expect(captured).toBe(0.5); // base value 0.5, NOT the modulated value
+        expect(type).toBe("knob");
     });
 });
 
@@ -165,29 +171,46 @@ describe("ModulationRunner — Capture-Arbitration", () => {
  * ------------------------------------------------------------------ */
 
 describe("ModulationRunner — Takeover-Klemmfalle", () => {
-    it("after setGestureTakeover(false) the runner resumes writes and display", () => {
+    it("while takeover is active the runner writes nothing; after release it resumes (pointercancel-safe)", () => {
         const device = makeModDevice();
         const { runner, surface, adapter } = makeRunner(device);
 
         runner.start();
-        runner.setGestureTakeover("cutoff", true);
-        (runner as any).tick(performance.now());
+        // Deterministic timeline: forcar tSec = now/1000 (instead of the
+        // boot-clock), so 250ms → sine phase 0.25 → modulated value ~1.0.
+        (runner as any).startTimeSec = 0;
+        const tWithDelta = 250;
 
-        // Takeover active → no display update
-        expect(surface.applyModDisplay).not.toHaveBeenCalledWith(
-            "cutoff",
-            expect.anything(),
-        );
+        runner.setGestureTakeover("cutoff", true);
+        (runner as any).tick(tWithDelta);
+
+        // Display is still driven during takeover (B11 keeps the needle live)...
+        expect(surface.applyModDisplay).toHaveBeenCalledWith("cutoff", expect.any(Number));
+        // ...but no Nexus write may happen while the user owns the knob.
+        expect(adapter.updateBoundControl).not.toHaveBeenCalled();
+        expect(adapter.beginSuppressEcho).not.toHaveBeenCalled();
 
         // Simulate pointercancel → setGestureTakeover(false)
         runner.setGestureTakeover("cutoff", false);
-        (runner as any).tick(performance.now());
+        (runner as any).tick(tWithDelta + 40);
 
-        // Now the runner should drive the display
-        expect(surface.applyModDisplay).toHaveBeenCalledWith(
-            "cutoff",
-            expect.any(Number),
-        );
+        // Writes resume once the takeover is released.
+        expect(adapter.updateBoundControl).toHaveBeenCalledWith("cutoff", expect.any(Number));
+        expect(adapter.beginSuppressEcho).toHaveBeenCalledWith("cutoff", expect.any(Number));
+    });
+
+    it("a zero-phase tick whose modulated value equals the base is NOT written (delta-epsilon gate)", () => {
+        const device = makeModDevice();
+        const { runner, surface, adapter } = makeRunner(device);
+
+        runner.start();
+        // tSec = 0 → sine(0) = 0 → modulated == base 0.5 → below DELTA_EPSILON.
+        // Setting startTimeSec = 0 makes tick(0) deterministic.
+        (runner as any).startTimeSec = 0;
+        (runner as any).tick(0);
+
+        expect(surface.applyModDisplay).toHaveBeenCalledWith("cutoff", expect.any(Number));
+        expect(adapter.updateBoundControl).not.toHaveBeenCalled();
     });
 });
 

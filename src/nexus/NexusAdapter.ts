@@ -28,11 +28,13 @@ export class NexusAdapter {
     private updateListeners: Map<string, () => void> = new Map();
     private connectionCleanup?: () => void;
 
-    /** Phase 2 (FIX 1) — echo guard: expected normalized round-trip value of
-     *  our own nearest Nexus write per control, plus its expiry window. A
-     *  remote echo matching the guard is consumed in `subscribeBoundControl`
-     *  and never re-applied to the UI. */
-    private echoGuard = new Map<string, { value: number; expiresAt: number }>();
+    /** Phase 2 (FIX 1) — echo guard: expected normalized round-trip values of
+     *  our own recent Nexus writes per control, each with its expiry window. A
+     *  remote echo matching ANY guard entry is consumed in
+     *  `subscribeBoundControl` and never re-applied to the UI. Ring of the
+     *  last 8 writes absorbs late/offset echoes (sync latency) instead of a
+     *  single slot (B12). */
+    private echoGuard = new Map<string, { value: number; expiresAt: number }[]>();
 
     /** URL of the last SUCCESSFULLY opened project (set after `client.open`).
      *  Used to distinguish a same-URL RECONNECT from a genuinely new project:
@@ -182,38 +184,46 @@ export class NexusAdapter {
      *  about to be written to Nexus. The guard value is computed through the
      *  SAME mapping round-trip the write and the event use — integer fields
      *  round on write, so comparing against the raw written value would
-     *  wrongly fail the echo match. */
+     *  wrongly fail the echo match. Guards are kept as a ring of the last 8
+     *  writes (B12): at 30 Hz writes a late echo of write N may arrive after
+     *  the guard-set of write N+1. */
     public beginSuppressEcho(controlId: string, writtenNormalized: number, windowMs = 200): void {
-        let guardValue = writtenNormalized;
-        if (this.document && this.bindingManager) {
-            const binding = this.bindingManager.getActiveBinding(controlId);
-            const field = binding ? this.resolveField(binding) : undefined;
-            const mapping = binding?.valueMapping ?? (field ? createNexusValueMapping(field) : null);
-            if (mapping) {
-                const mapped = mapNormalizedToNexus(mapping, writtenNormalized);
-                if (mapped !== undefined) {
-                    guardValue = mapNexusToNormalized(mapping, mapped);
-                }
-            }
-        }
-        this.echoGuard.set(controlId, { value: guardValue, expiresAt: performance.now() + windowMs });
+        const binding = this.bindingManager?.getActiveBinding(controlId);
+        if (!binding) return;
+        const field = this.resolveField(binding);
+        const mapping = binding.valueMapping ?? (field ? createNexusValueMapping(field) : undefined);
+        if (!mapping) return;
+        const mapped = mapNormalizedToNexus(mapping, writtenNormalized);
+        if (mapped === undefined) return;
+        const expectedEcho = mapNexusToNormalized(mapping, mapped);
+        const list = this.echoGuard.get(controlId) ?? [];
+        list.push({ value: expectedEcho, expiresAt: Date.now() + windowMs });
+        while (list.length > 8) list.shift();
+        this.echoGuard.set(controlId, list);
     }
 
     /** Phase 2 (FIX 1) — absorb one incoming Nexus event that is the
-     *  round-trip echo of our own write. Consumes (deletes) the guard on
-     *  match, so the same guard never blocks a second real remote change. */
+     *  round-trip echo of our own write. Consumes (removes) the matching
+     *  guard entry, so the same guard never blocks a second real remote
+     *  change. */
     private consumeEcho(controlId: string, incoming: number): boolean {
-        const guard = this.echoGuard.get(controlId);
-        if (!guard) return false;
-        if (performance.now() > guard.expiresAt) {
+        const list = this.echoGuard.get(controlId);
+        if (!list || list.length === 0) return false;
+        const now = Date.now();
+        const live = list.filter((g) => now <= g.expiresAt);
+        if (live.length === 0) {
             this.echoGuard.delete(controlId);
             return false;
         }
-        if (Math.abs(incoming - guard.value) <= 1e-6) {
-            this.echoGuard.delete(controlId);
-            return true;
+        const idx = live.findIndex((g) => Math.abs(incoming - g.value) <= 1e-6);
+        if (idx === -1) {
+            this.echoGuard.set(controlId, live);
+            return false;
         }
-        return false;
+        live.splice(idx, 1);
+        if (live.length === 0) this.echoGuard.delete(controlId);
+        else this.echoGuard.set(controlId, live);
+        return true;
     }
 
     /**

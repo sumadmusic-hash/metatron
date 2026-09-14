@@ -175,11 +175,10 @@ describe("Echo-Guard — Ablauf (expiry)", () => {
     });
 });
 
-describe("Echo-Guard — impact on writePath (integration sanity)", () => {
-    it("after beginSuppressEcho, a rapid doc.fire(0.5) is consumed; then a second doc.fire(0.5) passes through (guard deleted on first consume)", async () => {
+describe("Echo-Guard — delayed/offset echoes (B12 ring)", () => {
+    it("echo of write N arriving after guard-set of write N+1 is still suppressed", () => {
         const doc = fakeDocument();
         const { device, control } = makeDeviceAndControl();
-        control.activeBindingState = "CONNECTED";
         const manager = bind(doc, control);
         const adapter = makeAdapter(doc, manager);
 
@@ -187,12 +186,58 @@ describe("Echo-Guard — impact on writePath (integration sanity)", () => {
         adapter.onNexusValueChanged = (_id, v) => received.push(v);
         adapter.subscribeBoundControl(control.id);
 
-        adapter.beginSuppressEcho(control.id, 0.5);
-        doc.fire(0.5); // consumed
-        expect(received).toEqual([]);
+        // Write N = 0.3, then write N+1 = 0.8 (guard overwritten per control,
+        // but the ring keeps the older expected echo too).
+        adapter.beginSuppressEcho(control.id, 0.3);
+        adapter.beginSuppressEcho(control.id, 0.8);
 
-        // Guard was deleted on match — second identical event is a NEW remote change
+        // The delayed echo of write N arrives AFTER N+1's guard-set.
+        doc.fire(0.3);
+        expect(received).toEqual([]); // matched against the ring → consumed
+
+        // A foreign value is never consumed.
         doc.fire(0.5);
         expect(received).toEqual([0.5]);
+    });
+
+    it("echo matching a still-live guard is consumed, but only once per entry", () => {
+        const doc = fakeDocument();
+        const { device, control } = makeDeviceAndControl();
+        const manager = bind(doc, control);
+        const adapter = makeAdapter(doc, manager);
+
+        const received: number[] = [];
+        adapter.onNexusValueChanged = (_id, v) => received.push(v);
+        adapter.subscribeBoundControl(control.id);
+
+        adapter.beginSuppressEcho(control.id, 0.4);
+        doc.fire(0.4); // consumed
+        expect(received).toEqual([]);
+
+        // Guard entry was removed on the match → a second identical event is
+        // a NEW remote change, not our echo.
+        doc.fire(0.4);
+        expect(received).toEqual([0.4]);
+    });
+
+    it("expired ring entries are pruned and never block later remote changes", () => {
+        vi.useFakeTimers();
+        const doc = fakeDocument();
+        const { device, control } = makeDeviceAndControl();
+        const manager = bind(doc, control);
+        const adapter = makeAdapter(doc, manager);
+
+        const received: number[] = [];
+        adapter.onNexusValueChanged = (_id, v) => received.push(v);
+        adapter.subscribeBoundControl(control.id);
+
+        adapter.beginSuppressEcho(control.id, 0.6, 20);
+        adapter.beginSuppressEcho(control.id, 0.9, 20);
+        vi.advanceTimersByTime(40); // past both windows
+
+        doc.fire(0.6); // expired + non-live ring → forwarded
+        expect(received).toEqual([0.6]);
+
+        vi.useRealTimers();
     });
 });
