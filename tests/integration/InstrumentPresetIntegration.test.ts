@@ -211,7 +211,7 @@ describe("P4 — Instrument Preset integration (library persistence, D1)", () =>
     it("2. Parse → Import applies the preset into a TARGET document", async () => {
         const { device, entry } = await exportFixture();
         const target = await freshDoc();
-        const outcome = await importInstrumentFromLibrary(entry.id, target, new BindingManager(device));
+        const outcome = await importInstrumentFromLibrary(entry.id, target, new BindingManager(device), device);
         expect(outcome.ok).toBe(true);
         expect(outcome.import!.sections.chain.ok).toBe(true);
         expect(outcome.import!.sections.bindings.ok).toBe(true);
@@ -224,7 +224,7 @@ describe("P4 — Instrument Preset integration (library persistence, D1)", () =>
     it("3. Export/Import never reuses SOURCE entity ids as TARGET ids", async () => {
         const { entry, device } = await exportFixture();
         const target = await freshDoc();
-        const outcome = await importInstrumentFromLibrary(entry.id, target, new BindingManager(device));
+        const outcome = await importInstrumentFromLibrary(entry.id, target, new BindingManager(device), device);
         expect(outcome.ok).toBe(true);
         const preset = parseInstrumentPreset(entry.presetJson);
         const sourceIds = preset.chain.snapshot.devices.map((d) => d.sourceEntityId);
@@ -264,7 +264,7 @@ describe("P4 — Instrument Preset integration (library persistence, D1)", () =>
         localStorage.setItem(INSTRUMENT_PRESET_LIBRARY_KEY, JSON.stringify(all));
 
         const target = await freshDoc();
-        const outcome = await importInstrumentFromLibrary(entry.id, target, new BindingManager(device));
+        const outcome = await importInstrumentFromLibrary(entry.id, target, new BindingManager(device), device);
         expect(outcome.ok).toBe(false);
         expect(outcome.import).toBeUndefined();
         expect(outcome.errors?.[0]).toMatch(/invalid/i);
@@ -280,7 +280,8 @@ describe("P4 — Instrument Preset integration (library persistence, D1)", () =>
 
     it("6b. Missing library entry id → controlled failure", async () => {
         const target = await freshDoc();
-        const outcome = await importInstrumentFromLibrary("ipst_doesnotexist", target, new BindingManager(makeDevice().device));
+        const missingDevice = makeDevice().device;
+        const outcome = await importInstrumentFromLibrary("ipst_doesnotexist", target, new BindingManager(missingDevice), missingDevice);
         expect(outcome.ok).toBe(false);
         expect(outcome.errors?.[0]).toMatch(/no library entry/);
     });
@@ -289,7 +290,7 @@ describe("P4 — Instrument Preset integration (library persistence, D1)", () =>
         const { entry, cutoffId, device } = await exportFixture();
         const target = await freshDoc();
         const restoreBm = new BindingManager(device);
-        const outcome = await importInstrumentFromLibrary(entry.id, target, restoreBm);
+        const outcome = await importInstrumentFromLibrary(entry.id, target, restoreBm, device);
         expect(outcome.ok).toBe(true);
         const record = outcome.import!.bindings.find((b) => b.controlId === cutoffId)!;
         expect(record.ok).toBe(true);

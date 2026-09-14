@@ -3,6 +3,7 @@ import { DeviceHistory } from "../core/history/DeviceHistory";
 import { patchesEqual } from "../core/history/HistoryAction";
 import type { DeviceStatePatch } from "../core/history/HistoryAction";
 import type { Device } from "../core/model/Device";
+import { Storage } from "../persistence/Storage";
 import { Toast } from "./Toast";
 import { NexusAdapter } from "../nexus/NexusAdapter";
 import { BindingManager } from "../core/BindingManager";
@@ -722,7 +723,12 @@ export class DeviceLibraryUI {
         const before = this.currentPatch(device);
         let outcome: InstrumentImportOutcome;
         try {
-            const result = await importInstrumentPreset(preset, doc, this.bindingManager);
+            // I19.2 — the target device is passed EXPLICITLY (not resolved
+            // inside the engine via bindingManager.deviceRef): while the chain
+            // clone awaits, the user may switch the active device, re-pointing
+            // the BindingManager. The import writes bindings/values onto this
+            // pinned device and never the manager's current target.
+            const result = await importInstrumentPreset(preset, doc, this.bindingManager, device);
             outcome = result.ok ? { ok: true, import: result } : { ok: false, import: result, errors: result.failures };
         } catch (e) {
             outcome = { ok: false, errors: [e instanceof Error ? e.message : String(e)] };
@@ -731,8 +737,11 @@ export class DeviceLibraryUI {
         // so the imported Control.value becomes visible — the exact
         // save/refresh pattern used by preset.load. Exactly ONE history action
         // remains: recordDeviceAction is called once, nothing else records.
+        // The PINNED device is saved explicitly (Storage.saveDevice), never via
+        // saveCurrentDevice(): the user may have switched devices while the
+        // import ran, and the active device must not be touched (I19.2).
         try {
-            this.deviceLibrary.saveCurrentDevice();
+            Storage.saveDevice(device);
         } catch (e) {
             Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
             return;

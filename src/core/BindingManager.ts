@@ -68,12 +68,24 @@ export class BindingManager {
 
     /**
      * Create an active binding for the current project.
+     * When `targetDevice` is provided, the binding definition is written onto
+     * THAT device's control instead of the manager's current device — the
+     * async instrument-import pins its target device BEFORE the first `await`,
+     * so the pin survives a device switch mid-import (I19.2).
      */
-    public setBinding(controlId: string, entityId: string, fieldName: string, targetName?: string, field?: any, fieldPath?: string, valueMapping?: NexusValueMapping) {
-        const control = this.device.getControl(controlId);
+    public setBinding(controlId: string, entityId: string, fieldName: string, targetName?: string, field?: any, fieldPath?: string, valueMapping?: NexusValueMapping, targetDevice?: Device) {
+        const device = targetDevice ?? this.device;
+        const control = device.getControl(controlId);
         if (!control) return;
 
-        this.activeBindings.set(controlId, { entityId, fieldName, field, fieldPath: fieldPath ?? fieldName, valueMapping });
+        // Live active bindings are transient manager state scoped to the
+        // CURRENT device. Writing a binding for a DIFFERENT (pinned, no longer
+        // active) device must not pollute the manager's map — the CONNECTED
+        // state and the persistent binding definition still get recorded on
+        // the target control below.
+        if (device === this.device) {
+            this.activeBindings.set(controlId, { entityId, fieldName, field, fieldPath: fieldPath ?? fieldName, valueMapping });
+        }
         
         // Update or create the persistent project-independent binding definition
         if (!control.audiotoolBindingDefinition) {

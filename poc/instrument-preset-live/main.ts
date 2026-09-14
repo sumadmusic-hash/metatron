@@ -775,7 +775,7 @@ async function doImport() {
     hasImported = true;
     status("IMPORT INSTRUMENT PRESET — mutating the TARGET project…");
     try {
-        const result = await importInstrumentPreset(emittedPreset, targetDoc, new BindingManager(exportDevice), { maxDepth: 32 });
+        const result = await importInstrumentPreset(emittedPreset, targetDoc, new BindingManager(exportDevice), exportDevice, { maxDepth: 32 });
         targetRoot = resolveTargetRootId(liveSnapshot.rootCandidates?.[0] ?? undefined, result.idMap);
 
         const probes = await runMappingProbes(targetDoc, result, emittedPreset);

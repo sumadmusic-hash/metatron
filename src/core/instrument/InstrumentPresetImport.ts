@@ -51,6 +51,7 @@ import type { NexusValueMapping } from "../../nexus/NexusValueMapping";
 import type { ChainSnapshot, CloneResult, FinalVerdict, VerificationResult } from "../../nexus/ChainTypes";
 import type { InstrumentPreset, InstrumentPresetBinding } from "./InstrumentPreset";
 import type { BindingManager } from "../BindingManager";
+import type { Device } from "../model/Device";
 
 export interface InstrumentPresetImportOptions {
     /** Chain traversal / creation depth bound passed to the clone engine. */
@@ -338,11 +339,19 @@ function readTargetValue(targetDoc: SyncedDocument, entityId: string, fieldPath:
  * Orchestrate the TARGET import of one `InstrumentPreset`.
  * Mutations are limited to the TARGET document (via the clone engine and the
  * direct preset-value writes) and the transient BindingManager state.
+ *
+ * `device` is the import's TARGET Metatron device and MUST be pinned by the
+ * caller BEFORE any `await`: the chain clone below is a network round-trip
+ * during which the user may switch the active device (BindingManager gets
+ * re-pointed). Reading `bindingManager.deviceRef` after the clone would bind
+ * the imported controls to whichever device is active THEN, not the one the
+ * user imported into (I19.2 async import race).
  */
 export async function importInstrumentPreset(
     preset: InstrumentPreset,
     targetDoc: SyncedDocument,
     bindingManager: BindingManager,
+    device: Device,
     options?: InstrumentPresetImportOptions,
 ): Promise<InstrumentImportResult> {
     const failures: string[] = [];
@@ -364,7 +373,8 @@ export async function importInstrumentPreset(
     for (const [source, target] of idMap) serializableIdMap[source] = target;
 
     // ── 2. BINDINGS ────────────────────────────────────────────────────────
-    const device = bindingManager.deviceRef;
+    // Target = the PINNED device, never bindingManager.deviceRef (the manager
+    // may have been re-pointed at another device while the clone ran).
     const bindingRecords: ImportedBindingRecord[] = [];
     const liveBindings = new Map<string, ResolvedBinding>();
 
@@ -420,6 +430,7 @@ export async function importInstrumentPreset(
             field,
             destinationRecord.fieldPath,
             destinationRecord.valueMapping,
+            device,
         );
         liveBindings.set(destinationRecord.controlId, { record: destinationRecord, field, details });
         bindingRecords.push(destinationRecord);

@@ -91,7 +91,7 @@ describe("Phase C — happy path (real source → export → import)", () => {
         preset = exported.preset;
 
         target = await freshTargetDoc();
-        result = await importInstrumentPreset(preset, target, new BindingManager(device));
+        result = await importInstrumentPreset(preset, target, new BindingManager(device), device);
     });
 
     it("A. full import succeeds: chain + bindings + preset + verification all PASS", () => {
@@ -205,7 +205,7 @@ describe("Phase C — D/E/F endpoint & read-back matrix (single-control imports)
                 valueMapping: createNexusValueMappingFromSchema(snapshotField.range, snapshotField.scalarType, snapshotField.primitiveType),
             }],
         };
-        const result = await importInstrumentPreset(preset, target, new BindingManager(d));
+        const result = await importInstrumentPreset(preset, target, new BindingManager(d), d);
         return { result, target, controlId: c.id };
     }
 
@@ -290,7 +290,7 @@ describe("Phase C — D/E/F endpoint & read-back matrix (single-control imports)
                 valueMapping: { kind: "unsupported", typeLabel: "string" },
             }],
         };
-        const result = await importInstrumentPreset(preset, target, new BindingManager(d));
+        const result = await importInstrumentPreset(preset, target, new BindingManager(d), d);
         expect(result.ok).toBe(false);
         const rec = result.bindings.find((b) => b.controlId === c.id)!;
         expect(rec.ok).toBe(false);
@@ -353,7 +353,7 @@ describe("Phase C — controlled failures (I/J/K)", () => {
                 valueMapping: binding.valueMapping ?? defaultMapping,
             }],
         };
-        const result = await importInstrumentPreset(preset, target, new BindingManager(d));
+        const result = await importInstrumentPreset(preset, target, new BindingManager(d), d);
         return { result, target, controlId: c.id };
     }
 
@@ -412,7 +412,7 @@ describe("Phase C — controlled failures (I/J/K)", () => {
                 valueMapping: createNexusValueMappingFromSchema(snapshotField.range, snapshotField.scalarType, snapshotField.primitiveType),
             }],
         };
-        const result = await importInstrumentPreset(preset, target, new BindingManager(d));
+        const result = await importInstrumentPreset(preset, target, new BindingManager(d), d);
         expect(result.ok).toBe(false);
         const rec = result.presetValues.find((r) => r.controlId === orphan.id)!;
         expect(rec.ok).toBe(false);
@@ -434,7 +434,7 @@ describe("Phase C — M23.2 cross-project control remap (fresh destination devic
         destination: Device;
     }> {
         const target: any = await freshTargetDoc();
-        const result = await importInstrumentPreset(preset, target, new BindingManager(destination));
+        const result = await importInstrumentPreset(preset, target, new BindingManager(destination), destination);
         return { result, target, destination };
     }
 

@@ -452,7 +452,7 @@ Library entry → loadAndParseInstrumentPreset      → parseInstrumentPreset
                                                      └─ validates → InstrumentPresetError
        │
        ▼
-importInstrumentPreset(preset, targetDoc, bindingManager)
+importInstrumentPreset(preset, targetDoc, bindingManager, device /* pinned, I19.2 */)
        ├─ cloneChainFromSnapshot(snapshot, targetDoc, {maxDepth})  → idMap
        ├─ write preset control values onto the cloned target controls
        └─ chainStructureOk(verification)  → success/failure report

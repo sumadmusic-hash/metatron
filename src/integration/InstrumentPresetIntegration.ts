@@ -186,18 +186,22 @@ export function loadAndParseInstrumentPreset(
 }
 
 /** P2 — IMPORT: library entry → `parseInstrumentPreset` → TARGET = connected
- *  project (`targetDoc`) with the current `BindingManager` → `importInstrumentPreset`. */
+ *  project (`targetDoc`) with the given `BindingManager` → `importInstrumentPreset`.
+ *  `device` is the import's Metatron target and is pinned explicitly (I19.2):
+ *  the engine must never resolve its target via `bindingManager.deviceRef`,
+ *  which may be re-pointed while the chain clone awaits. */
 export async function importInstrumentFromLibrary(
     libraryId: string,
     targetDoc: SyncedDocument,
     bindingManager: BindingManager,
+    device: Device,
 ): Promise<InstrumentImportOutcome> {
     if (!targetDoc) {
         return { ok: false, errors: ["InstrumentPreset import: no TARGET document — connect to the project to import into first."] };
     }
     const loaded = loadAndParseInstrumentPreset(libraryId);
     if (!loaded.ok) return { ok: false, errors: loaded.errors };
-    const result = await importInstrumentPreset(loaded.preset, targetDoc, bindingManager);
+    const result = await importInstrumentPreset(loaded.preset, targetDoc, bindingManager, device);
     if (!result.ok) {
         return { ok: false, import: result, errors: result.failures };
     }

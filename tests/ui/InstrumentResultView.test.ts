@@ -74,7 +74,7 @@ describe("P4/F2 — InstrumentPreset Integration result rendering (InstrumentRes
         if (!exported.ok || !exported.entry) throw new Error("fixture export failed");
 
         const target = await freshDoc();
-        const outcome = await importInstrumentFromLibrary(exported.entry.id, target, new BindingManager(device));
+        const outcome = await importInstrumentFromLibrary(exported.entry.id, target, new BindingManager(device), device);
         expect(outcome.ok).toBe(true);
 
         const text = renderInstrumentImportOutcome(outcome).textContent ?? "";
