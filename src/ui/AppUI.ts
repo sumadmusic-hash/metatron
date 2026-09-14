@@ -91,6 +91,9 @@ export class AppUI {
     private hasApplied = false;
     private refusedControlIds = new Set<string>();
 
+    /** Set by `destroy()`; drives the idempotence guard of the teardown. */
+    private destroyed = false;
+
     constructor(
         root: HTMLElement, 
         deviceLibrary: DeviceLibrary, 
@@ -175,6 +178,24 @@ export class AppUI {
 
         window.addEventListener("keydown", this.handleKeydown);
         window.addEventListener("beforeunload", this.flushValueSave);
+    }
+
+    /** F3 — tear the whole UI down: remove every global window listener
+     *  registered in the constructor, flush the trailing value-path save,
+     *  stop timers, and release the child UIs (EditorUI removes its own
+     *  global listeners). Idempotent; safe to call twice. */
+    public destroy(): void {
+        if (this.destroyed) return;
+        this.destroyed = true;
+
+        window.removeEventListener("keydown", this.handleKeydown);
+        window.removeEventListener("beforeunload", this.flushValueSave);
+
+        // Persist any trailing debounced value path save BEFORE the DOM goes.
+        this.flushValueSave();
+        this.stopElapsedTimer();
+        this.editorUI.destroy();
+        this.root.innerHTML = "";
     }
 
     /**

@@ -68,6 +68,10 @@ export class EditorUI {
     private container!: HTMLElement;
     private snapEnabled: boolean = true;
 
+    /** Set by `destroy()`; drives the idempotence guard and prevents the
+     *  learn-flow / render callbacks from resurrecting a torn-down UI. */
+    private destroyed = false;
+
     private selectedControlId: string | null = null;
     private selectedGroupId: string | null = null;
 
@@ -119,10 +123,36 @@ export class EditorUI {
                     const c = this.deviceLibrary.currentDevice?.getControl(controlId);
                     if (c) c.value = normalized;
                 },
-                onStateChanged: () => this.render(this.container.parentElement!),
+                onStateChanged: () => {
+                    if (this.destroyed) return;
+                    this.render(this.container.parentElement!);
+                },
             });
         }
         document.addEventListener("keydown", this.handleKeydown);
+    }
+
+    /** F3 — remove every global document/window listener this instance
+     *  registered and cancel any in-flight learn/drag gesture so no dangling
+     *  async callback or DOM re-render outlives the teardown. Idempotent. */
+    public destroy(): void {
+        if (this.destroyed) return;
+        this.destroyed = true;
+
+        document.removeEventListener("keydown", this.handleKeydown);
+
+        // Cancel in-flight gestures; their callbacks can no longer re-render
+        // (the onStateChanged closure above is destroyed-guarded).
+        this.nexusLearnFlow?.cancel();
+        if (this.midiLearningId !== null) { this.midiLearn?.cancelLearn(); this.midiLearningId = null; }
+        if (this.drag) {
+            document.removeEventListener("keydown", this.handleDragKeydown);
+            document.removeEventListener("pointermove", this.handlePointerMove);
+            document.removeEventListener("pointerup", this.handlePointerEnd);
+            document.removeEventListener("pointercancel", this.handlePointerEnd);
+            this.drag = null;
+        }
+        this.clearColorGesture();
     }
 
     public render(parent: HTMLElement) {
