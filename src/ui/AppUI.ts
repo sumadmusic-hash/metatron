@@ -199,9 +199,6 @@ export class AppUI {
             bindingManager: this.bindingManager,
             nexusAdapter: this.nexusAdapter,
             history: this.history,
-            onBakeRequested: () => {
-                Toast.show("Bake not implemented yet. ph.3", "info");
-            },
         });
 
         window.addEventListener("keydown", this.handleKeydown);

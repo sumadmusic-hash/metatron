@@ -17,7 +17,7 @@ function makeDevice(): Device {
     return new Device("ModMatrix");
 }
 
-function makeDeps(device: Device, onBakeRequested: () => void = vi.fn()) {
+function makeDeps(device: Device) {
     const deviceLibrary = { currentDevice: device, saveCurrentDevice: vi.fn() };
     const history = new DeviceHistory(deviceLibrary as never);
     const ui = new ModMatrixUI({
@@ -25,7 +25,6 @@ function makeDeps(device: Device, onBakeRequested: () => void = vi.fn()) {
         bindingManager: new BindingManager(device),
         nexusAdapter: new NexusAdapter(),
         history,
-        onBakeRequested,
     });
     return { deviceLibrary, history, ui };
 }
@@ -75,14 +74,26 @@ describe("ModMatrixUI — drawer", () => {
         expect(sourceLabel({ id: "mod3", type: "random" } as never, 2)).toBe("mod3 · RND");
     });
 
-    it("bake button fires onBakeRequested", () => {
-        const bakeSpy = vi.fn();
-        const { ui } = makeDeps(makeDevice(), bakeSpy);
+    it("bake button opens the bake dialog", () => {
+        const { ui } = makeDeps(makeDevice());
         const container = mount(ui);
         const bake = container.querySelector<HTMLButtonElement>(".mod-matrix-bake");
         expect(bake).toBeTruthy();
         bake?.click();
-        expect(bakeSpy).toHaveBeenCalledTimes(1);
+        expect(container.querySelector(".mod-bake-dialog")).toBeTruthy();
+        expect(container.querySelector<HTMLInputElement>(".mod-bake-bars")).toBeTruthy();
+        expect(container.querySelector<HTMLSelectElement>(".mod-bake-grid")).toBeTruthy();
+    });
+
+    it("bake with no open document surfaces an error toast", () => {
+        const { ui } = makeDeps(makeDevice());
+        const container = mount(ui);
+        const bake = container.querySelector<HTMLButtonElement>(".mod-matrix-bake");
+        bake?.click();
+        const renderBtn = container.querySelector<HTMLButtonElement>(".mod-bake-render");
+        expect(renderBtn).toBeTruthy();
+        renderBtn?.click();
+        expect(document.body.textContent).toContain("No open document — cannot bake.");
     });
 });
 

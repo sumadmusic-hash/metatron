@@ -4,13 +4,15 @@ import type { ModSource, ModSlot, Waveform } from "../../core/modulation/Modulat
 import type { DeviceHistory } from "../../core/history/DeviceHistory";
 import type { BindingManager } from "../../core/BindingManager";
 import type { NexusAdapter } from "../../nexus/NexusAdapter";
+import { renderMatrixToRecording } from "../../modulation/BakeRenderer";
+import { writeAutomationRecording } from "../../automation/AutomationWriter";
+import { Toast } from "../Toast";
 
 export interface ModMatrixUIDeps {
     deviceLibrary: { currentDevice?: Device; saveCurrentDevice(): void };
     bindingManager: BindingManager;
     nexusAdapter: NexusAdapter;
     history: DeviceHistory;
-    onBakeRequested: () => void;
 }
 
 export function sourceLabel(src: ModSource, _index: number): string {
@@ -21,19 +23,17 @@ export function sourceLabel(src: ModSource, _index: number): string {
 export class ModMatrixUI {
     private readonly deviceLibrary: { currentDevice?: Device; saveCurrentDevice(): void };
     private readonly history: DeviceHistory;
-    private readonly onBakeRequested: () => void;
+    private readonly bindingManager: BindingManager;
+    private readonly nexusAdapter: NexusAdapter;
 
     private container?: HTMLElement;
     private drawerOpen = false;
 
-    // The bake/engine DI (`bindingManager`, `nexusAdapter`) is reserved for
-    // Phase 3 (BakeRenderer). Phase 2b only edits the persistent matrix shape,
-    // so those deps are consumed here as underscore-prefixed bindings to keep
-    // the constructor signature stable while satisfying `noUnusedParameters`.
-    constructor({ deviceLibrary, history, onBakeRequested, bindingManager: _bindingManager, nexusAdapter: _nexusAdapter }: ModMatrixUIDeps) {
+    constructor({ deviceLibrary, history, bindingManager, nexusAdapter }: ModMatrixUIDeps) {
         this.deviceLibrary = deviceLibrary;
         this.history = history;
-        this.onBakeRequested = onBakeRequested;
+        this.bindingManager = bindingManager;
+        this.nexusAdapter = nexusAdapter;
     }
 
     public getContainer(): HTMLElement {
@@ -73,11 +73,15 @@ export class ModMatrixUI {
         const bakeBtn = document.createElement("button");
         bakeBtn.className = "btn mod-matrix-bake";
         bakeBtn.innerText = "Bake";
-        bakeBtn.title = "Bake the matrix into static control values (Phase 3)";
-        bakeBtn.onclick = () => this.onBakeRequested();
+        bakeBtn.title = "Bake the matrix into static automation";
+        bakeBtn.onclick = () => this.toggleBakeDialog();
         header.appendChild(bakeBtn);
 
         this.container.appendChild(header);
+
+        if (this.bakeDialogOpen) {
+            this.container.appendChild(this.renderBakeDialog());
+        }
 
         const rack = document.createElement("div");
         rack.className = "mod-source-rack";
@@ -92,6 +96,121 @@ export class ModMatrixUI {
             matrix.appendChild(this.renderSlotRow(slot, index, device));
         });
         this.container.appendChild(matrix);
+    }
+
+    private bakeDialogOpen = false;
+
+    private toggleBakeDialog(): void {
+        this.bakeDialogOpen = !this.bakeDialogOpen;
+        if (this.container) {
+            this.render();
+        }
+    }
+
+    private renderBakeDialog(): HTMLElement {
+        const dialog = document.createElement("div");
+        dialog.className = "mod-bake-dialog";
+
+        const row = document.createElement("div");
+        row.className = "mod-bake-row";
+
+        const barsLabel = document.createElement("label");
+        barsLabel.className = "mod-bake-label";
+        barsLabel.innerText = "Bars";
+        const bars = document.createElement("input");
+        bars.className = "mod-bake-bars";
+        bars.type = "number";
+        bars.min = "1";
+        bars.step = "1";
+        bars.value = "4";
+        barsLabel.appendChild(bars);
+        row.appendChild(barsLabel);
+
+        const gridLabel = document.createElement("label");
+        gridLabel.className = "mod-bake-label";
+        gridLabel.innerText = "Grid";
+        const grid = document.createElement("select");
+        grid.className = "mod-bake-grid";
+        (["1/16", "1/32"] as const).forEach((g) => {
+            const opt = document.createElement("option");
+            opt.value = g;
+            opt.innerText = g;
+            grid.appendChild(opt);
+        });
+        gridLabel.appendChild(grid);
+        row.appendChild(gridLabel);
+
+        dialog.appendChild(row);
+
+        const actions = document.createElement("div");
+        actions.className = "mod-bake-actions";
+
+        const closeBtn = document.createElement("button");
+        closeBtn.className = "btn mod-bake-close";
+        closeBtn.innerText = "Cancel";
+        closeBtn.onclick = () => this.toggleBakeDialog();
+        actions.appendChild(closeBtn);
+
+        const renderBtn = document.createElement("button");
+        renderBtn.className = "btn mod-bake-render";
+        renderBtn.innerText = "Render";
+        renderBtn.onclick = () => {
+            const rawBars = Number(bars.value);
+            const normalizedGrid = grid.value as "1/16" | "1/32";
+            void this.onBakeRequested(Number.isFinite(rawBars) && rawBars > 0 ? rawBars : 1, normalizedGrid);
+        };
+        actions.appendChild(renderBtn);
+
+        dialog.appendChild(actions);
+        return dialog;
+    }
+
+    /** Bake the current matrix into automation and surface an outcome toast.
+     *  The dialogs' bars/grid inputs feed this; the recording is rendered
+     *  offline (no playhead) and written through the standard writer. */
+    private async onBakeRequested(bars: number, grid: "1/16" | "1/32"): Promise<void> {
+        const device = this.deviceLibrary.currentDevice;
+        if (!device) {
+            Toast.show("No device loaded — cannot bake.", "error");
+            return;
+        }
+        if (!this.nexusAdapter.document) {
+            Toast.show("No open document — cannot bake.", "error");
+            return;
+        }
+
+        // TODO (phase 4): read the project BPM from the open document
+        // (Config.tempoBpm) instead of a client-side constant.
+        const recording = renderMatrixToRecording(device.modulation, device, {
+            bars,
+            projectBpm: 120,
+            startTick: 0,
+            grid,
+        });
+
+        if (recording.tracks.length === 0) {
+            Toast.show("No modulated destinations with active bindings.", "info");
+            return;
+        }
+
+        const result = await writeAutomationRecording(recording, this.nexusAdapter.document, this.bindingManager);
+
+        const failed = result.perTrack.filter((track) => !track.ok);
+        if (result.ok && failed.length === 0) {
+            Toast.show(
+                `Baked ${recording.tracks.length} track(s) into automation (${recording.durationSeconds.toFixed(1)}s).`,
+                "success"
+            );
+        } else if (failed.length === recording.tracks.length) {
+            const reasons = failed.map((track) => `"${track.reason}"`).join(", ");
+            Toast.show(`Bake failed for all tracks — ${reasons}`, "error");
+        } else {
+            const reasons = failed.map((track) => `"${track.reason}"`).join(", ");
+            Toast.show(`Bake partially failed — ${failed.length}/${recording.tracks.length} track(s): ${reasons}`, "warning");
+        }
+
+        this.bakeDialogOpen = false;
+        this.render();
     }
 
     private renderSourceRow(src: ModSource, index: number): HTMLElement {

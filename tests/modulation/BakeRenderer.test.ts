@@ -1,0 +1,73 @@
+import { describe, it, expect } from "vitest";
+import { Ticks } from "@audiotool/nexus/utils";
+import { Device } from "../../src/core/model/Device";
+import { Control } from "../../src/core/model/Control";
+import { renderMatrixToRecording } from "../../src/modulation/BakeRenderer";
+
+/**
+ * Phase 3 — BakeRenderer: the matrix is rasterized deterministically on the
+ * given note grid (no playhead, no live values). Verified against the IST
+ * shapes: flat ModSource top-level fields, `evaluateDestinations` return map,
+ * Device.controls Map, and the @audiotool/nexus `Ticks` API.
+ */
+
+function makeDevice(): Device {
+    const device = new Device("Bake");
+    const ctl1 = new Control("knob", "Cutoff", { x: 0, y: 0 }, "ctl1");
+    device.addControl(ctl1);
+    ctl1.value = 0.5;
+
+    const src = device.modulation.sources[0];
+    src.enabled = true;
+    src.waveform = "sine";
+    src.rateHz = 2;
+
+    const slot = device.modulation.slots[0];
+    slot.enabled = true;
+    slot.sourceId = src.id;
+    slot.destControlId = ctl1.id;
+    slot.amount = 0.5;
+
+    return device;
+}
+
+function defaultOptions() {
+    return { bars: 4, startTick: 0, projectBpm: 120, grid: "1/16" as const };
+}
+
+describe("renderMatrixToRecording", () => {
+    it("renders 4 bars of 1/16 grid into one track with the expected sample count", () => {
+        const device = makeDevice();
+        const recording = renderMatrixToRecording(device.modulation, device, defaultOptions());
+
+        expect(recording.projectBpm).toBe(120);
+        expect(recording.startTick).toBe(0);
+        expect(recording.tracks).toHaveLength(1);
+        expect(recording.tracks[0].controlId).toBe(device.getControl("ctl1")?.id ?? "");
+
+        const expectedSteps = 4 * 16;
+        expect(recording.tracks[0].samples.length).toBeCloseTo(expectedSteps, 0);
+
+        expect(recording.tracks[0].samples[0].timeSeconds).toBe(0);
+        for (const sample of recording.tracks[0].samples) {
+            expect(sample.normalizedValue).toBeGreaterThanOrEqual(0);
+            expect(sample.normalizedValue).toBeLessThanOrEqual(1);
+        }
+    });
+
+    it("skips archived controls entirely", () => {
+        const device = makeDevice();
+        device.getControl("ctl1")?.softDelete();
+
+        const recording = renderMatrixToRecording(device.modulation, device, defaultOptions());
+
+        expect(recording.tracks).toHaveLength(0);
+    });
+
+    it("computes an 8s duration for 4 bars at 120 BPM", () => {
+        const device = makeDevice();
+        const recording = renderMatrixToRecording(device.modulation, device, defaultOptions());
+
+        expect(recording.durationSeconds).toBeCloseTo(8, 1);
+    });
+});
