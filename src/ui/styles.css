@@ -1150,3 +1150,112 @@ body {
 .group-box.use-group {
     border-color: rgba(0, 229, 255, 0.28);
 }
+
+/* ── Phase 2b: Modulation Matrix Drawer ───────────────────────────────────── */
+
+.mod-matrix-drawer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 0;
+    background: var(--bg-panel);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid var(--border-color);
+    z-index: 200;
+    overflow: hidden;
+    transition: max-height 0.2s ease;
+}
+
+.mod-matrix-drawer.open {
+    max-height: 45vh;
+    overflow-y: auto;
+}
+
+.mod-matrix-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.mod-matrix-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.mod-matrix-bake {
+    background: rgba(0, 229, 255, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid rgba(0, 229, 255, 0.25);
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.mod-matrix-bake:hover {
+    background: rgba(0, 229, 255, 0.2);
+    color: var(--text-primary);
+}
+
+.mod-source-rack,
+.mod-slot-matrix {
+    padding: 8px 16px;
+}
+
+.mod-source-rack {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.mod-source-row,
+.mod-slot-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+
+.mod-source-label {
+    min-width: 90px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mod-source-row input,
+.mod-source-row select,
+.mod-slot-row input,
+.mod-slot-row select {
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 3px 6px;
+    font-size: 12px;
+}
+
+.mod-source-rate,
+.mod-source-division,
+.mod-source-phase,
+.mod-source-smooth,
+.mod-source-drift {
+    width: 70px;
+}
+
+.mod-slot-amount {
+    width: 70px;
+}
+
+.mod-slot-source,
+.mod-slot-dest {
+    max-width: 150px;
+}

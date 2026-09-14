@@ -10,6 +10,7 @@ import { writeAutomationRecording, readTempoBpm } from "../automation/Automation
 import { EditorUI } from "./editor/EditorUI";
 import { SurfaceUI } from "./surface/SurfaceUI";
 import { ModulationRunner } from "../modulation/ModulationRunner";
+import { ModMatrixUI } from "./modmatrix/ModMatrixUI";
 import { DeviceLibraryUI } from "./DeviceLibraryUI";
 import { Toast } from "./Toast";
 import { WRITE_REFUSED_CLASS, WRITE_REFUSED_TITLE } from "./writeRefusal";
@@ -66,6 +67,8 @@ export class AppUI {
     private editorUI: EditorUI;
     private surfaceUI: SurfaceUI;
     private libraryUI: DeviceLibraryUI;
+    private modMatrixUI: ModMatrixUI;
+    private modMatrixOpen = false;
     private midiMapping: MidiMapping;
     private connectionUnsub?: () => void;
     private connectionStatusEl?: HTMLSpanElement;
@@ -190,6 +193,16 @@ export class AppUI {
             // AppUI.render() for each slider input.
             (controlId, value) => this.surfaceUI.applyNexusValue(controlId, value)
         );
+
+        this.modMatrixUI = new ModMatrixUI({
+            deviceLibrary: this.deviceLibrary,
+            bindingManager: this.bindingManager,
+            nexusAdapter: this.nexusAdapter,
+            history: this.history,
+            onBakeRequested: () => {
+                Toast.show("Bake not implemented yet. ph.3", "info");
+            },
+        });
 
         window.addEventListener("keydown", this.handleKeydown);
         window.addEventListener("beforeunload", this.flushValueSave);
@@ -560,6 +573,7 @@ export class AppUI {
             this.modRunner?.start();
         }
         this.render();
+        this.modMatrixUI.render();
     }
 
     private connectionLabel(): string {
@@ -712,6 +726,18 @@ toolbarLeft.appendChild(libraryBtn);
         toolbarLeft.appendChild(undoBtn);
         toolbarLeft.appendChild(redoBtn);
 
+        const modBtn = document.createElement("button");
+        modBtn.id = "mod-matrix-toggle";
+        modBtn.className = "btn" + (this.modMatrixOpen ? " active" : "");
+        modBtn.innerText = "MOD";
+        modBtn.title = "Toggle modulation matrix";
+        modBtn.onclick = () => {
+            this.modMatrixOpen = !this.modMatrixOpen;
+            this.modMatrixUI.toggleDrawer();
+            this.render();
+        };
+        toolbarLeft.appendChild(modBtn);
+
         const modeToggle = document.createElement("button");
         modeToggle.className = "btn primary";
         modeToggle.innerText = this.currentMode === "EDIT" ? "USE" : "EDIT";
@@ -775,6 +801,7 @@ toolbarLeft.appendChild(libraryBtn);
         }
 
         contentRow.appendChild(contentArea);
+        this.root.appendChild(this.modMatrixUI.getContainer());
         this.root.appendChild(contentRow);
 
         // FIX 6 — start the runner when a modulatable matrix is live after
