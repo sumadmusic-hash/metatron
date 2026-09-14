@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { Ticks } from "@audiotool/nexus/utils";
 import { Device } from "../../src/core/model/Device";
 import { Control } from "../../src/core/model/Control";
+import { createDefaultMatrix } from "../../src/core/modulation/ModulationTypes";
 import { renderMatrixToRecording } from "../../src/modulation/BakeRenderer";
 
 /**
@@ -69,5 +70,17 @@ describe("renderMatrixToRecording", () => {
         const recording = renderMatrixToRecording(device.modulation, device, defaultOptions());
 
         expect(recording.durationSeconds).toBeCloseTo(8, 1);
+    });
+
+    it("uses the supplied projectBpm for duration (125 BPM → 7.68s for 4 bars)", () => {
+        const device = new Device("Test");
+        const matrix = createDefaultMatrix();
+        const recording = renderMatrixToRecording(
+            matrix,
+            device,
+            { bars: 4, startTick: 0, projectBpm: 125, grid: "1/16" }
+        );
+        // 4 bars at 125 BPM = 4 * (240/125) seconds = 7.68s
+        expect(recording.durationSeconds).toBeCloseTo(7.68, 2);
     });
 });

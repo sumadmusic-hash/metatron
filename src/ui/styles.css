@@ -1204,6 +1204,53 @@ body {
     color: var(--text-primary);
 }
 
+/* Phase 3 — Bake-Dialog im Mod-Matrix-Look (zentriert, modal) */
+.mod-bake-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--bg-panel);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 16px 20px;
+    z-index: 230;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    min-width: 260px;
+}
+.mod-bake-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.mod-bake-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 6px;
+}
+.mod-bake-dialog-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+.mod-bake-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 229;
+}
+
 .mod-source-rack,
 .mod-slot-matrix {
     padding: 8px 16px;

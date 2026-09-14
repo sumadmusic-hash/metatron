@@ -5,7 +5,7 @@ import type { DeviceHistory } from "../../core/history/DeviceHistory";
 import type { BindingManager } from "../../core/BindingManager";
 import type { NexusAdapter } from "../../nexus/NexusAdapter";
 import { renderMatrixToRecording } from "../../modulation/BakeRenderer";
-import { writeAutomationRecording } from "../../automation/AutomationWriter";
+import { writeAutomationRecording, readTempoBpm } from "../../automation/AutomationWriter";
 import { Toast } from "../Toast";
 
 export interface ModMatrixUIDeps {
@@ -179,11 +179,9 @@ export class ModMatrixUI {
             return;
         }
 
-        // TODO (phase 4): read the project BPM from the open document
-        // (Config.tempoBpm) instead of a client-side constant.
         const recording = renderMatrixToRecording(device.modulation, device, {
             bars,
-            projectBpm: 120,
+            projectBpm: readTempoBpm(this.nexusAdapter.document) ?? 120,
             startTick: 0,
             grid,
         });
