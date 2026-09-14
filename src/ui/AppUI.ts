@@ -204,6 +204,9 @@ export class AppUI {
      * while an INPUT/TEXTAREA/contenteditable element has focus.
      */
     private handleKeydown = (e: KeyboardEvent) => {
+        // Belt-and-suspenders with destroy(): a listener that leaks past the
+        // teardown must never run Undo/Redo against a dead instance.
+        if (this.destroyed) return;
         const mod = e.metaKey || e.ctrlKey;
         if (!mod) return;
         const active = document.activeElement;

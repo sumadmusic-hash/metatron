@@ -28,9 +28,9 @@ Metatron is a browser-based controller and macro editor for [Audiotool](https://
 
 
 ## Known Issues (Planned for v0.2.0)
-- Reconnecting to the same project clears all active bindings (no same-URL check).
-- Async import race: Device switch during import may persist state to the wrong device.
-- Preset library data loss: Corrupted localStorage entries are silently discarded.
+- ~~Reconnecting to the same project clears all active bindings (no same-URL check).~~ **Fixed** (`22981ed`)
+- ~~Async import race: Device switch during import may persist state to the wrong device.~~ **Fixed** (`f09d0c6`)
+- ~~Preset library data loss: Corrupted localStorage entries are silently discarded.~~ **Fixed** (`e0923ee`)
 
 
 ## Installation
