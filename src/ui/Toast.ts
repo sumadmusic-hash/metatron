@@ -13,11 +13,12 @@ export class Toast {
         return Toast.container;
     }
 
-    public static show(message: string, kind: "info" | "error" | "success" = "info", durationMs = 4000) {
+    public static show(message: string, kind: "info" | "error" | "success" | "warning" = "info", durationMs = 4000) {
         const container = Toast.ensureContainer();
         const el = document.createElement("div");
         const bg =
             kind === "error" ? "rgba(244,67,54,0.95)" :
+            kind === "warning" ? "rgba(255,160,0,0.95)" :
             kind === "success" ? "rgba(76,175,80,0.95)" :
             "rgba(28,36,47,0.95)";
         el.style.cssText =

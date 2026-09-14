@@ -504,7 +504,14 @@ private container!: HTMLElement;
 
         try {
             const result = await this.midiLearn.startLearn(this.midiHandler, { timeoutMs: 60000 });
-            this.midiMapping.setMapping(control.id, result.channel, result.cc);
+            const mapped = this.midiMapping.setMapping(control.id, result.channel, result.cc);
+            if (mapped.collision) {
+                const displaced = this.deviceLibrary.currentDevice?.getControl(mapped.displacedControlId);
+                Toast.show(
+                    `Warnung: CC ${result.cc} (ch ${result.channel}) war bereits an "${displaced?.name ?? mapped.displacedControlId}" vergeben — die Zuordnung wurde dort entfernt.`,
+                    "warning",
+                );
+            }
             this.deviceLibrary.saveCurrentDevice();
             Toast.show(`Control "${control.name}" now reads CC ${result.cc} (ch ${result.channel}).`, "success");
         } catch (e) {

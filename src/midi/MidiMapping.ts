@@ -1,6 +1,14 @@
 import { Device } from "../core/model/Device";
 import type { MidiBindingDefinition } from "../core/model/types";
 
+/** Outcome of a `setMapping` call (P3.1):
+ *  `collision: true` reports that the new assignment DISPLACED another
+ *  control's existing route — the caller is expected to surface that to
+ *  the user instead of silently stealing the CC. */
+export type SetMappingResult =
+    | { collision: false }
+    | { collision: true; displacedControlId: string };
+
 export class MidiMapping {
     private device: Device;
     
@@ -33,17 +41,37 @@ export class MidiMapping {
         return this.ccMap.get(`${channel}:${cc}`);
     }
 
-    public setMapping(controlId: string, channel: number, cc: number) {
+    /** Outcome of a `setMapping` call (P3.1):
+     *  `collision: true` reports that the new assignment DISPLACED another
+     *  control's existing route — the caller is expected to surface that to
+     *  the user instead of silently stealing the CC. */
+    public setMapping(controlId: string, channel: number, cc: number): SetMappingResult {
         const control = this.device.getControl(controlId);
-        if (control) {
-            // C2: channel/cc are replaced; any existing scaling fields
-            // (min/max/flip/exponent) are preserved as-is — no scaling defaults
-            // are injected here. Without scaling the result is byte-identical
-            // to the legacy `{ channel, cc }` shape.
-            const current = control.midiBindingDefinition;
-            control.midiBindingDefinition = { ...(current ?? {}), channel, cc };
-            this.buildMap();
+        if (!control) return { collision: false };
+
+        const existingControlId = this.ccMap.get(`${channel}:${cc}`);
+        const collision = existingControlId !== undefined && existingControlId !== controlId;
+
+        if (collision) {
+            // The displaced control's stored definition must stay consistent
+            // with the rebuilt map: the route now belongs to the NEW control,
+            // so the old one is cleared (otherwise its model claims a route
+            // that the map no longer routes to it).
+            const displaced = this.device.getControl(existingControlId as string);
+            if (displaced) displaced.midiBindingDefinition = undefined;
         }
+
+        // C2: channel/cc are replaced; any existing scaling fields
+        // (min/max/flip/exponent) are preserved as-is — no scaling defaults
+        // are injected here. Without scaling the result is byte-identical
+        // to the legacy `{ channel, cc }` shape.
+        const current = control.midiBindingDefinition;
+        control.midiBindingDefinition = { ...(current ?? {}), channel, cc };
+        this.buildMap();
+
+        return collision
+            ? { collision: true, displacedControlId: existingControlId as string }
+            : { collision: false };
     }
 
     /** Reverse lookup (C2 §7): the current MidiBindingDefinition of the given

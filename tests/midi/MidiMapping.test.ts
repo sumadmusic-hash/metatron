@@ -134,4 +134,36 @@ describe("MidiMapping — assign, replace, clear, forward + reverse (C2 §7)", (
         expect(mapping.getControlIdForMessage(1, 20)).toBeUndefined();
         expect(mapping.getMappingForControl(ctrl.id)).toBeUndefined();
     });
+
+    it("P3.1: reusing an existing CC reports a collision naming the displaced control", () => {
+        const c2 = new Control("knob", "Reso", { x: 100, y: 0 });
+        device.addControl(c2);
+        mapping.setMapping(c2.id, 1, 20);
+        expect(mapping.getControlIdForMessage(1, 20)).toBe(c2.id);
+
+        // Assign the SAME channel/cc to a different control → collision.
+        const r = mapping.setMapping(ctrl.id, 1, 20);
+        expect(r.collision).toBe(true);
+        if (r.collision) expect(r.displacedControlId).toBe(c2.id);
+
+        // The winner owns the route, the loser's stale definition is cleared so
+        // model and map stay consistent (calling a warning requires the loser's
+        // name, which the UI reads off the device model).
+        expect(mapping.getControlIdForMessage(1, 20)).toBe(ctrl.id);
+        expect(c2.midiBindingDefinition).toBeUndefined();
+        expect(ctrl.midiBindingDefinition).toEqual({ channel: 1, cc: 20 });
+    });
+
+    it("P3.1: reassigning the SAME control to its own CC is NOT a collision", () => {
+        mapping.setMapping(ctrl.id, 1, 20);
+        const r = mapping.setMapping(ctrl.id, 1, 20);
+        expect(r).toEqual({ collision: false });
+        expect(mapping.getControlIdForMessage(1, 20)).toBe(ctrl.id);
+        expect(mapping.getMappingForControl(ctrl.id)).toEqual({ channel: 1, cc: 20 });
+    });
+
+    it("P3.1: setMapping returns collision:false for a fresh route and for unknown ids", () => {
+        expect(mapping.setMapping(ctrl.id, 9, 90)).toEqual({ collision: false });
+        expect(mapping.setMapping("nope", 9, 90)).toEqual({ collision: false });
+    });
 });
