@@ -84,7 +84,34 @@ describe('Core Data Model Invariants', () => {
         const loadedKnob = deserialized.getControl(knob.id);
         expect(loadedKnob).toBeDefined();
         expect(loadedKnob?.defaultValue).toBe(0.5);
-        expect(loadedKnob?.value).toBe(0.5); // Deserialization sets value to defaultValue initially
+        expect(loadedKnob?.value).toBe(0); // Value survives: knob was never moved
+    });
+
+    it('serializes and restores the current knob value (I17 §13)', () => {
+        const knob = new Control('knob', 'Cutoff');
+        knob.defaultValue = 0.2;
+        knob.value = 0.77; // Manually set, no preset saved
+        device.addControl(knob);
+
+        const serialized = device.serialize();
+        const deserialized = Device.deserialize(serialized);
+
+        const loadedKnob = deserialized.getControl(knob.id);
+        expect(loadedKnob?.value).toBe(0.77);
+        expect(loadedKnob?.defaultValue).toBe(0.2);
+        expect(serialized.controls[0].value).toBe(0.77);
+    });
+
+    it('deserializes legacy devices without a value field to defaultValue', () => {
+        const knob = new Control('knob', 'Cutoff');
+        device.addControl(knob);
+        knob.defaultValue = 0.4;
+
+        const serialized = device.serialize() as Record<string, unknown>;
+        delete (serialized.controls as Record<string, unknown>[])[0].value;
+
+        const deserialized = Device.deserialize(serialized);
+        expect(deserialized.getControl(knob.id)?.value).toBe(0.4);
     });
 
     it('supports multiple Presets and loading them (AC12, AC13)', () => {

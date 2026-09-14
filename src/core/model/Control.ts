@@ -88,6 +88,7 @@ export class Control {
             position: this.position,
             size: this.size,
             groupId: this.groupId,
+            value: this.value,
             defaultValue: this.defaultValue,
             visualDefinition: this.visualDefinition,
             audiotoolBindingDefinition: this.audiotoolBindingDefinition,
@@ -103,7 +104,9 @@ export class Control {
         c.size = data.size;
         c.groupId = data.groupId;
         c.defaultValue = data.defaultValue;
-        c.value = data.defaultValue; // Will be overridden if preset is loaded
+        // Restore the persisted knob value; fall back to defaultValue for
+        // devices saved before the `value` field existed (I17 §13).
+        c.value = typeof data.value === "number" ? data.value : data.defaultValue;
         c.visualDefinition = data.visualDefinition || {};
         c.audiotoolBindingDefinition = data.audiotoolBindingDefinition;
         c.midiBindingDefinition = data.midiBindingDefinition;
