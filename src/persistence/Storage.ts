@@ -18,6 +18,46 @@ export class StorageError extends Error {
 export class Storage {
     private static readonly STORAGE_KEY = "metatron_devices";
 
+    /** Separate best-effort note of the MOST-RECENTLY-USED device id (I18,
+     *  §13). main.ts restores this device on app start, NOT the oldest one —
+     *  `listDevices()` returns insertion order, which is unrelated to use. */
+    private static readonly LAST_ACTIVE_KEY = "metatron_last_device_id";
+
+    /**
+     * Persist the most-recently-used device id. The note is separate from the
+     * device map so a corrupt map cannot hide it (and the note is best-effort:
+     * DeviceLibrary logs and continues when the write fails).
+     *
+     * @throws {StorageError} when LocalStorage cannot be written
+     */
+    public static saveLastActiveDeviceId(id: string): void {
+        try {
+            localStorage.setItem(this.LAST_ACTIVE_KEY, id);
+        } catch (e) {
+            throw new StorageError("Failed to save last active device id", { cause: e });
+        }
+    }
+
+    /** Read the most-recently-used device id note, if any. */
+    public static getLastActiveDeviceId(): string | undefined {
+        const id = localStorage.getItem(this.LAST_ACTIVE_KEY);
+        return id || undefined;
+    }
+
+    /**
+     * Clear the most-recently-used device note (called when the referenced
+     * device is deleted).
+     *
+     * @throws {StorageError} when LocalStorage cannot be written
+     */
+    public static clearLastActiveDeviceId(): void {
+        try {
+            localStorage.removeItem(this.LAST_ACTIVE_KEY);
+        } catch (e) {
+            throw new StorageError("Failed to clear last active device id", { cause: e });
+        }
+    }
+
     /**
      * Persist a device (serialized) into the stored device map, then write the
      * map back to LocalStorage.

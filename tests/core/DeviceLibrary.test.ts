@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DeviceLibrary } from '../../src/core/DeviceLibrary';
+import { DeviceLibrary, resolveStartupDeviceId } from '../../src/core/DeviceLibrary';
 import { Control } from '../../src/core/model/Control';
+import { Storage } from '../../src/persistence/Storage';
 
 // Minimal localStorage shim so Storage can persist between calls in Node.
 class FakeStorage implements Storage {
@@ -79,5 +80,71 @@ describe('DeviceLibrary — Phase B library CRUD (§47/§48)', () => {
         library.deleteDevice(a.id);
         expect(library.hasDevices()).toBe(false);
         expect(library.currentDevice).toBeUndefined();
+    });
+});
+
+describe('most-recently-used device note (I18 §13) — app-start restore', () => {
+    beforeEach(() => {
+        (globalThis as any).localStorage = new FakeStorage();
+    });
+
+    it('resolveStartupDeviceId prefers the last-active note over insertion order', () => {
+        expect(resolveStartupDeviceId(["dev-1", "dev-2", "dev-3"], "dev-2")).toBe("dev-2");
+        expect(resolveStartupDeviceId(["dev-1", "dev-2", "dev-3"], undefined)).toBe("dev-1");
+        expect(resolveStartupDeviceId(["dev-1", "dev-2"], "ghost-device")).toBe("dev-1");
+        expect(resolveStartupDeviceId([], "dev-1")).toBeUndefined();
+        expect(resolveStartupDeviceId([], undefined)).toBeUndefined();
+    });
+
+    it('creation/load track the last-active note; deletion clears a stale note', () => {
+        const library = new DeviceLibrary();
+        const a = library.createNewDevice('A');
+        library.saveCurrentDevice();
+        const b = library.createNewDevice('B');
+        library.saveCurrentDevice();
+
+        expect(Storage.getLastActiveDeviceId()).toBe(b.id);
+
+        library.loadDevice(a.id);
+        expect(Storage.getLastActiveDeviceId()).toBe(a.id);
+
+        library.deleteDevice(a.id);
+        expect(Storage.getLastActiveDeviceId()).toBeUndefined();
+    });
+
+    it('startup resolution restores the most-recently-used device — never the oldest', () => {
+        const library = new DeviceLibrary();
+        const first = library.createNewDevice('Oldest');
+        library.saveCurrentDevice();
+        library.createNewDevice('Newest');
+        library.saveCurrentDevice();
+        // The user last worked on the SECOND-created device.
+        library.loadDevice('does-not-exist'); // no-op, note unchanged
+        const newest = library.listDevices()[1];
+
+        const startupId = resolveStartupDeviceId(
+            library.listDevices().map((d) => d.id),
+            Storage.getLastActiveDeviceId(),
+        );
+        library.loadDevice(startupId!);
+        expect(library.currentDevice?.name).toBe(newest.name);
+    });
+
+    it('a stale note (deleted device) falls back to the first saved device', () => {
+        const library = new DeviceLibrary();
+        const kept = library.createNewDevice('Kept');
+        library.saveCurrentDevice();
+        const doomed = library.createNewDevice('Doomed');
+        library.saveCurrentDevice();
+        library.loadDevice(doomed.id);
+        library.deleteDevice(doomed.id);
+
+        const startupId = resolveStartupDeviceId(
+            library.listDevices().map((d) => d.id),
+            Storage.getLastActiveDeviceId(),
+        );
+        // Note was cleared on delete → fallback is the first (only) device.
+        expect(Storage.getLastActiveDeviceId()).toBeUndefined();
+        expect(startupId).toBe(kept.id);
     });
 });

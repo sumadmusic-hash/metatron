@@ -1,4 +1,5 @@
-import { DeviceLibrary } from "./core/DeviceLibrary";
+import { DeviceLibrary, resolveStartupDeviceId } from "./core/DeviceLibrary";
+import { Storage } from "./persistence/Storage";
 import { NexusAdapter } from "./nexus/NexusAdapter";
 import { MidiAccess } from "./midi/MidiAccess";
 import { BindingManager } from "./core/BindingManager";
@@ -11,12 +12,18 @@ async function bootstrap() {
     // 1. Initialize Core Models
     const deviceLibrary = new DeviceLibrary();
     
-    // Restore largest-recently-used device if any exist; do NOT auto-create a
+    // Restore the MOST-RECENTLY-USED device if any exist; do NOT auto-create a
     // placeholder — a brand-new device must come from the UI (§20/§48).
+    // `listDevices()` returns insertion order — without the last-active note
+    // (I18 §13, tracked by DeviceLibrary) a reload would open the OLDEST device.
     try {
         const savedDevices = deviceLibrary.listDevices();
-        if (savedDevices.length > 0) {
-            deviceLibrary.loadDevice(savedDevices[0].id);
+        const startupId = resolveStartupDeviceId(
+            savedDevices.map((d) => d.id),
+            Storage.getLastActiveDeviceId(),
+        );
+        if (savedDevices.length > 0 && startupId) {
+            deviceLibrary.loadDevice(startupId);
             console.log(`Loaded device: ${deviceLibrary.currentDevice?.name}`);
         } else {
             console.log("No saved devices — awaiting creation via Device Library UI.");
