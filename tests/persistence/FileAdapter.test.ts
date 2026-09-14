@@ -140,11 +140,18 @@ beforeEach(() => {
         removedAnchor = true;
         return origAnchorRemove.call(this);
     });
+
+    // P3.4 — revokeObjectURL is DEFERRED (macrotask fallback timer), so the
+    // export paths schedule timers. Fake timers keep that deterministic and
+    // guarantee no cleanup callback fires after the test has finished.
+    vi.useFakeTimers();
 });
 
 afterEach(() => {
     delete (NativeURL as { createObjectURL?: unknown }).createObjectURL;
     delete (NativeURL as { revokeObjectURL?: unknown }).revokeObjectURL;
+    vi.clearAllTimers();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
 });
@@ -157,10 +164,17 @@ describe("exportPresetToFile", () => {
         expect(clickedAnchor!.download).toBe("Crunch_Lead.metatron-preset.json");
         expect(clickedAnchor!.href).toBe("blob:metatron-mock");
         expect(urlCreate).toHaveBeenCalledOnce();
-        expect(urlRevoke).toHaveBeenCalledOnce();
+        // P3.4 — the revoke is deferred: nothing is cleaned up synchronously
+        // right after click() (that could abort the blob fetch mid-download).
+        expect(urlRevoke).not.toHaveBeenCalled();
         expect(removedAnchor).toBe(true);
         expect(lastBlob?.type).toBe("application/json");
         expect(lastBlob?.content).toBe(serializeInstrumentPreset(presetFixture("Crunch Lead")));
+
+        // Once the fallback cleanup window elapses, the URL IS revoked.
+        vi.advanceTimersByTime(1000);
+        expect(urlRevoke).toHaveBeenCalledOnce();
+        expect(urlRevoke).toHaveBeenCalledWith("blob:metatron-mock");
     });
 
     it("honors an explicit filename", () => {

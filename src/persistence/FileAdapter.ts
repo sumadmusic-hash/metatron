@@ -23,14 +23,20 @@ function sanitizeFilenameName(name: string): string {
     return trimmed.length > 0 ? trimmed : "preset";
 }
 
+/** P3.4 — the blob URL must survive long enough for the browser to START the
+ *  download. Revoking synchronously right after `click()` can abort the blob
+ *  fetch in some browsers, so the cleanup is deferred to a macrotask window
+ *  (fallback timer) instead of being tied to the click. */
+const REVOKE_OBJECT_URL_DELAY_MS = 1000;
+
 function downloadBlob(blob: Blob, filename: string): void {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = filename;
     link.click();
-    URL.revokeObjectURL(url);
     link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), REVOKE_OBJECT_URL_DELAY_MS);
 }
 
 /** Download one `InstrumentPreset` envelope as `{preset.name}.metatron-preset.json`
