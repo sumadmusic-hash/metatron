@@ -63,14 +63,14 @@ export function evaluateSource(
     src: ModSource,
     tSec: number,
     bpm: number,
-    macroValue: number,
+    macroValue: (controlId: string) => number,
     macroActive: (id: string) => boolean,
 ): number {
     if (!src.enabled) return 0;
 
     if (src.type === "macro") {
         if (!src.sourceId || !macroActive(src.sourceId)) return 0;
-        return clamp(macroValue * 2 - 1, -1, 1);
+        return clamp(macroValue(src.sourceId) * 2 - 1, -1, 1);
     }
 
     if (src.type === "random") {
@@ -112,7 +112,7 @@ export function evaluateDestinations(
     baseValues: Record<string, number>,
     tSec: number,
     bpm: number,
-    macroValue: number,
+    macroValue: (controlId: string) => number,
     macroActive: (id: string) => boolean,
 ): Map<string, number> {
     const sourceOut = new Map<string, number>();

@@ -9,6 +9,7 @@ import {
     MAX_MOD_SOURCES,
     createDefaultMatrix,
 } from "../../../src/core/modulation/ModulationTypes";
+import { evaluateDestinations } from "../../../src/core/modulation/ModulationEngine";
 import { Device } from "../../../src/core/model/Device";
 
 describe("ModulationMatrix — defaults (FIX 4 fallback)", () => {
@@ -31,6 +32,13 @@ describe("ModulationMatrix — defaults (FIX 4 fallback)", () => {
         expect(parseModulationMatrix(null).sources).toHaveLength(MAX_MOD_SOURCES);
         expect(parseModulationMatrix(42).sources).toHaveLength(MAX_MOD_SOURCES);
         expect(parseModulationMatrix("x").sources).toHaveLength(MAX_MOD_SOURCES);
+    });
+
+    it("parse always yields schema version 1, even for version-less payloads (B7)", () => {
+        expect(parseModulationMatrix(undefined).version).toBe(1);
+        expect(
+            parseModulationMatrix({ sources: [{ id: "mod1" }], slots: [{ id: "slot1" }] }).version,
+        ).toBe(1);
     });
 });
 
@@ -158,5 +166,51 @@ describe("ModulationMatrix — default fill (R1)", () => {
         expect(matrix.sources[1]).toEqual(createDefaultMatrix().sources[1]);
         expect(matrix.slots[0].amount).toBe(0.4);
         expect(matrix.slots[1]).toEqual(createDefaultMatrix().slots[1]);
+    });
+});
+
+describe("ModulationMatrix — duplicate ids (B8)", () => {
+    it("parse deterministically dedups duplicate source and slot ids", () => {
+        const payload = {
+            sources: [{ id: "mod3" }, { id: "mod3" }],
+            slots: [{ id: "slot5" }, { id: "slot5" }],
+        };
+        const parsed = parseModulationMatrix(payload);
+        const parsedAgain = parseModulationMatrix(payload);
+        for (const cfg of [parsed, parsedAgain]) {
+            const srcIds = cfg.sources.map((s) => s.id);
+            const slotIds = cfg.slots.map((s) => s.id);
+            expect(new Set(srcIds).size).toBe(srcIds.length);
+            expect(new Set(slotIds).size).toBe(slotIds.length);
+            // First occurrence keeps "mod3"/"slot5"; the duplicate is renamed deterministically.
+            expect(cfg.sources[0].id).toBe("mod3");
+            expect(cfg.sources[1].id).toBe("mod2");
+            expect(cfg.slots[0].id).toBe("slot5");
+            expect(cfg.slots[1].id).toBe("slot2");
+        }
+        // No RNG: two parses produce byte-identical id assignments.
+        expect(parsed.sources.map((s) => s.id)).toEqual(parsedAgain.sources.map((s) => s.id));
+    });
+
+    it("a slot pointing at an id freed by the rename is skipped by evaluateDestinations", () => {
+        // The second "mod3" collides and is renamed; the default "mod2" that it
+        // overwrote is then held by NO source, so a slot referencing it dangles.
+        const parsed = parseModulationMatrix({
+            sources: [
+                { id: "srcA", enabled: true, waveform: "square", rateHz: 1 },
+                { id: "mod3", enabled: true, waveform: "square", rateHz: 1 },
+                { id: "mod3" },
+            ],
+            slots: [
+                { id: "slot5", enabled: true, sourceId: "mod3", destControlId: "x", amount: 1 },
+                { id: "slot5", enabled: true, sourceId: "mod2", destControlId: "y", amount: 1 },
+            ],
+        });
+        expect(new Set(parsed.sources.map((s) => s.id)).size).toBe(parsed.sources.length);
+        const result = evaluateDestinations(parsed, { x: 0, y: 0 }, 0, 120, () => 0, () => true);
+        // "mod3" deterministically binds the retained duplicate source.
+        expect(result.get("x")).toBe(1);
+        // "mod2" no longer exists as a source id → destination absent from the map.
+        expect(result.has("y")).toBe(false);
     });
 });

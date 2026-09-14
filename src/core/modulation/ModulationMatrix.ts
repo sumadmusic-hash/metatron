@@ -79,7 +79,10 @@ function sanitizeSource(source: unknown, index: number): ModSource {
         waveform,
         rateHz: sanitizeRate(record.rateHz),
         bpmSync: record.bpmSync === true,
-        bpmOfSync: finiteNum(record.bpmOfSync, 120),
+        bpmOfSync:
+            typeof record.bpmOfSync === "number" && Number.isFinite(record.bpmOfSync) && record.bpmOfSync > 0
+                ? record.bpmOfSync
+                : undefined,
         noteDivision: Math.max(1, Math.round(finiteNum(record.noteDivision, 4))),
         phase: clampPhase(record.phase),
         drift: clamp(finiteNum(record.drift, 0.5), 0, 1),
@@ -132,6 +135,28 @@ export function parseModulationMatrix(value: unknown): ModulationMatrixConfig {
     }
     if (slots) {
         slots.forEach((s, i) => { matrix.slots[i] = sanitizeSlot(s, i); });
+    }
+    const seenSources = new Set<string>();
+    for (let i = 0; i < matrix.sources.length; i++) {
+        const s = matrix.sources[i];
+        if (seenSources.has(s.id)) {
+            let candidate = `mod${i + 1}`;
+            let k = 0;
+            while (seenSources.has(candidate)) candidate = `mod${i + 1}#${++k}`;
+            s.id = candidate;
+        }
+        seenSources.add(s.id);
+    }
+    const seenSlots = new Set<string>();
+    for (let i = 0; i < matrix.slots.length; i++) {
+        const s = matrix.slots[i];
+        if (seenSlots.has(s.id)) {
+            let candidate = `slot${i + 1}`;
+            let k = 0;
+            while (seenSlots.has(candidate)) candidate = `slot${i + 1}#${++k}`;
+            s.id = candidate;
+        }
+        seenSlots.add(s.id);
     }
     return matrix;
 }

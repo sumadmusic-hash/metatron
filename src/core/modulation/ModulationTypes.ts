@@ -31,8 +31,9 @@ export interface ModSource {
     rateHz: number;
     /** Tempo-synced LFO: period derived from BPM instead of `rateHz`. */
     bpmSync: boolean;
-    /** BPM reference for tempo-synced LFOs. */
-    bpmOfSync: number;
+    /** Optional fixed BPM reference for tempo-synced LFOs.
+     *  undefined = follow the live transport BPM (readTempoBpm). */
+    bpmOfSync?: number;
     /** Musical note division for tempo-synced LFOs (quarter notes default). */
     noteDivision: number;
     /** Phase offset in [0, 1). */
@@ -62,6 +63,8 @@ export interface ModSlot {
 }
 
 export interface ModulationMatrixConfig {
+    /** Schema version of the matrix payload (currently 1). */
+    version: 1;
     sources: ModSource[];
     slots: ModSlot[];
 }
@@ -77,7 +80,6 @@ export function createDefaultMatrix(): ModulationMatrixConfig {
             waveform: "sine",
             rateHz: 1,
             bpmSync: false,
-            bpmOfSync: 120,
             noteDivision: 4,
             phase: 0,
             drift: 0.5,
@@ -99,13 +101,14 @@ export function createDefaultMatrix(): ModulationMatrixConfig {
         });
     }
 
-    return { sources, slots };
+    return { version: 1, sources, slots };
 }
 
 /** Deep (one-level) clone so patches and stored matrices never alias live
  *  Device state. */
 export function cloneModulationMatrix(matrix: ModulationMatrixConfig): ModulationMatrixConfig {
     return {
+        version: matrix.version,
         sources: matrix.sources.map((s) => ({ ...s })),
         slots: matrix.slots.map((s) => ({ ...s })),
     };
