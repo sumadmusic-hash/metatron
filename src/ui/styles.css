@@ -431,6 +431,25 @@ body {
     /* top, height und transform-origin werden ausschließlich durch applyControlLayout() gesetzt; transform = Drehung */
 }
 
+/* Phase 2 — Mod-Nadel: zweite, schmalere Nadel in Warning-Amber; zeigt den
+   MODULIERTEN Wert, während die Matrix läuft. Der Base-Wert bleibt auf
+   .knob-position (weiß). Geometrie (top/height/transform-origin) setzt
+   ausschließlich applyControlLayout(); applyModDisplay setzt nur transform. */
+.knob-mod-position {
+    position: absolute;
+    left: 50%;
+    margin-left: -1px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--text-warning);
+    box-shadow: 0 0 3px rgba(251, 191, 36, 0.8);
+    pointer-events: none;
+    z-index: 3;
+}
+.knob-mod-position.idle {
+    display: none;
+}
+
 /* LED-Lichtkranz: Leuchtender Bogen um den Knob, der den aktuellen Wert
    als Akzent-Arc darstellt. Start bei -135°, Ende = --knob-arc-end (Winkel).
    Außerhalb des 270°-Bereichs (unten) ist der Ring transparent. */

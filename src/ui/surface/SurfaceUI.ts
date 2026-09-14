@@ -31,6 +31,12 @@ private container!: HTMLElement;
     private midiHandler: (channel: number, cc: number, value: number) => void;
     private selectedControlId: string | null = null;
     private isWriteRefused?: (controlId: string) => boolean;
+    private onGestureTakeover?: (controlId: string, active: boolean) => void;
+
+    /** Phase 2 — rendered element cache (FIX 10): every control's live DOM
+     *  refs, rebuilt on each render, so per-tick value updates never query the
+     *  container again. */
+    private ctlElements = new Map<string, { ring: HTMLElement | null; pos: HTMLElement | null; sw: HTMLElement | null; modPos: HTMLElement | null }>();
 
     constructor(
         deviceLibrary: DeviceLibrary,
@@ -40,7 +46,8 @@ private container!: HTMLElement;
         midiMapping: MidiMapping,
         onLocalChange: (controlId: string, value: number) => void,
         midiHandler: (channel: number, cc: number, value: number) => void,
-        isWriteRefused?: (controlId: string) => boolean
+        isWriteRefused?: (controlId: string) => boolean,
+        onGestureTakeover?: (controlId: string, active: boolean) => void
     ) {
         this.deviceLibrary = deviceLibrary;
         this.nexusAdapter = nexusAdapter;
@@ -50,6 +57,7 @@ private container!: HTMLElement;
         this.onLocalChange = onLocalChange;
         this.midiHandler = midiHandler;
         this.isWriteRefused = isWriteRefused;
+        this.onGestureTakeover = onGestureTakeover;
         this.midiLearn = new MidiLearn(this.midiAccess);
         // Nexus Learn: the same shared flow EditorUI uses (P3.2) — one copy of
         // the learn steps. The flow reads the live document via getter.
@@ -64,6 +72,10 @@ private container!: HTMLElement;
     }
 
     public render(parent: HTMLElement) {
+        // Phase 2 (FIX 10) — start each render with a clean element cache: the
+        // container is rebuilt below, so stale refs to the previous DOM must
+        // not survive (renderControl repopulates it during this render).
+        this.ctlElements.clear();
         this.container = document.createElement("div");
         // The USE surface is a performance UI, not the EDIT layout canvas: it
         // must never show the snap grid, regardless of the EDIT-side Snap state.
@@ -115,22 +127,30 @@ private container!: HTMLElement;
     }
 
     private updateControlElement(controlId: string, value: number) {
-        if (!this.container) return;
-        const el = this.container.querySelector(`[data-ctl-id="${controlId}"]`) as HTMLElement | null;
-        if (!el) return;
+        const refs = this.ctlElements.get(controlId);
+        if (!refs) return;
+        if (refs.ring) {
+            refs.ring.style.setProperty("--knob-arc-end", `${value * 270}deg`);
+        }
+        if (refs.pos) {
+            refs.pos.style.transform = `rotate(${-135 + (value * 270)}deg)`;
+        }
+        if (refs.sw) {
+            refs.sw.classList.toggle("on", value > 0.5);
+        }
+    }
 
-        const ring = el.querySelector(".knob-led-ring") as HTMLElement | null;
-        if (ring) {
-            ring.style.setProperty("--knob-arc-end", `${value * 270}deg`);
+    /** Phase 2 — Mod-Anzeige: dreht die Amber-Nadel auf den modulierten Wert,
+     *  ohne control.value anzutasten (Base bleibt Base). null = Nadel aus. */
+    public applyModDisplay(controlId: string, modulated: number | null): void {
+        const refs = this.ctlElements.get(controlId);
+        if (!refs?.modPos) return;
+        if (modulated === null) {
+            refs.modPos.classList.add("idle");
+            return;
         }
-        const pos = el.querySelector(".knob-position") as HTMLElement | null;
-        if (pos) {
-            pos.style.transform = `rotate(${-135 + (value * 270)}deg)`;
-        }
-        const sw = el.querySelector(".switch-body") as HTMLElement | null;
-        if (sw) {
-            sw.classList.toggle("on", value > 0.5);
-        }
+        refs.modPos.classList.remove("idle");
+        refs.modPos.style.transform = `rotate(${-135 + (modulated * 270)}deg)`;
     }
 
     /**
@@ -215,6 +235,14 @@ private container!: HTMLElement;
             position.className = "knob-position";
             position.style.transform = `rotate(${-135 + (control.value * 270)}deg)`;
             body.appendChild(position);
+
+            // Phase 2 — amber modulation needle (second, slimmer pointer). The
+            // runner drives it via applyModDisplay; geometry is set by
+            // applyControlLayout. `.idle` hides it when not modulated.
+            const modPos = document.createElement("div");
+            modPos.className = "knob-mod-position idle";
+            body.appendChild(modPos);
+
             visualArea.appendChild(body);
 
             this.attachKnobDrag(body, control);
@@ -328,6 +356,15 @@ private container!: HTMLElement;
 
         this.container.appendChild(el);
         this.applyControlLayout(el, control);
+
+        // Phase 2 (FIX 10) — cache this control's live element refs once, so
+        // the 60Hz tick and per-event updates never query the container again.
+        this.ctlElements.set(control.id, {
+            ring: el.querySelector(".knob-led-ring"),
+            pos: el.querySelector(".knob-position"),
+            sw: el.querySelector(".switch-body"),
+            modPos: el.querySelector(".knob-mod-position"),
+        });
     }
 
     /** Compact scaling summary for the readout tooltip (display only). */
@@ -444,6 +481,12 @@ private container!: HTMLElement;
                 pos.style.height = `${Math.max(6, Math.round(layout.widgetWidth * heightPct))}px`;
                 pos.style.transformOrigin = `50% ${layout.widgetWidth * (0.5 - topPct)}px`;
             }
+            const modPos = el.querySelector<HTMLElement>(".knob-mod-position");
+            if (modPos) {
+                modPos.style.top = `${layout.widgetWidth * 0.18}px`;
+                modPos.style.height = `${Math.max(5, Math.round(layout.widgetWidth * 0.14))}px`;
+                modPos.style.transformOrigin = `50% ${layout.widgetWidth * (0.5 - 0.18)}px`;
+            }
         } else {
             widget.style.borderRadius = `${layout.widgetWidth / 2}px`;
             const toggle = el.querySelector<HTMLElement>(".switch-toggle");
@@ -480,6 +523,9 @@ private container!: HTMLElement;
             startY = e.clientY;
             startValue = control.value;
             body.setPointerCapture(e.pointerId);
+            // Phase 2 — the user's hand owns this control while the drag is
+            // live: the runner suspends its modulation writes/captures.
+            this.onGestureTakeover?.(control.id, true);
         });
         body.addEventListener("pointermove", (e) => {
             if (!dragging) return;
@@ -488,7 +534,14 @@ private container!: HTMLElement;
             this.onLocalChange(control.id, value);
             this.updateControlElement(control.id, value);
         });
-        body.addEventListener("pointerup", () => { dragging = false; });
+        const endGesture = () => {
+            dragging = false;
+            // Phase 2 — a cancelled pointer must not leave a stuck takeover:
+            // pointerup AND pointercancel both release it.
+            this.onGestureTakeover?.(control.id, false);
+        };
+        body.addEventListener("pointerup", endGesture);
+        body.addEventListener("pointercancel", endGesture);
     }
 
     private attachSwitchClick(body: HTMLElement, control: any) {

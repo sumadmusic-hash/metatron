@@ -384,6 +384,14 @@ export class EditorUI {
             position.className = "knob-position";
             position.style.transform = `rotate(${-135 + (control.value * 270)}deg)`;
             body.appendChild(position);
+
+            // Phase 2 — amber modulation needle (dormant in EDIT mode: the
+            // runner only drives the USE surface). Geometry set by
+            // applyControlLayout; `.idle` keeps it hidden by default.
+            const modPos = document.createElement("div");
+            modPos.className = "knob-mod-position idle";
+            body.appendChild(modPos);
+
             visualArea.appendChild(body);
         } else {
             const body = document.createElement("div");
@@ -657,6 +665,12 @@ export class EditorUI {
                 pos.style.top = `${layout.widgetWidth * topPct}px`;
                 pos.style.height = `${Math.max(6, Math.round(layout.widgetWidth * heightPct))}px`;
                 pos.style.transformOrigin = `50% ${layout.widgetWidth * (0.5 - topPct)}px`;
+            }
+            const modPos = el.querySelector<HTMLElement>(".knob-mod-position");
+            if (modPos) {
+                modPos.style.top = `${layout.widgetWidth * 0.18}px`;
+                modPos.style.height = `${Math.max(5, Math.round(layout.widgetWidth * 0.14))}px`;
+                modPos.style.transformOrigin = `50% ${layout.widgetWidth * (0.5 - 0.18)}px`;
             }
         } else {
             widget.style.borderRadius = `${layout.widgetWidth / 2}px`;

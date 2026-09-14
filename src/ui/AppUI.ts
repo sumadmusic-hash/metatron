@@ -9,6 +9,7 @@ import { AutomationRecorder } from "../automation/AutomationRecording";
 import { writeAutomationRecording, readTempoBpm } from "../automation/AutomationWriter";
 import { EditorUI } from "./editor/EditorUI";
 import { SurfaceUI } from "./surface/SurfaceUI";
+import { ModulationRunner } from "../modulation/ModulationRunner";
 import { DeviceLibraryUI } from "./DeviceLibraryUI";
 import { Toast } from "./Toast";
 import { WRITE_REFUSED_CLASS, WRITE_REFUSED_TITLE } from "./writeRefusal";
@@ -75,6 +76,7 @@ export class AppUI {
     // into a newly created input and is NOT a trigger for any auto-connect.
     private connectionUrl = "";
     private recorder: AutomationRecorder;
+    private modRunner: ModulationRunner;
 
     // P4 — the VALUE path (MIDI stream / surface drag / Nexus sync) debounces
     // its persistence: a burst of rapid value changes collapses into one
@@ -150,7 +152,20 @@ export class AppUI {
             this.midiMapping,
             (controlId, value) => this.applyValueToDevice(controlId, value),
             midiHandler,
-            (controlId) => this.isWriteRefused(controlId)
+            (controlId) => this.isWriteRefused(controlId),
+            (controlId, active) => this.modRunner?.setGestureTakeover(controlId, active),
+        );
+
+        // Phase 2 — runner ownership (FIX 2/6/8): instantiated AFTER the
+        // surface (it needs applyModDisplay); the gesture closure above reads
+        // this.modRunner lazily, only at gesture time.
+        this.modRunner = new ModulationRunner(
+            () => this.deviceLibrary.currentDevice ?? null,
+            () => readTempoBpm(this.nexusAdapter.document) ?? 120,
+            this.nexusAdapter,
+            this.bindingManager,
+            this.recorder,
+            this.surfaceUI,
         );
 
         this.editorUI = new EditorUI(
@@ -194,6 +209,8 @@ export class AppUI {
         // Persist any trailing debounced value path save BEFORE the DOM goes.
         this.flushValueSave();
         this.stopElapsedTimer();
+        // Phase 2 (FIX 6) — stop the runner rAF loop before the DOM goes.
+        this.modRunner?.stop();
         this.editorUI.destroy();
         this.root.innerHTML = "";
     }
@@ -275,7 +292,11 @@ export class AppUI {
         // M21.2: record Metatron's own control movement (surface + MIDI). The
         // automation capture is a passive observer — the Nexus write below is
         // unchanged and this recorder never writes to Nexus itself.
-        this.recorder.capture(control.id, value, control.type);
+        // Phase 2 (FIX 2): a MODULATED destination is captured by the runner,
+        // not by the local movement — never re-capture the base value here.
+        if (!(this.modRunner?.isModulated(controlId) ?? false)) {
+            this.recorder.capture(control.id, value, control.type);
+        }
         // FIX: Write-Refused-Badge nur setzen, wenn tatsächlich ein aktives Binding
         // existiert. Ohne aktives Binding gibt es kein Audiotool-Ziel — keine Verweigerung möglich.
         if (!this.bindingManager.getActiveBinding(controlId)) {
@@ -532,6 +553,12 @@ export class AppUI {
             this.bindingManager.setDevice(device);
             this.midiMapping.updateDevice(device);
         }
+        // FIX 6 — Runner-Lifecycle: bei JEDEM Device-Wechsel stoppen (auch wenn
+        // kein Device bleibt), nur für eine modulierungsfähige Matrix starten.
+        this.modRunner?.stop();
+        if (device && device.modulation.sources.some((s) => s.enabled) && device.modulation.slots.some((s) => s.enabled)) {
+            this.modRunner?.start();
+        }
         this.render();
     }
 
@@ -749,5 +776,14 @@ toolbarLeft.appendChild(libraryBtn);
 
         contentRow.appendChild(contentArea);
         this.root.appendChild(contentRow);
+
+        // FIX 6 — start the runner when a modulatable matrix is live after
+        // every render; otherwise keep it stopped.
+        const modDevice = this.deviceLibrary.currentDevice;
+        if (modDevice && modDevice.modulation.sources.some((s) => s.enabled) && modDevice.modulation.slots.some((s) => s.enabled)) {
+            this.modRunner?.start();
+        } else {
+            this.modRunner?.stop();
+        }
     }
 }
