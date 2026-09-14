@@ -15,6 +15,11 @@ function clamp(v: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, v));
 }
 
+/** Clamp into the control level range [0, 1]. */
+function clamp01(v: number): number {
+    return clamp(v, 0, 1);
+}
+
 /** Deterministic FNV-1a hash folded into [0, 1) for the given string seed. */
 export function hash01(seed: string): number {
     let h = 2166136261;
@@ -49,18 +54,11 @@ function wave(phase: number, waveform: Waveform): number {
     return Math.sin(phase * Math.PI * 2);
 }
 
-/** Apply one bipolar destination value scaled by the slot amount onto the
- *  current control base, clamped into the control range [0, 1]. */
-function nextLevel(destination: number, amount: number, base: number): number {
-    const deltaValue = clamp(destination, -1, 1) * clamp(amount, -1, 1);
-    return clamp(base + deltaValue, 0, 1);
-}
-
 /** Evaluate a single source into a bipolar value in [-1, 1].
  *
  *  FIX 7: a "macro" source whose bound control is archived/deleted is dormant
- *  — `macroActive` returns false and the source yields 0, even when a stale
- *  `macroValue` would otherwise steer it. */
+ *  — missing `sourceId` or `macroActive` returning false yields 0, even when a
+ *  stale `macroValue` would otherwise steer it. */
 export function evaluateSource(
     src: ModSource,
     tSec: number,
@@ -68,43 +66,47 @@ export function evaluateSource(
     macroValue: number,
     macroActive: (id: string) => boolean,
 ): number {
-    const normalPhase = (src.phase ?? 0) % 1;
+    if (!src.enabled) return 0;
 
     if (src.type === "macro") {
-        const active = macroActive(src.sourceId);
-        const value = macroValue * 2 - 1;
-        return active ? clamp(value, -1, 1) : 0;
+        if (!src.sourceId || !macroActive(src.sourceId)) return 0;
+        return clamp(macroValue * 2 - 1, -1, 1);
     }
 
     if (src.type === "random") {
-        const timeKey = `${Math.floor(tSec / Math.max(src.sampleRate ?? 0.1, 0.001))}`;
+        const stepSec = Math.max(0.001, (src.smoothMs ?? 200) / 1000);
+        const timeKey = `${Math.floor(tSec / stepSec)}`;
         const sequence = hash01(`${src.sourceId}:${timeKey}`) * 2 - 1;
-        return clamp(sequence * (src.drift ?? 0), -1, 1);
+        return clamp(sequence * clamp(src.drift ?? 0.5, 0, 1), -1, 1);
     }
 
     const period = lfoPeriodSec(src, bpm);
-    const phase = (normalPhase + tSec / period) % 1;
 
-    if (src.type === "sampleHold" || src.type === "smoothRandom") {
-        const timeKey = `${Math.floor(tSec / period)}`;
-        const r = hash01(`${src.sourceId}:${timeKey}`);
-        if (src.type === "sampleHold") {
-            return clamp(r * 2 - 1, -1, 1);
-        }
-        return clamp((r * 2 - 1) * (src.drift ?? 0), -1, 1);
+    if (src.waveform === "sampleHold") {
+        const idx = Math.floor(tSec / period);
+        return hash01(`${src.sourceId}:${idx}`) * 2 - 1;
     }
 
+    if (src.waveform === "smoothRandom") {
+        const idx = Math.floor(tSec / period);
+        const frac = tSec / period - idx;
+        const a = hash01(`${src.sourceId}:${idx}`) * 2 - 1;
+        const b = hash01(`${src.sourceId}:${idx + 1}`) * 2 - 1;
+        return a + (b - a) * frac;
+    }
+
+    const phase = ((src.phase ?? 0) % 1 + tSec / period) % 1;
     return clamp(wave(phase, src.waveform ?? "sine"), -1, 1);
 }
 
-/** Evaluate every enabled slot of the matrix on top of the given control base
- *  values. Returns a map of destination control id → clamped level in [0, 1].
+/** Evaluate the matrix against the given control base values. Returns a map
+ *  of destination control id → clamped level in [0, 1].
  *
  *  Skip rules (deterministic): disabled slots, slots with a dangling sourceId,
  *  and slots whose destControlId is not present in `baseValues` are ignored —
  *  their destination simply never appears in the result map. Multiple enabled
- *  slots targeting the same control accumulate (each applied on the result of
- *  the previous one, always clamped). */
+ *  slots targeting the same control add their deltas FIRST, then the total is
+ *  clamped onto the base once (sum-then-clamp). */
 export function evaluateDestinations(
     matrix: ModulationMatrixConfig,
     baseValues: Record<string, number>,
@@ -113,19 +115,23 @@ export function evaluateDestinations(
     macroValue: number,
     macroActive: (id: string) => boolean,
 ): Map<string, number> {
-    const result = new Map<string, number>();
-    for (const slot of matrix.slots) {
-        if (!slot.enabled) continue;
-        const src = matrix.sources.find((s) => s.id === slot.sourceId);
-        if (!src) continue;
-        if (!baseValues || !(slot.destControlId in baseValues)) continue;
-        const value = evaluateSource(src, tSec, bpm, macroValue, macroActive);
-        const base = baseValues[slot.destControlId] ?? 0;
-        const prev = result.get(slot.destControlId);
-        result.set(
-            slot.destControlId,
-            prev === undefined ? nextLevel(value, slot.amount, base) : nextLevel(value, slot.amount, prev),
-        );
+    const sourceOut = new Map<string, number>();
+    for (const src of matrix.sources) {
+        sourceOut.set(src.id, evaluateSource(src, tSec, bpm, macroValue, macroActive));
     }
+
+    const sums = new Map<string, number>();
+    for (const slot of matrix.slots) {
+        if (!slot.enabled || !slot.sourceId || !slot.destControlId) continue;
+        const out = sourceOut.get(slot.sourceId);
+        if (out === undefined) continue;
+        sums.set(slot.destControlId, (sums.get(slot.destControlId) ?? 0) + out * slot.amount);
+    }
+
+    const result = new Map<string, number>();
+    sums.forEach((delta, controlId) => {
+        if (!baseValues || !(controlId in baseValues)) return;
+        result.set(controlId, clamp01((baseValues[controlId] ?? 0) + delta));
+    });
     return result;
 }

@@ -17,7 +17,7 @@ describe("ModulationMatrix — defaults (FIX 4 fallback)", () => {
         expect(matrix.sources).toHaveLength(MAX_MOD_SOURCES);
         expect(matrix.slots).toHaveLength(MAX_MOD_SLOTS);
         for (const s of matrix.sources) {
-            expect(s.disabled).toBe(true);
+            expect(s.enabled).toBe(false);
             expect(s.type).toBe("lfo");
             expect(s.waveform).toBe("sine");
         }
@@ -66,6 +66,21 @@ describe("ModulationMatrix — sanitize chain", () => {
     it("unknown waveform sanitizes to \"sine\"", () => {
         expect(oneSourceOneSlot({ waveform: "foo" }).sources[0].waveform).toBe("sine");
     });
+
+    it("noteDivision rounds and never drops below 1 (default 4)", () => {
+        expect(oneSourceOneSlot({ noteDivision: 2.7 }).sources[0].noteDivision).toBe(3);
+        expect(oneSourceOneSlot({ noteDivision: 0.2 }).sources[0].noteDivision).toBe(1);
+        expect(oneSourceOneSlot({ noteDivision: undefined }).sources[0].noteDivision).toBe(4);
+    });
+
+    it("drift clamps into [0,1] (default 0.5); smoothMs into [0,10000] (default 200)", () => {
+        expect(oneSourceOneSlot({ drift: -2 }).sources[0].drift).toBe(0);
+        expect(oneSourceOneSlot({ drift: 7 }).sources[0].drift).toBe(1);
+        expect(oneSourceOneSlot({ drift: undefined }).sources[0].drift).toBe(0.5);
+        expect(oneSourceOneSlot({ smoothMs: 20000 }).sources[0].smoothMs).toBe(10000);
+        expect(oneSourceOneSlot({ smoothMs: -1 }).sources[0].smoothMs).toBe(0);
+        expect(oneSourceOneSlot({ smoothMs: undefined }).sources[0].smoothMs).toBe(200);
+    });
 });
 
 describe("ModulationMatrix — structural caps", () => {
@@ -84,7 +99,7 @@ describe("ModulationMatrix — roundtrip and Device integration", () => {
     it("serialize → parse roundtrip preserves the matrix exactly", () => {
         const matrix = createDefaultMatrix();
         matrix.slots[0] = { ...matrix.slots[0], enabled: true, sourceId: "mod1", destControlId: "knob1", amount: 0.6 };
-        matrix.sources[0] = { ...matrix.sources[0], waveform: "saw", rateHz: 4, phase: 0.25, disabled: false };
+        matrix.sources[0] = { ...matrix.sources[0], waveform: "saw", rateHz: 4, phase: 0.25, enabled: true };
 
         const parsed = parseModulationMatrix(serializeModulationMatrix(matrix));
         expect(parsed).toEqual(matrix);
@@ -128,5 +143,20 @@ describe("ModulationMatrix — roundtrip and Device integration", () => {
 
         restored.modulation.slots[0].amount = 0.9;
         expect(device.modulation.slots[0].amount).toBe(0.3);
+    });
+});
+
+describe("ModulationMatrix — default fill (R1)", () => {
+    it("partial payloads keep both arrays full via default fill", () => {
+        const matrix = parseModulationMatrix({
+            sources: [{ id: "mod1", rateHz: 5 }],
+            slots: [{ id: "slot1", amount: 0.4 }],
+        });
+        expect(matrix.sources).toHaveLength(MAX_MOD_SOURCES);
+        expect(matrix.slots).toHaveLength(MAX_MOD_SLOTS);
+        expect(matrix.sources[0].rateHz).toBe(5);
+        expect(matrix.sources[1]).toEqual(createDefaultMatrix().sources[1]);
+        expect(matrix.slots[0].amount).toBe(0.4);
+        expect(matrix.slots[1]).toEqual(createDefaultMatrix().slots[1]);
     });
 });

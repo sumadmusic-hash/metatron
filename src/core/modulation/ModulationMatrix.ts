@@ -49,7 +49,7 @@ function sanitizeRate(value: unknown): number {
     return clamp(finiteNum(value, 1), 0.01, 20);
 }
 
-/** Bipolar amount/drift: absent/garbage → 0, values clamped to [-1, 1]. */
+/** Bipolar amount: absent/garbage → 0, values clamped to [-1, 1]. */
 function sanitizeAmount(value: unknown): number {
     return clamp(finiteNum(value, 0), -1, 1);
 }
@@ -63,17 +63,14 @@ function sanitizeSource(source: unknown, index: number): ModSource {
     const record = (typeof source === "object" && source !== null ? source : {}) as Record<string, unknown>;
     const id = typeof record.id === "string" && record.id.length > 0 ? record.id : `mod${index + 1}`;
     const type: ModSource["type"] =
-        record.type === "macro" ||
-        record.type === "sampleHold" ||
-        record.type === "smoothRandom" ||
-        record.type === "random"
-            ? record.type
-            : "lfo";
+        record.type === "macro" || record.type === "random" ? record.type : "lfo";
     const waveform: ModSource["waveform"] =
         record.waveform === "sine" ||
         record.waveform === "triangle" ||
         record.waveform === "saw" ||
-        record.waveform === "square"
+        record.waveform === "square" ||
+        record.waveform === "sampleHold" ||
+        record.waveform === "smoothRandom"
             ? record.waveform
             : "sine";
     return {
@@ -83,12 +80,12 @@ function sanitizeSource(source: unknown, index: number): ModSource {
         rateHz: sanitizeRate(record.rateHz),
         bpmSync: record.bpmSync === true,
         bpmOfSync: finiteNum(record.bpmOfSync, 120),
-        noteDivision: finiteNum(record.noteDivision, 4),
+        noteDivision: Math.max(1, Math.round(finiteNum(record.noteDivision, 4))),
         phase: clampPhase(record.phase),
-        drift: sanitizeAmount(record.drift),
-        disabled: record.disabled === true,
+        drift: clamp(finiteNum(record.drift, 0.5), 0, 1),
+        enabled: record.enabled === true,
         sourceId: typeof record.sourceId === "string" ? record.sourceId : "",
-        sampleRate: Math.max(0.001, finiteNum(record.sampleRate, 0.1)),
+        smoothMs: Math.min(10000, Math.max(0, finiteNum(record.smoothMs, 200))),
     };
 }
 
@@ -101,35 +98,42 @@ function sanitizeSlot(slot: unknown, index: number): ModSlot {
         sourceId: typeof record.sourceId === "string" ? record.sourceId : "",
         destControlId: typeof record.destControlId === "string" ? record.destControlId : "",
         amount: sanitizeAmount(record.amount),
+        mode: "add",
     };
 }
 
 /** Parse a persisted matrix: sanitize every field, never throw for malformed
  *  field values. Falls back to the default matrix for absent payloads and
- *  throws `ModulationConfigError` only when the structural caps are exceeded. */
+ *  throws `ModulationConfigError` only when the structural caps are exceeded.
+ *  The resulting arrays are ALWAYS full (10 sources / 20 slots): indices not
+ *  covered by the payload keep their default entries (default fill). */
 export function parseModulationMatrix(value: unknown): ModulationMatrixConfig {
     const config = (typeof value === "object" && value !== null ? value : null) as
         | Record<string, unknown>
         | null;
     const sources = config && Array.isArray(config.sources) ? (config.sources as unknown[]) : undefined;
     const slots = config && Array.isArray(config.slots) ? (config.slots as unknown[]) : undefined;
-    if (!sources || !slots) {
+    if (!sources && !slots) {
         return createDefaultMatrix();
     }
-    if (sources.length > MAX_MOD_SOURCES) {
+    if (sources && sources.length > MAX_MOD_SOURCES) {
         throw new ModulationConfigError(
             `modulation matrix: too many sources (${sources.length} > ${MAX_MOD_SOURCES})`,
         );
     }
-    if (slots.length > MAX_MOD_SLOTS) {
+    if (slots && slots.length > MAX_MOD_SLOTS) {
         throw new ModulationConfigError(
             `modulation matrix: too many slots (${slots.length} > ${MAX_MOD_SLOTS})`,
         );
     }
-    return {
-        sources: sources.map((s, i) => sanitizeSource(s, i)),
-        slots: slots.map((s, i) => sanitizeSlot(s, i)),
-    };
+    const matrix = createDefaultMatrix();
+    if (sources) {
+        sources.forEach((s, i) => { matrix.sources[i] = sanitizeSource(s, i); });
+    }
+    if (slots) {
+        slots.forEach((s, i) => { matrix.slots[i] = sanitizeSlot(s, i); });
+    }
+    return matrix;
 }
 
 /** Serialize the current matrix into the Device payload shape. Returns a

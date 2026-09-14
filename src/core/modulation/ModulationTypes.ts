@@ -13,12 +13,14 @@ export const MAX_MOD_SOURCES = 10;
 /** Hard cap on modulation slots per device (deterministic upper bound). */
 export const MAX_MOD_SLOTS = 20;
 
-/** Kind of a modulation source. LFO waveforms oscillate; sampleHold and
- *  smoothRandom produce stepped/hold noise; macro follows a bound control;
- *  random is pure seed-based noise. */
-export type ModulatorType = "lfo" | "sampleHold" | "smoothRandom" | "macro" | "random";
+/** Kind of a modulation source. LFO oscillates through its `waveform`
+ *  (including the noise-like sampleHold/smoothRandom shapes), macro follows a
+ *  bound control, random is pure seed-based noise. */
+export type ModulatorType = "lfo" | "macro" | "random";
 
-export type Waveform = "sine" | "triangle" | "saw" | "square";
+/** Waveform shapes. sampleHold holds one deterministic value per LFO period;
+ *  smoothRandom linearly interpolates between consecutive held values. */
+export type Waveform = "sine" | "triangle" | "saw" | "square" | "sampleHold" | "smoothRandom";
 
 /** Persistent source definition. */
 export interface ModSource {
@@ -37,12 +39,12 @@ export interface ModSource {
     phase: number;
     /** Random depth (noise sources scale their output by this). */
     drift: number;
-    /** Whether the source is currently part of the live engine evaluation. */
-    disabled: boolean;
+    /** Whether the source participates in live engine evaluation. */
+    enabled: boolean;
     /** Reference key: macro control id for "macro", seed namespace for noise. */
     sourceId: string;
-    /** Hold/noise sample rate in Hz (how often a new random value is drawn). */
-    sampleRate: number;
+    /** Random-source smoothing window in milliseconds ([0, 10000], default 200). */
+    smoothMs: number;
 }
 
 /** Persistent slot definition: routes one source into one control. */
@@ -55,6 +57,8 @@ export interface ModSlot {
     destControlId: string;
     /** Modulation depth — bipolar, clamped to [-1, 1]. */
     amount: number;
+    /** How the slot applies its output onto the destination ("add" only). */
+    mode: "add";
 }
 
 export interface ModulationMatrixConfig {
@@ -76,10 +80,10 @@ export function createDefaultMatrix(): ModulationMatrixConfig {
             bpmOfSync: 120,
             noteDivision: 4,
             phase: 0,
-            drift: 0,
-            disabled: true,
+            drift: 0.5,
+            enabled: false,
             sourceId: "",
-            sampleRate: 0.1,
+            smoothMs: 200,
         });
     }
 
@@ -91,6 +95,7 @@ export function createDefaultMatrix(): ModulationMatrixConfig {
             sourceId: `mod${((i - 1) % MAX_MOD_SOURCES) + 1}`,
             destControlId: "",
             amount: 0,
+            mode: "add",
         });
     }
 

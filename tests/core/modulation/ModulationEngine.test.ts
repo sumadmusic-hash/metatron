@@ -18,10 +18,10 @@ function source(partial: Partial<ModSource> & { id: string }): ModSource {
         bpmOfSync: 120,
         noteDivision: 4,
         phase: 0,
-        drift: 0,
-        disabled: false,
+        drift: 0.5,
+        enabled: true,
         sourceId: "",
-        sampleRate: 0.1,
+        smoothMs: 200,
         ...partial,
     };
 }
@@ -86,20 +86,22 @@ describe("ModulationEngine — tempo sync", () => {
 });
 
 describe("ModulationEngine — sampleHold / smoothRandom", () => {
-    it("sampleHold is deterministic for the same sample window, different across seeds", () => {
-        const a = source({ id: "shA", type: "sampleHold", sourceId: "seedA", rateHz: 1 });
-        const b = source({ id: "shB", type: "sampleHold", sourceId: "seedB", rateHz: 1 });
+    it("sampleHold holds one deterministic value per period and differs across seeds", () => {
+        const a = source({ id: "shA", waveform: "sampleHold", sourceId: "seedA", rateHz: 1 });
+        const b = source({ id: "shB", waveform: "sampleHold", sourceId: "seedB", rateHz: 1 });
         expect(evaluateSource(a, 1.0, 120, 0, alwaysActive)).toBe(evaluateSource(a, 1.9, 120, 0, alwaysActive));
         expect(evaluateSource(a, 1.0, 120, 0, alwaysActive)).not.toBe(evaluateSource(a, 2.0, 120, 0, alwaysActive));
         expect(evaluateSource(a, 1.0, 120, 0, alwaysActive)).not.toBe(evaluateSource(b, 1.0, 120, 0, alwaysActive));
     });
 
-    it("smoothRandom is deterministic per window and scaled by drift, different across seeds", () => {
-        const a = source({ id: "smA", type: "smoothRandom", sourceId: "seedC", drift: 0.9, rateHz: 1 });
-        const b = source({ id: "smB", type: "smoothRandom", sourceId: "seedD", drift: 0.9, rateHz: 1 });
-        expect(evaluateSource(a, 0.0, 120, 0, alwaysActive)).toBe(evaluateSource(a, 0.9, 120, 0, alwaysActive));
-        expect(evaluateSource(a, 0.0, 120, 0, alwaysActive)).not.toBe(evaluateSource(b, 0.0, 120, 0, alwaysActive));
-        expect(Math.abs(evaluateSource(a, 0.0, 120, 0, alwaysActive))).toBeLessThanOrEqual(0.9);
+    it("smoothRandom interpolates deterministically and differs across seeds", () => {
+        const a = source({ id: "smA", waveform: "smoothRandom", sourceId: "seedC", rateHz: 1 });
+        const b = source({ id: "smB", waveform: "smoothRandom", sourceId: "seedD", rateHz: 1 });
+        // Determinism: the same instant yields the same output.
+        expect(evaluateSource(a, 0.25, 120, 0, alwaysActive)).toBe(evaluateSource(a, 0.25, 120, 0, alwaysActive));
+        // Linear interpolation: half-way through the period differs from the hold point.
+        expect(evaluateSource(a, 0.5, 120, 0, alwaysActive)).not.toBe(evaluateSource(a, 0.0, 120, 0, alwaysActive));
+        expect(evaluateSource(a, 0.25, 120, 0, alwaysActive)).not.toBe(evaluateSource(b, 0.25, 120, 0, alwaysActive));
     });
 });
 
@@ -108,8 +110,8 @@ describe("ModulationEngine — evaluateDestinations", () => {
         const matrix = createDefaultMatrix();
         matrix.sources[0].waveform = "square";
         matrix.sources[1].waveform = "square";
-        matrix.sources[0].disabled = false;
-        matrix.sources[1].disabled = false;
+        matrix.sources[0].enabled = true;
+        matrix.sources[1].enabled = true;
         matrix.slots[0] = { ...matrix.slots[0], enabled: true, sourceId: "mod1", destControlId: "cut", amount: amounts[0] };
         matrix.slots[1] = { ...matrix.slots[1], enabled: true, sourceId: "mod2", destControlId: "cut", amount: amounts[1] };
         return matrix;
@@ -131,7 +133,7 @@ describe("ModulationEngine — evaluateDestinations", () => {
     it("skips disabled slots, dangling sourceIds, and missing destinations", () => {
         const matrix = createDefaultMatrix();
         matrix.sources[0].waveform = "square";
-        matrix.sources[0].disabled = false;
+        matrix.sources[0].enabled = true;
         matrix.slots[0] = { ...matrix.slots[0], enabled: true, sourceId: "mod1", destControlId: "cut", amount: 0.5 };
         matrix.slots[1] = { ...matrix.slots[1], enabled: true, sourceId: "ghost", destControlId: "other", amount: 0.5 };
         matrix.slots[2] = { ...matrix.slots[2], enabled: true, sourceId: "mod1", destControlId: "missing", amount: 0.5 };
@@ -149,6 +151,11 @@ describe("ModulationEngine — macro sources (FIX 7)", () => {
 
     it("a macro source whose control is archived/deleted yields 0", () => {
         expect(evaluateSource(macro, 0, 120, 1, () => false)).toBe(0);
+    });
+
+    it("a macro source without a bound control yields 0 (FIX 7)", () => {
+        const orphan = source({ id: "orphan", type: "macro" });
+        expect(evaluateSource(orphan, 0, 120, 1, alwaysActive)).toBe(0);
     });
 
     it("an active macro source maps macroValue [0,1] into a bipolar level", () => {
