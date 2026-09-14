@@ -3,10 +3,8 @@ import { NexusAdapter } from "../../nexus/NexusAdapter";
 import { MidiAccess } from "../../midi/MidiAccess";
 import { MidiMapping } from "../../midi/MidiMapping";
 import { BindingManager } from "../../core/BindingManager";
-import { NexusLearn, LearnTimeoutError, LearnCancelledError } from "../../nexus/NexusLearn";
-import { createNexusValueMapping, mapNexusToNormalized } from "../../nexus/NexusValueMapping";
+import { NexusLearnFlow } from "../../nexus/NexusLearnFlow";
 import { MidiLearn, MidiLearnTimeoutError } from "../../midi/MidiLearn";
-import { applyLearnedControlName, buildLearnedControlName, resolveEntityDisplayName } from "../../nexus/ControlNaming";
 import { Toast } from "../Toast";
 import { computeControlLayout } from "../geometry";
 import { WRITE_REFUSED_CLASS, WRITE_REFUSED_TITLE } from "../writeRefusal";
@@ -28,7 +26,7 @@ export class SurfaceUI {
     private onLocalChange: (controlId: string, value: number) => void;
 
 private container!: HTMLElement;
-    private nexusLearn: NexusLearn | null = null;
+    private nexusLearnFlow: NexusLearnFlow | null = null;
     private midiLearn: MidiLearn;
     private midiHandler: (channel: number, cc: number, value: number) => void;
     private selectedControlId: string | null = null;
@@ -53,6 +51,16 @@ private container!: HTMLElement;
         this.midiHandler = midiHandler;
         this.isWriteRefused = isWriteRefused;
         this.midiLearn = new MidiLearn(this.midiAccess);
+        // Nexus Learn: the same shared flow EditorUI uses (P3.2) — one copy of
+        // the learn steps. The flow reads the live document via getter.
+        this.nexusLearnFlow = new NexusLearnFlow({
+            getDocument: () => this.nexusAdapter.document,
+            subscribeBoundControl: (controlId) => this.nexusAdapter.subscribeBoundControl(controlId),
+            applyLearnResult: (controlId, result) => this.bindingManager.applyLearnResult(controlId, result),
+            saveCurrentDevice: () => this.deviceLibrary.saveCurrentDevice(),
+            reflectValue: (controlId, normalized) => this.onLocalChange(controlId, normalized),
+            onStateChanged: () => this.reRender(),
+        });
     }
 
     public render(parent: HTMLElement) {
@@ -524,70 +532,18 @@ private container!: HTMLElement;
         this.reRender();
     }
 
-    // ---- Nexus Learn (§23/§24) ----
-    private nexusLearnControlId: string | null = null;
+    // ---- Nexus Learn (§23/§24) — shared flow, see NexusLearnFlow (P3.2) ----
     private get nexusLearnActive(): boolean {
-        return this.nexusLearnControlId !== null;
+        return this.nexusLearnFlow?.isActive ?? false;
     }
 
     private async startNexusLearn(control: any) {
-        if (!this.nexusAdapter.document) {
-            Toast.show("Connect to an Audiotool project first.", "error");
-            return;
-        }
-        if (this.nexusLearnControlId !== null) { this.cancelNexusLearn(); return; }
-
-        this.nexusLearn = new NexusLearn(this.nexusAdapter.document);
-        this.nexusLearnControlId = control.id;
-        this.reRender();
-
-        try {
-            const result = await this.nexusLearn.startLearn({ timeoutMs: 60000 });
-            if (this.nexusLearnControlId !== control.id) {
-                // User switched target mid-learning; drop this result.
-                this.nexusLearn = null;
-                this.reRender();
-                return;
-            }
-            this.nexusLearn = null;
-            this.nexusLearnControlId = null;
-            this.bindingManager.applyLearnResult(control.id, result);
-            // Automatic naming (M4): manual-named controls are never overwritten.
-            applyLearnedControlName(
-                control,
-                buildLearnedControlName(
-                    resolveEntityDisplayName(this.nexusAdapter.document, result.entityId),
-                    result.entityType,
-                    result.fieldPath,
-                ),
-            );
-            this.nexusAdapter.subscribeBoundControl(control.id);
-            this.deviceLibrary.saveCurrentDevice();
-            console.log(`[METATRON LEARN SUCCESS] controlId=${control.id} entityId=${result.entityId} fieldName=${result.fieldPath} value=${result.value}`);
-            Toast.show(`Learned → ${result.targetName}`, "success");
-
-            // Reflect the learned value immediately (normalized 0..1).
-            const mapping = result.valueMapping ?? createNexusValueMapping(result.field);
-            this.onLocalChange(control.id, mapNexusToNormalized(mapping, result.value));
-        } catch (e) {
-            this.nexusLearn = null;
-            this.nexusLearnControlId = null;
-            if (e instanceof LearnTimeoutError) {
-                Toast.show("Learn timed out (60s). No change was captured.", "error");
-            } else if (e instanceof LearnCancelledError) {
-                Toast.show("Learn cancelled. No binding was created.", "info");
-            } else {
-                Toast.show(`Learn failed: ${e instanceof Error ? e.message : String(e)}`, "error");
-            }
-        }
-        this.reRender();
+        if (!this.nexusLearnFlow) return;
+        await this.nexusLearnFlow.learn(control);
     }
 
     private cancelNexusLearn() {
-        this.nexusLearn?.cancelLearn();
-        this.nexusLearn = null;
-        this.nexusLearnControlId = null;
-        this.reRender();
+        this.nexusLearnFlow?.cancel();
     }
 
     private buildNexusLearningBar(): HTMLElement {

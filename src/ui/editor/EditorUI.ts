@@ -6,10 +6,8 @@ import { NexusAdapter } from "../../nexus/NexusAdapter";
 import { BindingManager } from "../../core/BindingManager";
 import { MidiAccess } from "../../midi/MidiAccess";
 import { MidiMapping } from "../../midi/MidiMapping";
-import { NexusLearn, LearnTimeoutError, LearnCancelledError } from "../../nexus/NexusLearn";
-import { createNexusValueMapping, mapNexusToNormalized } from "../../nexus/NexusValueMapping";
+import { NexusLearnFlow } from "../../nexus/NexusLearnFlow";
 import { MidiLearn, MidiLearnTimeoutError } from "../../midi/MidiLearn";
-import { applyLearnedControlName, buildLearnedControlName, resolveEntityDisplayName } from "../../nexus/ControlNaming";
 import { computeControlLayout, CONTROL_MIN_SIZE, contrastTextColor } from "../geometry";
 import { DeviceHistory } from "../../core/history/DeviceHistory";
 import { patchesEqual } from "../../core/history/HistoryAction";
@@ -81,8 +79,7 @@ export class EditorUI {
     private bindingManager?: BindingManager;
     private midiAccess?: MidiAccess;
     private midiMapping?: MidiMapping;
-    private nexusLearn: NexusLearn | null = null;
-    private nexusLearningId: string | null = null;
+    private nexusLearnFlow: NexusLearnFlow | null = null;
     private midiLearn: MidiLearn | null = null;
     private midiLearningId: string | null = null;
     private midiHandler?: (channel: number, cc: number, value: number) => void;
@@ -109,6 +106,22 @@ export class EditorUI {
         this.history = history;
         this.isWriteRefused = isWriteRefused;
         this.midiLearn = midiAccess ? new MidiLearn(midiAccess) : null;
+        // Editor-side Nexus Learn delegates to the shared flow (P3.2) — one
+        // copy of the learn steps instead of the duplicated EditorUI/SurfaceUI
+        // implementations. Only present when live-binding plumbing exists.
+        if (nexusAdapter && bindingManager) {
+            this.nexusLearnFlow = new NexusLearnFlow({
+                getDocument: () => this.nexusAdapter?.document ?? null,
+                subscribeBoundControl: (controlId) => this.nexusAdapter?.subscribeBoundControl(controlId),
+                applyLearnResult: (controlId, result) => this.bindingManager?.applyLearnResult(controlId, result),
+                saveCurrentDevice: () => this.deviceLibrary.saveCurrentDevice(),
+                reflectValue: (controlId, normalized) => {
+                    const c = this.deviceLibrary.currentDevice?.getControl(controlId);
+                    if (c) c.value = normalized;
+                },
+                onStateChanged: () => this.render(this.container.parentElement!),
+            });
+        }
         document.addEventListener("keydown", this.handleKeydown);
     }
 
@@ -164,7 +177,7 @@ export class EditorUI {
         parent.innerHTML = "";
         parent.appendChild(this.container);
 
-        if (this.nexusLearningId !== null || this.midiLearningId !== null) {
+        if ((this.nexusLearnFlow?.isActive ?? false) || this.midiLearningId !== null) {
             this.container.appendChild(this.buildLearningBar());
         }
     }
@@ -172,7 +185,7 @@ export class EditorUI {
     private buildLearningBar(): HTMLElement {
         const bar = document.createElement("div");
         bar.className = "learn-bar";
-        if (this.nexusLearningId !== null && this.midiLearningId === null) {
+        if ((this.nexusLearnFlow?.isActive ?? false) && this.midiLearningId === null) {
             bar.style.background = "rgba(255,235,59,0.9)";
             bar.innerText = "LEARN ACTIVE — Do not play the Audiotool timeline. Move exactly one Audiotool parameter. The first detected change will be assigned. (click to cancel)";
         } else if (this.midiLearningId !== null) {
@@ -1146,62 +1159,8 @@ export class EditorUI {
     // ---------- editor-side Learn / reconnect (§23-27, §39) ----------
 
     private async startNexusLearn(control: any) {
-        if (!this.nexusAdapter || !this.bindingManager) return;
-        if (!this.nexusAdapter.document) {
-            Toast.show("Connect to an Audiotool project first.", "error");
-            return;
-        }
-        if (this.nexusLearningId !== null) { this.cancelNexusLearn(); return; }
-
-        this.nexusLearn = new NexusLearn(this.nexusAdapter.document);
-        this.nexusLearningId = control.id;
-        this.render(this.container.parentElement!);
-
-        try {
-            const result = await this.nexusLearn.startLearn({ timeoutMs: 60000 });
-            if (this.nexusLearningId !== control.id) {
-                this.nexusLearn = null;
-                this.render(this.container.parentElement!);
-                return;
-            }
-            this.nexusLearn = null;
-            this.nexusLearningId = null;
-            this.bindingManager.applyLearnResult(control.id, result);
-            // Automatic naming (M4): manual-named controls are never overwritten.
-            applyLearnedControlName(
-                control,
-                buildLearnedControlName(
-                    resolveEntityDisplayName(this.nexusAdapter.document, result.entityId),
-                    result.entityType,
-                    result.fieldPath,
-                ),
-            );
-            this.nexusAdapter.subscribeBoundControl(control.id);
-            this.deviceLibrary.saveCurrentDevice();
-            // Reflect the learned value immediately (§23: value applied, normalized 0..1)
-            const mapping = result.valueMapping ?? createNexusValueMapping(result.field);
-            control.value = mapNexusToNormalized(mapping, result.value);
-            console.log(`[METATRON LEARN SUCCESS] controlId=${control.id} entityId=${result.entityId} fieldName=${result.fieldPath} value=${result.value}`);
-            Toast.show(`Learned → ${result.targetName}`, "success");
-        } catch (e) {
-            this.nexusLearn = null;
-            this.nexusLearningId = null;
-            if (e instanceof LearnTimeoutError) {
-                Toast.show("Learn timed out (60s). No change was captured.", "error");
-            } else if (e instanceof LearnCancelledError) {
-                Toast.show("Learn cancelled. No binding was created.", "info");
-            } else {
-                Toast.show(`Learn failed: ${e instanceof Error ? e.message : String(e)}`, "error");
-            }
-        }
-        this.render(this.container.parentElement!);
-    }
-
-    private cancelNexusLearn() {
-        this.nexusLearn?.cancelLearn();
-        this.nexusLearn = null;
-        this.nexusLearningId = null;
-        this.render(this.container.parentElement!);
+        if (!this.nexusLearnFlow) return;
+        await this.nexusLearnFlow.learn(control);
     }
 
     private handleKeydown = (e: KeyboardEvent) => {
@@ -1210,7 +1169,7 @@ export class EditorUI {
         if (this.isEditableTarget(e.target)) return;
 
         if (e.key === "Escape") {
-            if (this.nexusLearningId !== null || this.midiLearningId !== null) {
+            if ((this.nexusLearnFlow?.isActive ?? false) || this.midiLearningId !== null) {
                 e.preventDefault();
                 this.cancelActiveLearn();
             }
@@ -1232,7 +1191,7 @@ export class EditorUI {
     }
 
     private cancelActiveLearn() {
-        if (this.nexusLearningId !== null) { this.nexusLearn?.cancelLearn(); this.nexusLearningId = null; }
+        this.nexusLearnFlow?.cancel();
         if (this.midiLearningId !== null) { this.midiLearn?.cancelLearn(); this.midiLearningId = null; }
         this.render(this.container.parentElement!);
     }
