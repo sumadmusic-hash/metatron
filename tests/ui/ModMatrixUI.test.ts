@@ -41,6 +41,12 @@ beforeEach(() => {
 });
 
 describe("ModMatrixUI — drawer", () => {
+function lookupLabel(root: HTMLElement, forId: string): HTMLLabelElement | null {
+    return Array.from(root.querySelectorAll<HTMLLabelElement>("label")).find(
+        (label) => label.htmlFor === forId,
+    ) ?? null;
+}
+
     it("getContainer mounts the drawer with source rack and slot matrix", () => {
         const device = makeDevice();
         const { ui } = makeDeps(device);
@@ -83,6 +89,33 @@ describe("ModMatrixUI — drawer", () => {
         expect(container.querySelector(".mod-bake-dialog")).toBeTruthy();
         expect(container.querySelector<HTMLInputElement>(".mod-bake-bars")).toBeTruthy();
         expect(container.querySelector<HTMLSelectElement>(".mod-bake-grid")).toBeTruthy();
+    });
+
+    it("FIX 11 - the bake dialog controls carry stable ids and their labels reference them through htmlFor", () => {
+        const { ui } = makeDeps(makeDevice());
+        const container = mount(ui);
+
+        const bake = container.querySelector<HTMLButtonElement>(".mod-matrix-bake");
+        expect(bake).toBeTruthy();
+        bake?.click();
+
+        const bars = container.querySelector<HTMLInputElement>("#mod-bake-bars");
+        expect(bars).toBeTruthy();
+        expect(bars?.id).toBe("mod-bake-bars");
+        expect(bars?.name).toBe("bars");
+        const barsLabel = lookupLabel(container, "mod-bake-bars");
+        expect(barsLabel).toBeTruthy();
+        expect(barsLabel?.htmlFor).toBe("mod-bake-bars");
+        expect(barsLabel?.control).toBe(bars);
+
+        const grid = container.querySelector<HTMLSelectElement>("#mod-bake-grid");
+        expect(grid).toBeTruthy();
+        expect(grid?.id).toBe("mod-bake-grid");
+        expect(grid?.name).toBe("grid");
+        const gridLabel = lookupLabel(container, "mod-bake-grid");
+        expect(gridLabel).toBeTruthy();
+        expect(gridLabel?.htmlFor).toBe("mod-bake-grid");
+        expect(gridLabel?.control).toBe(grid);
     });
 
     it("bake with no open document surfaces an error toast", () => {

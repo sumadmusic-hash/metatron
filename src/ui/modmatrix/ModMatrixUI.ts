@@ -117,7 +117,10 @@ export class ModMatrixUI {
         const barsLabel = document.createElement("label");
         barsLabel.className = "mod-bake-label";
         barsLabel.innerText = "Bars";
+        barsLabel.htmlFor = "mod-bake-bars";
         const bars = document.createElement("input");
+        bars.id = "mod-bake-bars";
+        bars.name = "bars";
         bars.className = "mod-bake-bars";
         bars.type = "number";
         bars.min = "1";
@@ -129,7 +132,10 @@ export class ModMatrixUI {
         const gridLabel = document.createElement("label");
         gridLabel.className = "mod-bake-label";
         gridLabel.innerText = "Grid";
+        gridLabel.htmlFor = "mod-bake-grid";
         const grid = document.createElement("select");
+        grid.id = "mod-bake-grid";
+        grid.name = "grid";
         grid.className = "mod-bake-grid";
         (["1/16", "1/32"] as const).forEach((g) => {
             const opt = document.createElement("option");
