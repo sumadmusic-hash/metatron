@@ -1260,22 +1260,94 @@ body {
     border-bottom: 1px solid var(--border-color);
 }
 
+/* Section headers — Metatron caption language (uppercase, letter-spaced). */
+.mod-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    padding: 6px 0 8px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* Caption + control column. */
+.mod-field {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    flex: 0 0 auto;
+}
+
+.mod-field--check {
+    align-items: center;
+}
+
+.mod-field-caption {
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+    user-select: none;
+}
+
 .mod-source-row,
 .mod-slot-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
-    padding: 4px 0;
+    padding: 5px 0;
     font-size: 12px;
+    color: var(--text-primary);
+    transition: opacity 0.15s ease;
+}
+
+/* Routing rows are single-line and noticeably more compact than sources. */
+.mod-slot-row {
+    align-items: center;
+    padding: 4px 0;
+}
+
+/* Extra compact controls inside routing rows. */
+.mod-slot-row input,
+.mod-slot-row select {
+    height: 24px;
+}
+
+/* Active rows carry a slim accent spine + wash; inactive rows are dimmed. */
+.mod-source-row.on,
+.mod-slot-row.on {
+    background: linear-gradient(90deg, rgba(0, 229, 255, 0.07), transparent 45%);
+    box-shadow: inset 2px 0 0 var(--accent-color);
+}
+
+.mod-source-row.on > .mod-source-label,
+.mod-slot-row.on .mod-field-caption,
+.mod-slot-row.on .mod-route-cap {
     color: var(--text-primary);
 }
 
+.mod-source-row.off,
+.mod-slot-row.off {
+    opacity: 0.45;
+}
+
 .mod-source-label {
-    min-width: 90px;
+    flex: 0 0 96px;
+    width: 96px;
+    min-width: 96px;
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 1.3;
+    padding-top: 1px;
 }
 
 .mod-source-row input,
@@ -1288,21 +1360,262 @@ body {
     border-radius: 4px;
     padding: 3px 6px;
     font-size: 12px;
+    box-sizing: border-box;
+    height: 25px;
 }
 
-.mod-source-rate,
-.mod-source-division,
+.mod-source-row input[type="checkbox"],
+.mod-slot-row input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    accent-color: var(--accent-color);
+    cursor: pointer;
+}
+
+.mod-source-waveform,
+.mod-source-macro {
+    width: 118px;
+}
+
+/* FREE | SYNC segment toggle (compact, Metatron active-accent look). */
+.mod-seg {
+    display: inline-flex;
+    height: 25px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.25);
+}
+
+.mod-seg-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 0 9px;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+.mod-seg-btn + .mod-seg-btn {
+    border-left: 1px solid var(--border-color);
+}
+
+.mod-seg-btn:hover {
+    color: var(--text-primary);
+}
+
+.mod-seg-btn.active {
+    background: var(--accent-color);
+    color: #000;
+    box-shadow: inset 0 0 0 1px var(--accent-hover);
+}
+
+/* FREE-mode Hz: number readout (with explicit Hz unit) + compact slider. */
+.mod-rate {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mod-rate .mod-source-rate {
+    width: 56px;
+}
+
+.mod-rate-unit {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    user-select: none;
+}
+
+.mod-source-row .mod-source-rate-slider {
+    width: 96px;
+}
+
+.mod-source-rate {
+    width: 56px;
+}
+
+.mod-source-division {
+    width: 62px;
+}
+
 .mod-source-phase,
-.mod-source-smooth,
 .mod-source-drift {
-    width: 70px;
+    width: 44px;
+}
+
+.mod-source-smooth {
+    width: 68px;
+}
+
+/* ---------- Routing section ---------- */
+
+/* Recessed patch-bay backdrop sets ROUTING apart from the SOURCES rack. */
+.mod-slot-matrix {
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.mod-route-cap {
+    flex: 0 0 auto;
+    font-size: 10.5px;
+    line-height: 1;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    user-select: none;
+}
+
+.mod-route-cap--src {
+    width: 42px;
+}
+
+.mod-route-cap--dest {
+    width: 34px;
+}
+
+.mod-route-cap--amt {
+    width: 46px;
+}
+
+.mod-route-cap--on {
+    width: 18px;
+}
+
+.mod-route-arrow {
+    color: var(--accent-color);
+    font-size: 13px;
+    line-height: 1;
+    flex: 0 0 auto;
+    user-select: none;
+}
+
+.mod-route-on {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.mod-slot-source {
+    width: 120px;
+}
+
+.mod-slot-dest {
+    width: 132px;
+}
+
+/* Bipolar amount: compact slider + precise % readout, visually unified. */
+.mod-amount {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mod-slot-row .mod-slot-amount-slider {
+    width: 110px;
 }
 
 .mod-slot-amount {
-    width: 70px;
+    width: 48px;
 }
 
-.mod-slot-source,
-.mod-slot-dest {
-    max-width: 150px;
+/* ---------------------------------------------------------------------------
+   Metatron value-control: shared visual language for the FREQ and AMOUNT
+   sliders (thin recessed track + small dark LED-centre thumb) and their
+   compact number readouts. Pure presentation — no DOM/JS/behaviour changes.
+   --------------------------------------------------------------------------- */
+
+.mod-source-row .mod-source-rate-slider,
+.mod-slot-row .mod-slot-amount-slider {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    height: 6px;
+    margin: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.45);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55);
+    cursor: pointer;
+    outline: none;
+}
+
+.mod-source-row .mod-source-rate-slider::-webkit-slider-runnable-track,
+.mod-slot-row .mod-slot-amount-slider::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.mod-source-row .mod-source-rate-slider::-webkit-slider-thumb,
+.mod-slot-row .mod-slot-amount-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    margin-top: -4px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background:
+        radial-gradient(circle at 50% 50%, var(--accent-color) 0 1.5px, transparent 2px),
+        radial-gradient(circle at 35% 30%, #3a3f47 0%, #1c1f24 55%, #101216 100%);
+    box-shadow:
+        0 0 4px rgba(0, 229, 255, 0.3),
+        0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.mod-source-row .mod-source-rate-slider::-moz-range-track,
+.mod-slot-row .mod-slot-amount-slider::-moz-range-track {
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.45);
+    border: none;
+}
+
+.mod-source-row .mod-source-rate-slider::-moz-range-thumb,
+.mod-slot-row .mod-slot-amount-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background:
+        radial-gradient(circle at 50% 50%, var(--accent-color) 0 1.5px, transparent 2px),
+        radial-gradient(circle at 35% 30%, #3a3f47 0%, #1c1f24 55%, #101216 100%);
+    box-shadow:
+        0 0 4px rgba(0, 229, 255, 0.3),
+        0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.mod-rate .mod-source-rate,
+.mod-slot-row .mod-slot-amount {
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 3px;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    text-align: center;
+    padding: 2px 3px;
+    -moz-appearance: textfield;
+}
+
+.mod-rate .mod-source-rate::-webkit-inner-spin-button,
+.mod-slot-row .mod-slot-amount::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
