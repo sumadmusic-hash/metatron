@@ -141,7 +141,11 @@ export class ModulationRunner {
             // ausdünnt, während der User eine modulierte Control override-t (B11).
             if (this.recorder.currentState === "RECORDING") {
                 const control = device.getControl(controlId);
-                if (control) {
+                // Archivierte Controls dürfen NIE gecaptured werden — der
+                // Capture-Pfad (RECORDING) kriegt denselben archived-Guard wie
+                // writeControl (§archivierte ≠ hörbar, FIX 9). Base-Werte
+                // exkludieren Archivierte bereits (s. baseValues oben).
+                if (control && !control.archived) {
                     const captured = this.gestureTakeover.get(controlId)
                         ? (baseValues[controlId] ?? value)
                         : value;

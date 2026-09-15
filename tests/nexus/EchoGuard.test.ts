@@ -6,7 +6,7 @@ import { Control } from "../../src/core/model/Control";
 import type { NexusValueMapping } from "../../src/nexus/NexusValueMapping";
 
 /**
- * Phase 2 (FIX 1) — Echo-Guard tests.
+ * Phase 2 (FIX 1) - Echo-Guard tests.
  *
  * The adapter must suppress its own write's echo (the round-trip event
  * triggered by Nexus document.modify) while still forwarding genuine
@@ -71,7 +71,7 @@ beforeEach(() => {
 
 /* ========================= TESTS ========================= */
 
-describe("Echo-Guard — Wertvergleich (round-trip mapping)", () => {
+describe("Echo-Guard - Wertvergleich (round-trip mapping)", () => {
     it("own write's echo is suppressed when round-trip value matches guard", () => {
         const doc = fakeDocument();
         const { device, control } = makeDeviceAndControl();
@@ -85,7 +85,7 @@ describe("Echo-Guard — Wertvergleich (round-trip mapping)", () => {
         // Register a guard at normalized value 0.5
         adapter.beginSuppressEcho(control.id, 0.5);
 
-        // Document fires back the same normalized value → must be consumed
+        // Document fires back the same normalized value -> must be consumed
         doc.fire(0.5);
         expect(received).toEqual([]);
         expect(doc.listenerCount()).toBe(1); // listener still registered
@@ -102,11 +102,11 @@ describe("Echo-Guard — Wertvergleich (round-trip mapping)", () => {
         adapter.subscribeBoundControl(control.id);
 
         adapter.beginSuppressEcho(control.id, 0.5);
-        doc.fire(0.8); // different value → not our echo
+        doc.fire(0.8); // different value -> not our echo
         expect(received).toEqual([0.8]);
     });
 
-    it("no guard → any event reaches the UI", () => {
+    it("no guard -> any event reaches the UI", () => {
         const doc = fakeDocument();
         const { device, control } = makeDeviceAndControl();
         const manager = bind(doc, control);
@@ -121,7 +121,7 @@ describe("Echo-Guard — Wertvergleich (round-trip mapping)", () => {
     });
 });
 
-describe("Echo-Guard — Fenster (windowMs)", () => {
+describe("Echo-Guard - Fenster (windowMs)", () => {
     it("guard expires after windowMs, subsequent echo passes through", () => {
         vi.useFakeTimers();
         const doc = fakeDocument();
@@ -136,7 +136,7 @@ describe("Echo-Guard — Fenster (windowMs)", () => {
         // Guard with a 50 ms window
         adapter.beginSuppressEcho(control.id, 0.5, 50);
 
-        // Within the window → consumed
+        // Within the window -> consumed
         doc.fire(0.5);
         expect(received).toEqual([]);
 
@@ -152,7 +152,7 @@ describe("Echo-Guard — Fenster (windowMs)", () => {
     });
 });
 
-describe("Echo-Guard — Ablauf (expiry)", () => {
+describe("Echo-Guard - Ablauf (expiry)", () => {
     it("expired guard entry is cleaned up and never blocks a later remote change", () => {
         vi.useFakeTimers();
         const doc = fakeDocument();
@@ -167,7 +167,7 @@ describe("Echo-Guard — Ablauf (expiry)", () => {
         adapter.beginSuppressEcho(control.id, 0.5, 10);
         vi.advanceTimersByTime(20); // expired
 
-        // Remote change with a completely different value → must pass through
+        // Remote change with a completely different value -> must pass through
         doc.fire(0.9);
         expect(received).toEqual([0.9]);
 
@@ -175,7 +175,7 @@ describe("Echo-Guard — Ablauf (expiry)", () => {
     });
 });
 
-describe("Echo-Guard — delayed/offset echoes (B12 ring)", () => {
+describe("Echo-Guard - delayed/offset echoes (B12 ring)", () => {
     it("echo of write N arriving after guard-set of write N+1 is still suppressed", () => {
         const doc = fakeDocument();
         const { device, control } = makeDeviceAndControl();
@@ -193,7 +193,7 @@ describe("Echo-Guard — delayed/offset echoes (B12 ring)", () => {
 
         // The delayed echo of write N arrives AFTER N+1's guard-set.
         doc.fire(0.3);
-        expect(received).toEqual([]); // matched against the ring → consumed
+        expect(received).toEqual([]); // matched against the ring -> consumed
 
         // A foreign value is never consumed.
         doc.fire(0.5);
@@ -214,7 +214,7 @@ describe("Echo-Guard — delayed/offset echoes (B12 ring)", () => {
         doc.fire(0.4); // consumed
         expect(received).toEqual([]);
 
-        // Guard entry was removed on the match → a second identical event is
+        // Guard entry was removed on the match -> a second identical event is
         // a NEW remote change, not our echo.
         doc.fire(0.4);
         expect(received).toEqual([0.4]);
@@ -235,9 +235,41 @@ describe("Echo-Guard — delayed/offset echoes (B12 ring)", () => {
         adapter.beginSuppressEcho(control.id, 0.9, 20);
         vi.advanceTimersByTime(40); // past both windows
 
-        doc.fire(0.6); // expired + non-live ring → forwarded
+        doc.fire(0.6); // expired + non-live ring -> forwarded
         expect(received).toEqual([0.6]);
 
         vi.useRealTimers();
+    });
+    it("FIX 10 - full cleanup also empties the echo-guard ring; a fresh binding still suppresses its own echo", () => {
+        const doc = fakeDocument();
+        const { device, control } = makeDeviceAndControl();
+        const manager = bind(doc, control);
+        const adapter = makeAdapter(doc, manager);
+
+        // Populate the echo-guard ring for this control.
+        adapter.subscribeBoundControl(control.id);
+        adapter.beginSuppressEcho(control.id, 0.5);
+        expect((adapter as any).echoGuard.has(control.id)).toBe(true);
+
+        // The full subscription/cleanup must also drop the echo-guard
+        // ring (FIX 10): a stale expected-echo of a write made for a
+        // previous device's binding must not be left behind, otherwise a
+        // later Nexus round-trip would be wrongly consumed as "our own
+        // echo" (archived listeners are not audible; the echo-guard is
+        // per-subscription state). Guard entries expire on their own only
+        // if they were never written again, so a device switch must clear
+        // them deterministically instead of relying on expiry.
+        adapter.clearBoundControlSubscriptions();
+        expect((adapter as any).echoGuard.size).toBe(0);
+
+        // A subsequent new binding/listener still works normally.
+        const received: number[] = [];
+        adapter.onNexusValueChanged = (_id, v) => received.push(v);
+        adapter.subscribeBoundControl(control.id);
+        adapter.beginSuppressEcho(control.id, 0.3);
+        doc.fire(0.3); // our own echo - suppressed
+        expect(received).toEqual([]);
+        doc.fire(0.7); // foreign change - forwarded
+        expect(received).toEqual([0.7]);
     });
 });

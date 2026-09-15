@@ -307,5 +307,13 @@ export class NexusAdapter {
     private clearAllListeners() {
         this.updateListeners.forEach(cleanup => cleanup());
         this.updateListeners.clear();
+        // FIX 10 — the full cleanup must also drop the echo-guard ring. Every
+        // suppress-guard entry is a stale expected-echo of a write made for a
+        // previous device's binding; leaving it behind lets a later Nexus
+        // round-trip be wrongly consumed as "our own echo" (§archivierte Listener
+        // ≠ hörbar, Reflection: echoGuard is per-subscription state). Guard
+        // entries expire on their own only if they were never written again, so
+        // a device switch must clear them deterministically, not rely on expiry.
+        this.echoGuard.clear();
     }
 }

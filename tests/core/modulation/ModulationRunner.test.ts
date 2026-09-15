@@ -146,6 +146,19 @@ describe("ModulationRunner — Capture-Arbitration", () => {
         expect(recorder.capture).not.toHaveBeenCalled();
     });
 
+    it("archived controls are NEVER captured, even while RECORDING (archived ≠ hörbar, FIX 9)", () => {
+        const device = makeModDevice();
+        const control = device.getControl("cutoff")!;
+        control.softDelete(); // archive → archived = true
+        const { runner, recorder } = makeRunner(device, "RECORDING");
+
+        runner.start();
+        (runner as any).tick(performance.now());
+
+        // FIX 9 guard: archived destination = not audible → never captured.
+        expect(recorder.capture).not.toHaveBeenCalled();
+    });
+
     it("runner captures the BASE value during gesture-takeover when RECORDING (B11)", () => {
         const device = makeModDevice();
         const { runner, recorder } = makeRunner(device, "RECORDING");
