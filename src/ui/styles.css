@@ -1159,9 +1159,7 @@ body {
     right: 0;
     bottom: 0;
     max-height: 0;
-    background: var(--bg-panel);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    background: #191c23;
     border-top: 1px solid var(--border-color);
     z-index: 200;
     overflow: hidden;
@@ -1171,6 +1169,30 @@ body {
 .mod-matrix-drawer.open {
     max-height: 45vh;
     overflow-y: auto;
+    display: grid;
+    grid-template-columns: 46fr 54fr;
+}
+
+.mod-matrix-drawer.open > .mod-matrix-header {
+    grid-column: 1 / -1;
+}
+
+/* Two-column mode: the vertical divider between SOURCES (left) and ROUTING
+ * (right) replaces the stacked-mode bottom divider. */
+.mod-matrix-drawer.open .mod-source-rack {
+    border-bottom: none;
+    border-right: 1px solid var(--border-color);
+}
+
+/* Narrow viewports: stack SOURCES above ROUTING instead of overflowing. */
+@media (max-width: 1405px) {
+    .mod-matrix-drawer.open {
+        grid-template-columns: 1fr;
+    }
+    .mod-matrix-drawer.open .mod-source-rack {
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+    }
 }
 
 .mod-matrix-header {
@@ -1308,10 +1330,14 @@ body {
     transition: opacity 0.15s ease;
 }
 
-/* Routing rows are single-line and noticeably more compact than sources. */
+/* Routing rows are single-line; the min-height matches the SOURCES rhythm
+ * (caption 11 + gap 3 + control 25 + row padding 10 = 49) so both columns
+ * share the same vertical band while controls stay centered. min-height,
+ * not height — content can never be clipped. */
 .mod-slot-row {
     align-items: center;
     padding: 4px 0;
+    min-height: 49px;
 }
 
 /* Extra compact controls inside routing rows. */
@@ -1374,6 +1400,39 @@ body {
     background: none;
     accent-color: var(--accent-color);
     cursor: pointer;
+}
+
+/* Modulation ENABLE / ON — tiny Metatron indicator LED instead of the native
+ * checkbox box. The real <input type="checkbox"> stays in the DOM, clickable
+ * and keyboard-operable; only its drawing is replaced. */
+.mod-source-row .mod-source-enable,
+.mod-slot-row .mod-slot-enable {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.45);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+    transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.mod-source-row .mod-source-enable:checked,
+.mod-slot-row .mod-slot-enable:checked {
+    background: var(--accent-color);
+    border-color: var(--accent-hover);
+    box-shadow: 0 0 6px rgba(0, 229, 255, 0.4);
+}
+
+.mod-source-row .mod-source-enable:focus-visible,
+.mod-slot-row .mod-slot-enable:focus-visible {
+    outline: 1px solid var(--accent-color);
+    outline-offset: 2px;
 }
 
 .mod-source-waveform,
@@ -1505,7 +1564,6 @@ body {
 }
 
 .mod-route-on {
-    margin-left: auto;
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -1519,15 +1577,21 @@ body {
     width: 132px;
 }
 
-/* Bipolar amount: compact slider + precise % readout, visually unified. */
+/* Bipolar amount: compact slider + precise % readout, visually unified.
+ * The amount control flexes to absorb the residual column width — the slider
+ * grows (min 110px), so the free space becomes a longer drag target instead
+ * of dead space; group stays left-contiguous and fully visible. */
 .mod-amount {
+    flex: 1 1 auto;
+    min-width: 0;
     display: inline-flex;
     align-items: center;
     gap: 4px;
 }
 
 .mod-slot-row .mod-slot-amount-slider {
-    width: 110px;
+    flex: 1 1 auto;
+    min-width: 110px;
 }
 
 .mod-slot-amount {
