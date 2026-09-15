@@ -136,42 +136,47 @@ export class ModulationRunner {
         destinations.forEach((value, controlId) => {
             this.activeDestinationIds.add(controlId);
             this.surfaceUI.applyModDisplay(controlId, value);
-            // Recording-Kontinuität: während Gesture-Takeover ist der HÖRBARE Wert
-            // der Gesten-(Base-)Wert — genau den capturen, damit ein Take nie
-            // ausdünnt, während der User eine modulierte Control override-t (B11).
-            if (this.recorder.currentState === "RECORDING") {
+            if (this.gestureTakeover.get(controlId)) {
+                // Gesture-Takeover: capture base value (B11 — unchanged).
+                if (this.recorder.currentState === "RECORDING") {
+                    const control = device.getControl(controlId);
+                    if (control && !control.archived) {
+                        this.recorder.capture(controlId, baseValues[controlId] ?? value, control.type);
+                    }
+                }
+                return;
+            }
+            if (!this.bindingManager.getActiveBinding(controlId)) return;
+            const wrote = this.writeControl(controlId, value, baseValues[controlId] ?? 0);
+            if (wrote && this.recorder.currentState === "RECORDING") {
                 const control = device.getControl(controlId);
-                // Archivierte Controls dürfen NIE gecaptured werden — der
-                // Capture-Pfad (RECORDING) kriegt denselben archived-Guard wie
-                // writeControl (§archivierte ≠ hörbar, FIX 9). Base-Werte
-                // exkludieren Archivierte bereits (s. baseValues oben).
                 if (control && !control.archived) {
-                    const captured = this.gestureTakeover.get(controlId)
-                        ? (baseValues[controlId] ?? value)
-                        : value;
-                    this.recorder.capture(controlId, captured, control.type);
+                    this.recorder.capture(controlId, value, control.type);
                 }
             }
-            if (this.gestureTakeover.get(controlId)) return;
-            if (!this.bindingManager.getActiveBinding(controlId)) return;
-            this.writeControl(controlId, value, baseValues[controlId] ?? 0);
         });
     }
 
     /** Writes a modulated value to Nexus (FIX 8 write-cap + in-flight guard +
      *  delta-epsilon jitter gate). The echo of this write is suppressed via
      *  beginSuppressEcho (FIX 1). */
-    private writeControl(controlId: string, value: number, baseValue: number): void {
-        if (this.inFlight.has(controlId)) return;
+    /** Returns true iff the value was ACTUALLY written to Nexus (i.e. passed
+     *  the write-cap, the delta-epsilon gate Reports, the archive guard, the
+     *  binding guard and the in-flight guard). Returns false when any of those
+     *  gates blocked the write. FIX S2: recording may ONLY capture a value
+     *  that was really applied — so tick() keys its recorder.capture() off this
+     *  return value (captured == angewendet). */
+    private writeControl(controlId: string, value: number, baseValue: number): boolean {
+        if (this.inFlight.has(controlId)) return false;
 
         const device = this.getDevice();
         const control = device?.getControl(controlId);
-        if (!control || control.archived) return;
-        if (!this.bindingManager.getActiveBinding(controlId)) return;
+        if (!control || control.archived) return false;
+        if (!this.bindingManager.getActiveBinding(controlId)) return false;
 
         const now = performance.now();
-        if (now - this.lastWriteMs < WRITE_INTERVAL_MS) return;
-        if (Math.abs(value - baseValue) < DELTA_EPSILON) return;
+        if (now - this.lastWriteMs < WRITE_INTERVAL_MS) return false;
+        if (Math.abs(value - baseValue) < DELTA_EPSILON) return false;
 
         this.lastWriteMs = now;
         this.inFlight.add(controlId);
@@ -179,5 +184,6 @@ export class ModulationRunner {
         this.nexusAdapter.updateBoundControl(controlId, value).finally(() => {
             this.inFlight.delete(controlId);
         });
+        return true;
     }
 }

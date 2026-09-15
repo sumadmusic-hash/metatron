@@ -159,6 +159,38 @@ describe("ModulationRunner — Capture-Arbitration", () => {
         expect(recorder.capture).not.toHaveBeenCalled();
     });
 
+    it("RECORDING captures ONLY values writeControl actually applies (S2 regression)", () => {
+        const device = new Device("Runner");
+        const c1 = new Control("knob", "Cutoff", { x: 0, y: 0 }, "c1");
+        c1.value = 0.5;
+        const c2 = new Control("knob", "Reso", { x: 0, y: 1 }, "c2");
+        c2.value = 0.5;
+        device.addControl(c1);
+        device.addControl(c2);
+
+        const matrix = createDefaultMatrix();
+        matrix.sources[0].enabled = true;
+        matrix.slots[0].enabled = true;
+        matrix.slots[0].destControlId = "c1";
+        matrix.slots[0].amount = 1;
+        matrix.slots[0].sourceId = matrix.sources[0].id;
+        matrix.slots[1].enabled = true;
+        matrix.slots[1].destControlId = "c2";
+        matrix.slots[1].amount = 1;
+        matrix.slots[1].sourceId = matrix.sources[0].id;
+        device.modulation = matrix;
+
+        const { runner, recorder, adapter } = makeRunner(device, "RECORDING");
+
+        runner.start();
+        (runner as any).tick(performance.now());
+
+        // First write passes → captured. Second write is blocked by
+        // WRITE_INTERVAL_MS → MUST NOT be captured (recorded == applied, FIX S2).
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(1);
+        expect(recorder.capture).toHaveBeenCalledTimes(1);
+    });
+
     it("runner captures the BASE value during gesture-takeover when RECORDING (B11)", () => {
         const device = makeModDevice();
         const { runner, recorder } = makeRunner(device, "RECORDING");
