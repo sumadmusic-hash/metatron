@@ -133,6 +133,13 @@ export class ModulationRunner {
             macroActive
         );
 
+        for (const id of this.activeDestinationIds) {
+            if (!destinations.has(id)) {
+                this.surfaceUI.applyModDisplay(id, null);
+                this.activeDestinationIds.delete(id);
+            }
+        }
+
         destinations.forEach((value, controlId) => {
             this.activeDestinationIds.add(controlId);
             this.surfaceUI.applyModDisplay(controlId, value);

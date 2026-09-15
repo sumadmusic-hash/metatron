@@ -191,6 +191,42 @@ describe("ModulationRunner — Capture-Arbitration", () => {
         expect(recorder.capture).toHaveBeenCalledTimes(1);
     });
 
+    it("removes a destination whose slot was disabled from activeDestinationIds mid-run (needle off)", () => {
+        const device = new Device("Runner");
+        const c1 = new Control("knob", "Cutoff", { x: 0, y: 0 }, "c1");
+        c1.value = 0.5;
+        const c2 = new Control("knob", "Reso", { x: 0, y: 1 }, "c2");
+        c2.value = 0.5;
+        device.addControl(c1);
+        device.addControl(c2);
+
+        const matrix = createDefaultMatrix();
+        matrix.sources[0].enabled = true;
+        matrix.slots[0].enabled = true;
+        matrix.slots[0].destControlId = "c1";
+        matrix.slots[0].amount = 1;
+        matrix.slots[0].sourceId = matrix.sources[0].id;
+        matrix.slots[1].enabled = true;
+        matrix.slots[1].destControlId = "c2";
+        matrix.slots[1].amount = 1;
+        matrix.slots[1].sourceId = matrix.sources[0].id;
+        device.modulation = matrix;
+
+        const { runner, surface } = makeRunner(device);
+        runner.start();
+
+        (runner as any).tick(performance.now());
+        expect(runner.isModulated("c1")).toBe(true);
+        expect(runner.isModulated("c2")).toBe(true);
+
+        matrix.slots[1].enabled = false;
+        (runner as any).tick(performance.now());
+
+        expect(runner.isModulated("c1")).toBe(true);
+        expect(runner.isModulated("c2")).toBe(false);
+        expect(surface.applyModDisplay).toHaveBeenCalledWith("c2", null);
+    });
+
     it("runner captures the BASE value during gesture-takeover when RECORDING (B11)", () => {
         const device = makeModDevice();
         const { runner, recorder } = makeRunner(device, "RECORDING");
