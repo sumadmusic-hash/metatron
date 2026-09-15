@@ -83,4 +83,53 @@ describe("renderMatrixToRecording", () => {
         // 4 bars at 125 BPM = 4 * (240/125) seconds = 7.68s
         expect(recording.durationSeconds).toBeCloseTo(7.68, 2);
     });
+
+    /** Macro source bound to an (unarchived) control: the control VALUE must
+     *  steer the macro. Regresses the inverted `control.archived` check that
+     *  once made active macros silent. */
+    function macroDevice(ctrlValue: number, archived: boolean): Device {
+        const device = new Device("Macro");
+        const ctl = new Control("knob", "ModSource", { x: 0, y: 0 }, "mctl");
+        device.addControl(ctl);
+        ctl.value = ctrlValue;
+        if (archived) ctl.softDelete();
+
+        const dest = new Control("knob", "ModDest", { x: 0, y: 0 }, "mdest");
+        device.addControl(dest);
+
+        const macro = device.modulation.sources[1];
+        macro.type = "macro";
+        macro.sourceId = ctl.id;
+        macro.enabled = true;
+
+        const slot = device.modulation.slots[0];
+        slot.enabled = true;
+        slot.sourceId = macro.id;
+        slot.destControlId = dest.id;
+        slot.amount = 0.5;
+
+        return device;
+    }
+
+    it("macro source driven by an active control delivers the control value", () => {
+        const device = macroDevice(1, false);
+        const recording = renderMatrixToRecording(device.modulation, device, defaultOptions());
+
+        expect(recording.tracks).toHaveLength(1);
+        expect(recording.tracks[0].controlId).toBe(device.getControl("mdest")?.id ?? "");
+        for (const sample of recording.tracks[0].samples) {
+            // macro value 1 → source = 2*1−1 = 1 → dest = base 0 + 0.5 * 1 = 0.5
+            expect(sample.normalizedValue).toBeCloseTo(0.5, 5);
+        }
+    });
+
+    it("macro source bound to an archived control is dormant and yields 0", () => {
+        const device = macroDevice(1, true);
+        const recording = renderMatrixToRecording(device.modulation, device, defaultOptions());
+
+        expect(recording.tracks).toHaveLength(1);
+        for (const sample of recording.tracks[0].samples) {
+            expect(sample.normalizedValue).toBeCloseTo(0, 5);
+        }
+    });
 });

@@ -61,8 +61,29 @@ export class Device {
 
         if (hardDelete) {
             this.controls.delete(id);
+            this.clearModulationReferences(id);
         } else {
             c.softDelete();
+        }
+    }
+
+    /** HARD-delete invariant: a control that is physically removed can no
+     *  longer be a modulation destination or a macro source. Every slot that
+     *  targeted it and every macro source bound to it becomes inert
+     *  (empty reference + disabled). SOFT delete (archive) deliberately
+     *  leaves the matrix untouched. */
+    private clearModulationReferences(controlId: string): void {
+        for (const slot of this.modulation.slots) {
+            if (slot.destControlId === controlId) {
+                slot.destControlId = "";
+                slot.enabled = false;
+            }
+        }
+        for (const src of this.modulation.sources) {
+            if (src.type === "macro" && src.sourceId === controlId) {
+                src.sourceId = "";
+                src.enabled = false;
+            }
         }
     }
 

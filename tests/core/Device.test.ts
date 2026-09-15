@@ -170,4 +170,80 @@ describe('Core Data Model Invariants', () => {
         expect(knob1.value).toBe(0.5); // Old control gets saved value
         expect(knob2.value).toBe(0.8); // New control gets its default value
     });
+
+    // ── Hard-delete modulation reference cleanup ───────────────────────────
+    describe('hard delete severs modulation references', () => {
+        let d: Device;
+        let ctl: Control;
+
+        beforeEach(() => {
+            d = new Device('Mod Cleanup');
+            ctl = new Control('knob', 'ModTarget');
+            d.addControl(ctl);
+        });
+
+        it('clears the destination of an active slot and disables it', () => {
+            const slot = d.modulation.slots[0];
+            slot.enabled = true;
+            slot.destControlId = ctl.id;
+            slot.amount = 0.6;
+
+            d.removeControl(ctl.id, true);
+
+            expect(d.getControl(ctl.id)).toBeUndefined();
+            expect(slot.destControlId).toBe('');
+            expect(slot.enabled).toBe(false);
+        });
+
+        it('leaves unrelated slots untouched', () => {
+            const other = new Control('knob', 'Other');
+            d.addControl(other);
+            const slot = d.modulation.slots[0];
+            slot.enabled = true;
+            slot.destControlId = other.id;
+
+            d.removeControl(ctl.id, true);
+
+            expect(slot.destControlId).toBe(other.id);
+            expect(slot.enabled).toBe(true);
+        });
+
+        it('severs and disables macro sources bound to the deleted control', () => {
+            const macro = d.modulation.sources[0];
+            macro.type = 'macro';
+            macro.sourceId = ctl.id;
+            macro.enabled = true;
+
+            d.removeControl(ctl.id, true);
+
+            expect(macro.sourceId).toBe('');
+            expect(macro.enabled).toBe(false);
+        });
+
+        it('leaves macro sources bound to a surviving control intact', () => {
+            const other = new Control('knob', 'Other');
+            d.addControl(other);
+            const macro = d.modulation.sources[0];
+            macro.type = 'macro';
+            macro.sourceId = other.id;
+            macro.enabled = true;
+
+            d.removeControl(ctl.id, true);
+
+            expect(macro.sourceId).toBe(other.id);
+            expect(macro.enabled).toBe(true);
+        });
+
+        it('soft delete keeps modulation references and the control in the map', () => {
+            const slot = d.modulation.slots[0];
+            slot.enabled = true;
+            slot.destControlId = ctl.id;
+
+            d.removeControl(ctl.id);
+
+            expect(d.getControl(ctl.id)).toBeDefined();
+            expect(slot.destControlId).toBe(ctl.id);
+            expect(slot.enabled).toBe(true);
+        });
+    });
 });

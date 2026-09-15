@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Device } from "../../src/core/model/Device";
+import { Control } from "../../src/core/model/Control";
 import { BindingManager } from "../../src/core/BindingManager";
 import { NexusAdapter } from "../../src/nexus/NexusAdapter";
 import { DeviceHistory } from "../../src/core/history/DeviceHistory";
@@ -174,5 +175,135 @@ describe("ModMatrixUI — history integration", () => {
         history.redo();
         expect(device.modulation.sources[0].enabled).toBe(true);
         expect(device.modulation.slots[0].enabled).toBe(true);
+    });
+});
+
+describe("ModMatrixUI — dead-reference selects and rate clamping", () => {
+    it("destination select leads with an explicit — none — option", () => {
+        const device = makeDevice();
+        const control = new Control("knob", "Cutoff");
+        device.addControl(control);
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+
+        const dest = container.querySelector<HTMLSelectElement>(".mod-slot-row .mod-slot-dest");
+        expect(dest).toBeTruthy();
+        expect(dest?.options[0].value).toBe("");
+        expect(dest?.options[0].text).toContain("none");
+        expect(dest?.options.length).toBe(2); // none + the one real control
+    });
+
+    it("selects — none — when the destination reference is empty or dead", () => {
+        const device = makeDevice();
+        const control = new Control("knob", "Cutoff");
+        device.addControl(control);
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+
+        let dest = container.querySelector<HTMLSelectElement>(".mod-slot-row .mod-slot-dest");
+        expect(dest?.selectedIndex).toBe(0);
+
+        device.modulation.slots[0].destControlId = "dead-control";
+        ui.render();
+        dest = container.querySelector<HTMLSelectElement>(".mod-slot-row .mod-slot-dest");
+        expect(dest?.selectedIndex).toBe(0);
+        expect(dest?.value).toBe("");
+    });
+
+    it("selects the real control when the destination reference resolves", () => {
+        const device = makeDevice();
+        const control = new Control("knob", "Cutoff");
+        device.addControl(control);
+        device.modulation.slots[0].destControlId = control.id;
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+
+        const dest = container.querySelector<HTMLSelectElement>(".mod-slot-row .mod-slot-dest");
+        expect(dest?.value).toBe(control.id);
+        expect(dest?.selectedIndex).toBe(1);
+    });
+
+    it("macro source select leads with — none — and keeps it for dead refs", () => {
+        const device = makeDevice();
+        const control = new Control("knob", "Cutoff");
+        device.addControl(control);
+        device.modulation.sources[0].type = "macro";
+        device.modulation.sources[0].sourceId = "";
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+
+        let select = container.querySelector<HTMLSelectElement>(".mod-source-row .mod-source-macro");
+        expect(select).toBeTruthy();
+        expect(select?.options[0].value).toBe("");
+        expect(select?.options[0].text).toContain("none");
+        expect(select?.selectedIndex).toBe(0);
+
+        device.modulation.sources[0].sourceId = "dead-control";
+        ui.render();
+        select = container.querySelector<HTMLSelectElement>(".mod-source-row .mod-source-macro");
+        expect(select?.selectedIndex).toBe(0);
+        expect(select?.value).toBe("");
+
+        device.modulation.sources[0].sourceId = control.id;
+        ui.render();
+        select = container.querySelector<HTMLSelectElement>(".mod-source-row .mod-source-macro");
+        expect(select?.value).toBe(control.id);
+    });
+
+    function rateState(device: Device) {
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+        const rate = container.querySelector<HTMLInputElement>(".mod-source-row .mod-source-rate");
+        const slider = container.querySelector<HTMLInputElement>(".mod-source-row .mod-source-rate-slider");
+        expect(rate).toBeTruthy();
+        expect(slider).toBeTruthy();
+        return { rate: rate!, slider: slider!, container };
+    }
+
+    it("rate number input exposes the engine range 0.01–20", () => {
+        const device = makeDevice();
+        const { rate } = rateState(device);
+        expect(rate.min).toBe("0.01");
+        expect(rate.max).toBe("20");
+    });
+
+    it("rate below the floor clamps to 0.01 and syncs the slider", () => {
+        const device = makeDevice();
+        const { rate, slider } = rateState(device);
+        rate.value = "0.005";
+        rate.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(device.modulation.sources[0].rateHz).toBe(0.01);
+        expect(rate.value).toBe("0.01");
+        expect(slider.value).toBe("0.01");
+    });
+
+    it("rate above the ceiling clamps to 20 and syncs the slider", () => {
+        const device = makeDevice();
+        const { rate, slider } = rateState(device);
+        rate.value = "45";
+        rate.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(device.modulation.sources[0].rateHz).toBe(20);
+        expect(rate.value).toBe("20");
+        expect(slider.value).toBe("20");
+    });
+
+    it("invalid rate input falls back to the floor 0.01", () => {
+        const device = makeDevice();
+        const { rate, slider } = rateState(device);
+        rate.value = "";
+        rate.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(device.modulation.sources[0].rateHz).toBe(0.01);
+        expect(rate.value).toBe("0.01");
+        expect(slider.value).toBe("0.01");
+    });
+
+    it("a valid in-range rate is written through unchanged", () => {
+        const device = makeDevice();
+        const { rate, slider } = rateState(device);
+        rate.value = "4.5";
+        rate.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(device.modulation.sources[0].rateHz).toBe(4.5);
+        expect(rate.value).toBe("4.5");
+        expect(slider.value).toBe("4.5");
     });
 });

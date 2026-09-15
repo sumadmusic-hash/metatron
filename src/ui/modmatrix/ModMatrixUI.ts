@@ -264,6 +264,12 @@ export class ModMatrixUI {
             select.className = "mod-source-macro";
             select.id = `mod-src-macro-${src.id}`;
             const options = (device?.controls ?? new Map<string, Control>());
+            const noneOpt = document.createElement("option");
+            noneOpt.value = "";
+            noneOpt.innerText = "— none —";
+            const hasRef = src.sourceId !== "" && options.has(src.sourceId);
+            noneOpt.selected = !hasRef;
+            select.appendChild(noneOpt);
             for (const [, control] of options) {
                 const opt = document.createElement("option");
                 opt.value = control.id;
@@ -271,6 +277,7 @@ export class ModMatrixUI {
                 opt.selected = src.sourceId === control.id;
                 select.appendChild(opt);
             }
+            select.value = hasRef ? src.sourceId : "";
             select.onchange = () => this.editSource(src, () => { src.sourceId = select.value; });
             row.appendChild(this.field("Source", select));
         }
@@ -351,6 +358,12 @@ export class ModMatrixUI {
         const destSelect = document.createElement("select");
         destSelect.className = "mod-slot-dest";
         destSelect.id = `mod-slot-dest-${slot.id}`;
+        const noneOpt = document.createElement("option");
+        noneOpt.value = "";
+        noneOpt.innerText = "— none —";
+        const hasDest = slot.destControlId !== "" && device.controls.has(slot.destControlId);
+        noneOpt.selected = !hasDest;
+        destSelect.appendChild(noneOpt);
         for (const [, control] of device.controls) {
             const opt = document.createElement("option");
             opt.value = control.id;
@@ -358,6 +371,7 @@ export class ModMatrixUI {
             opt.selected = slot.destControlId === control.id;
             destSelect.appendChild(opt);
         }
+        destSelect.value = hasDest ? slot.destControlId : "";
         destSelect.onchange = () => this.editSlot(slot, () => { slot.destControlId = destSelect.value; });
         row.appendChild(destSelect);
 
@@ -527,10 +541,17 @@ export class ModMatrixUI {
         rate.type = "number";
         rate.id = `mod-src-rate-${src.id}`;
         rate.className = "mod-source-rate";
-        rate.min = "0";
+        rate.min = "0.01";
+        rate.max = "20";
         rate.step = "0.1";
         rate.value = String(src.rateHz);
-        rate.onchange = () => this.editSource(src, () => { src.rateHz = Number(rate.value); });
+        rate.onchange = () => {
+            const raw = Number(rate.value);
+            const clamped = Number.isFinite(raw) ? Math.min(20, Math.max(0.01, raw)) : 0.01;
+            rate.value = String(clamped);
+            slider.value = String(clamped);
+            this.editSource(src, () => { src.rateHz = clamped; });
+        };
 
         const slider = document.createElement("input");
         slider.type = "range";

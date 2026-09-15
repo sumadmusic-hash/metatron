@@ -55,7 +55,7 @@ export function renderMatrixToRecording(
     };
     const macroActive = (controlId: string) => {
         const control = device.getControl(controlId);
-        return control ? control.archived : false;
+        return !!control && !control.archived;
     };
 
     const trackMap = new Map<string, AutomationRecordingTrack>();

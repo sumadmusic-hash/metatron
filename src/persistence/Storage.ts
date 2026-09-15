@@ -140,13 +140,21 @@ export class Storage {
             return new Map();
         }
 
-        let parsed: Record<string, DeviceData>;
+        let parsed: unknown;
         try {
-            parsed = JSON.parse(data) as Record<string, DeviceData>;
+            parsed = JSON.parse(data);
         } catch (e) {
             throw new StorageError("Failed to parse devices from local storage", { cause: e });
         }
 
-        return new Map(Object.entries(parsed));
+        // Top-level shape guard (FIX 8): null, arrays, and primitive JSON
+        // values are NOT a device map — treat them as corruption instead of
+        // silently iterating garbage with Object.entries().
+        const record = parsed as Record<string, DeviceData> | null;
+        if (typeof record !== "object" || record === null || Array.isArray(record)) {
+            throw new StorageError("Stored device map is not a valid JSON object");
+        }
+
+        return new Map(Object.entries(record));
     }
 }

@@ -213,4 +213,67 @@ describe("ModulationMatrix — duplicate ids (B8)", () => {
         // "mod2" no longer exists as a source id → destination absent from the map.
         expect(result.has("y")).toBe(false);
     });
+
+    it("Source A + duplicate Source B: A keeps the id, the slot stays on A, B is never chosen", () => {
+        // Spec scenario — duplicated source ids are not reconstructible, so:
+        // the FIRST source with the id keeps it, later duplicates are renamed,
+        // and existing slot references stay on the FIRST source. No wholesale
+        // rerouting of slots onto the renamed second source.
+        const parsed = parseModulationMatrix({
+            sources: [
+                { id: "mod1", enabled: true, waveform: "square", rateHz: 1 },
+                { id: "mod1", enabled: true, waveform: "saw", rateHz: 7 },
+            ],
+            slots: [
+                { id: "slot1", enabled: true, sourceId: "mod1", destControlId: "x", amount: 1 },
+            ],
+        });
+
+        const srcIds = parsed.sources.map((s) => s.id);
+        expect(new Set(srcIds).size).toBe(srcIds.length);
+        // First source keeps the original id.
+        expect(parsed.sources[0].id).toBe("mod1");
+        // The second duplicate is renamed to a fresh unique id.
+        expect(parsed.sources[1].id).not.toBe("mod1");
+
+        const slotAsFirst = parsed.slots[0];
+        // The existing slot reference still points at "mod1" — the first source.
+        expect(slotAsFirst.sourceId).toBe("mod1");
+
+        // A slot bound to the renamed second source would keep working, but it
+        // is NOT silently re-pointed at the first source.
+        const secondId = parsed.sources[1].id;
+        const renamed = parseModulationMatrix({
+            sources: [
+                { id: "mod1", enabled: true, waveform: "square", rateHz: 1 },
+                { id: "mod1", enabled: true, waveform: "saw", rateHz: 7 },
+            ],
+            slots: [
+                { id: "slot2", enabled: true, sourceId: secondId, destControlId: "y", amount: 1 },
+            ],
+        });
+
+        const result = evaluateDestinations(
+            parsed,
+            { x: 0, y: 0 },
+            0,
+            120,
+            () => 0,
+            () => true,
+        );
+        // The slot on "mod1" binds the retained FIRST source (square → phase 0 → +1).
+        expect(result.get("x")).toBe(1);
+        const secondResult = evaluateDestinations(
+            renamed,
+            { y: 0 },
+            0,
+            120,
+            () => 0,
+            () => true,
+        );
+        // Re-referencing the renamed source still binds the SECOND source (saw
+        // → phase 0 → −1, clamped to 0). If a slot were silently rebent onto the
+        // FIRST source instead, it would read +1 — so 0 proves the binding.
+        expect(secondResult.get("y")).toBe(0);
+    });
 });
