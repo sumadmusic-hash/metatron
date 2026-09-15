@@ -409,6 +409,8 @@ private container!: HTMLElement;
 
             const input = document.createElement("input");
             input.type = "number";
+            input.id = `scaling-${field}-${control.id}`;
+            input.name = `scaling_${field}`;
             input.step = "any";
             input.dataset.scaling = field;
             input.value = definition[field] !== undefined ? String(definition[field]) : "";
@@ -445,6 +447,7 @@ private container!: HTMLElement;
         flipWrap.innerText = "flip";
         const flipInput = document.createElement("input");
         flipInput.type = "checkbox";
+        flipInput.id = `scaling-flip-${control.id}`;
         flipInput.dataset.scaling = "flip";
         flipInput.checked = definition.flip === true;
         flipInput.onclick = (e) => e.stopPropagation();

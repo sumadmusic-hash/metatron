@@ -644,6 +644,8 @@ toolbarLeft.appendChild(libraryBtn);
 
         const urlInput = document.createElement("input");
         urlInput.type = "text";
+        urlInput.id = "project-url-input";
+        urlInput.name = "projectUrl";
         urlInput.placeholder = "Audiotool Project URL...";
         // Compact by CSS: fills available space up to 260px, never below 140px.
         urlInput.className = "url-input";

@@ -173,6 +173,8 @@ export class DeviceLibraryUI {
 
         const input = document.createElement("input");
         input.className = "text-input";
+        input.id = "preset-name-input";
+        input.name = "presetName";
         input.placeholder = "Preset name";
         input.style.flex = "1";
         input.style.padding = "5px 8px";
@@ -229,6 +231,7 @@ export class DeviceLibraryUI {
                     e.stopPropagation();
                     const input = document.createElement("input");
                     input.className = "text-input";
+                    input.id = `preset-rename-${preset.id}`;
                     input.value = preset.name;
                     input.style.flex = "1";
                     input.style.padding = "1px 6px";
@@ -427,6 +430,8 @@ export class DeviceLibraryUI {
         bLabel.style.cssText = "font-size:11px;color:var(--text-secondary);font-weight:700;";
         const slider = document.createElement("input");
         slider.className = "preset-morph-slider";
+        slider.id = "morph-amount-slider";
+        slider.name = "morphAmount";
         slider.type = "range";
         slider.min = "0";
         slider.max = "1";
@@ -475,6 +480,8 @@ export class DeviceLibraryUI {
 
         const input = document.createElement("input");
         input.className = "text-input";
+        input.id = "instrument-name-input";
+        input.name = "instrumentName";
         input.placeholder = "Instrument preset name";
         input.value = device.name;
         input.style.flex = "1 1 100%";
@@ -682,6 +689,8 @@ export class DeviceLibraryUI {
     private pickInstrumentFile() {
         const input = document.createElement("input");
         input.type = "file";
+        input.id = "instrument-file-picker";
+        input.name = "instrumentFile";
         input.accept = ".json,application/json";
         input.style.display = "none";
         input.onchange = () => {
@@ -842,6 +851,7 @@ export class DeviceLibraryUI {
         if (!device) return;
         const input = document.createElement("input");
         input.className = "text-input";
+        input.id = `device-rename-input`;
         input.value = device.name;
         input.style.flex = "1";
         input.style.padding = "3px 8px";

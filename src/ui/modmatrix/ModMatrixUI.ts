@@ -231,6 +231,7 @@ export class ModMatrixUI {
         if (src.type === "lfo") {
             const wave = document.createElement("select");
             wave.className = "mod-source-waveform";
+            wave.id = `mod-src-wave-${src.id}`;
             (["sine", "triangle", "saw", "square", "sampleHold", "smoothRandom"] as const).forEach((w) => {
                 const opt = document.createElement("option");
                 opt.value = w;
@@ -243,6 +244,7 @@ export class ModMatrixUI {
 
             const rate = document.createElement("input");
             rate.type = "number";
+            rate.id = `mod-src-rate-${src.id}`;
             rate.className = "mod-source-rate";
             rate.min = "0";
             rate.step = "0.1";
@@ -252,6 +254,7 @@ export class ModMatrixUI {
 
             const sync = document.createElement("input");
             sync.type = "checkbox";
+            sync.id = `mod-src-sync-${src.id}`;
             sync.className = "mod-source-bpm-sync";
             sync.checked = src.bpmSync;
             sync.onchange = () => this.editSource(src, () => { src.bpmSync = sync.checked; });
@@ -259,6 +262,7 @@ export class ModMatrixUI {
 
             const division = document.createElement("input");
             division.type = "number";
+            division.id = `mod-src-div-${src.id}`;
             division.className = "mod-source-division";
             division.min = "1";
             division.step = "1";
@@ -268,6 +272,7 @@ export class ModMatrixUI {
 
             const phase = document.createElement("input");
             phase.type = "number";
+            phase.id = `mod-src-phase-${src.id}`;
             phase.className = "mod-source-phase";
             phase.min = "0";
             phase.max = "1";
@@ -280,6 +285,7 @@ export class ModMatrixUI {
         if (src.type === "macro") {
             const select = document.createElement("select");
             select.className = "mod-source-macro";
+            select.id = `mod-src-macro-${src.id}`;
             const options = (device?.controls ?? new Map<string, Control>());
             for (const [, control] of options) {
                 const opt = document.createElement("option");
@@ -295,6 +301,7 @@ export class ModMatrixUI {
         if (src.type === "random") {
             const smooth = document.createElement("input");
             smooth.type = "number";
+            smooth.id = `mod-src-smooth-${src.id}`;
             smooth.className = "mod-source-smooth";
             smooth.min = "0";
             smooth.max = "10000";
@@ -305,6 +312,7 @@ export class ModMatrixUI {
 
             const drift = document.createElement("input");
             drift.type = "number";
+            drift.id = `mod-src-drift-${src.id}`;
             drift.className = "mod-source-drift";
             drift.min = "0";
             drift.max = "1";
@@ -316,6 +324,7 @@ export class ModMatrixUI {
 
         const enable = document.createElement("input");
         enable.type = "checkbox";
+        enable.id = `mod-src-enable-${src.id}`;
         enable.className = "mod-source-enable";
         enable.checked = src.enabled;
         enable.onchange = () => this.editSource(src, () => { src.enabled = enable.checked; });
@@ -331,6 +340,7 @@ export class ModMatrixUI {
 
         const srcSelect = document.createElement("select");
         srcSelect.className = "mod-slot-source";
+        srcSelect.id = `mod-slot-src-${slot.id}`;
         device.modulation.sources.forEach((src, i) => {
             const opt = document.createElement("option");
             opt.value = src.id;
@@ -343,6 +353,7 @@ export class ModMatrixUI {
 
         const destSelect = document.createElement("select");
         destSelect.className = "mod-slot-dest";
+        destSelect.id = `mod-slot-dest-${slot.id}`;
         for (const [, control] of device.controls) {
             const opt = document.createElement("option");
             opt.value = control.id;
@@ -355,6 +366,7 @@ export class ModMatrixUI {
 
         const amount = document.createElement("input");
         amount.type = "number";
+        amount.id = `mod-slot-amount-${slot.id}`;
         amount.className = "mod-slot-amount";
         amount.min = "-1";
         amount.max = "1";
@@ -365,6 +377,7 @@ export class ModMatrixUI {
 
         const enable = document.createElement("input");
         enable.type = "checkbox";
+        enable.id = `mod-slot-enable-${slot.id}`;
         enable.className = "mod-slot-enable";
         enable.checked = slot.enabled;
         enable.onchange = () => this.editSlot(slot, () => { slot.enabled = enable.checked; });

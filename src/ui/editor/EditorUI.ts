@@ -447,6 +447,7 @@ export class EditorUI {
 
         const colorInput = document.createElement("input");
         colorInput.type = "color";
+        colorInput.id = `ctl-color-${control.id}`;
         colorInput.className = "color-swatch";
         colorInput.value = control.visualDefinition?.color || "#333333";
         colorInput.title = "Visual area color";
@@ -559,6 +560,7 @@ export class EditorUI {
 
         const membership = document.createElement("select");
         membership.className = "group-membership";
+        membership.id = `ctl-group-${control.id}`;
         membership.title = "Group membership";
         const noGroup = document.createElement("option");
         noGroup.value = "";
@@ -717,6 +719,7 @@ export class EditorUI {
         // Group color picker (§15)
         const colorInput = document.createElement("input");
         colorInput.type = "color";
+        colorInput.id = `grp-color-${group.id}`;
         colorInput.className = "group-color-input";
         colorInput.value = group.color;
 
@@ -1163,6 +1166,7 @@ export class EditorUI {
     private beginRename(label: HTMLElement, target: any) {
         const input = document.createElement("input");
         input.type = "text";
+        input.id = `rename-input-${target.id}`;
         input.value = target.name;
         input.style.cssText = "width:120px;max-width:100%;box-sizing:border-box;background:#111;color:#fff;border:1px solid var(--accent-color);outline:none;font-size:11px;text-align:center;";
         const save = () => {
