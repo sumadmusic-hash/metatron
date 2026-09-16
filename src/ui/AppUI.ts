@@ -430,16 +430,16 @@ export class AppUI {
                 this.render();
             }
         );
-        mk("REC", "Start recording (requires ARM)", state === "ARMED", state === "RECORDING" ? "recording" : "", () => {
+mk("REC", "Start recording (requires ARM)", state === "ARMED", state === "RECORDING" ? "recording" : "", () => {
             this.recordingStartPerf = performance.now();
             this.recorder.record();
             this.render();
-        }, '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2z"/></svg>')
+        });
         mk("STOP", "Stop and finalize the take", state === "RECORDING" || state === "ARMED", "", () => {
             this.stopElapsedTimer();
             this.recorder.stop();
             this.render();
-        }, '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>')
+        });
         mk(
             "APPLY TO AUDIOTOOL",
             "Apply this take to Audiotool (creates real automation)",
