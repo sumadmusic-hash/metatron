@@ -86,7 +86,7 @@ function mount(device: Device, adapter: NexusAdapter, bindings: BindingManager):
     const app = new AppUI(root, lib, adapter, midi, bindings);
     app.render();
     const toggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) =>
-        b.innerText === "USE",
+        b.id === "mode-toggle-btn",
     );
     toggle?.click();
     return { root, midi };

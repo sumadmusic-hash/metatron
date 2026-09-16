@@ -56,7 +56,7 @@ function button(root: HTMLElement, label: string): HTMLButtonElement | undefined
 
 function modeToggle(root: HTMLElement): HTMLButtonElement | undefined {
     return [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) =>
-        b.innerText === "USE" || b.innerText === "EDIT",
+        b.id === "mode-toggle-btn",
     );
 }
 

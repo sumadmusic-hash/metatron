@@ -65,6 +65,11 @@ function getStatusEl(root: HTMLElement): HTMLElement {
 }
 
 function getButton(root: HTMLElement, labelPrefix: string): HTMLButtonElement {
+    if (labelPrefix === "USE" || labelPrefix === "EDIT") {
+        return [...root.querySelectorAll<HTMLButtonElement>("button")].find(
+            (b) => b.id === "mode-toggle-btn",
+        )!;
+    }
     return [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) =>
         b.innerText.startsWith(labelPrefix) || b.innerText.includes(labelPrefix),
     )!;

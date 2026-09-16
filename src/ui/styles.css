@@ -2058,6 +2058,11 @@ body {
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 
+.mode-toggle .mode-toggle-icon {
+    width: 15px;
+    height: 15px;
+}
+
 /* Automation strip status reads as a quiet chip; "IDLE" keeps its text. */
 .automation-status {
     display: inline-flex;

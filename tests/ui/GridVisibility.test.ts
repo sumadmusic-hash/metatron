@@ -53,7 +53,7 @@ function snapToggle(root: HTMLElement): HTMLButtonElement {
 
 function modeToggle(root: HTMLElement): HTMLButtonElement {
     return [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) =>
-        b.innerText === "USE" || b.innerText === "EDIT",
+        b.id === "mode-toggle-btn",
     )!;
 }
 
@@ -91,7 +91,7 @@ describe("Snap grid visibility: EDIT-only and tied to Snap state", () => {
         const root = await mount();
         // Default Snap state is ON, yet USE must not show the grid (the bug).
         modeToggle(root).click();
-        expect(modeToggle(root).innerText).toBe("EDIT");
+        expect(modeToggle(root).querySelector("svg.mode-toggle-icon")).toBeTruthy();
         expect(isGridVisible(root)).toBe(false);
         expect(canvas(root).classList.contains("editor-canvas--nogrid")).toBe(true);
     });

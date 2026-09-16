@@ -53,7 +53,7 @@ function mount(device: Device): { app: AppUI; recorder: { capture: ReturnType<ty
     app.render();
     // USE mode so the surface widgets exist (runner lifecycle parity).
     const toggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find(
-        (b) => b.innerText === "USE",
+        (b) => b.id === "mode-toggle-btn",
     );
     toggle?.click();
 

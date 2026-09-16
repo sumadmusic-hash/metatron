@@ -56,7 +56,7 @@ function mount(device: Device) {
     const app = new AppUI(root, lib, new SilentAdapter(), new CapturingMidi(), new BindingManager(device));
     app.render();
     const toggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find(
-        (b) => b.innerText === "USE",
+        (b) => b.id === "mode-toggle-btn",
     );
     toggle?.click();
 

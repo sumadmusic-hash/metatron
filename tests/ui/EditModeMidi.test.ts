@@ -63,7 +63,7 @@ describe("EDIT mode MIDI handling", () => {
 
         // Switch to USE mode
         const modeToggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) =>
-            b.innerText === "USE",
+            b.id === "mode-toggle-btn",
         )!;
         modeToggle.click();
 

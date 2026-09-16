@@ -99,7 +99,7 @@ describe("Form field id/name hygiene (autofill warning)", () => {
         const midiMapping = (app as any).midiMapping;
         midiMapping.setMapping("c1", 1, 20); // forces the scaling editor to render
 
-        const toggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.innerText === "USE");
+        const toggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.id === "mode-toggle-btn");
         toggle?.click();
 
         const c1 = device.getControl("c1")!;
@@ -145,7 +145,7 @@ describe("Form field id/name hygiene (autofill warning)", () => {
         url!.value = "https://example.org/project";
         url!.dispatchEvent(new Event("input"));
 
-        const toggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.innerText === "USE");
+        const toggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.id === "mode-toggle-btn");
         toggle?.click();
         toggle?.click();
 

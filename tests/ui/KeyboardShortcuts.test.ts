@@ -170,7 +170,7 @@ describe("G-06: keyboard Delete/Backspace and Learn Escape", () => {
         document.dispatchEvent(new PointerEvent("pointerup", { pointerId: 11, bubbles: true, cancelable: true }));
 
         const toggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) =>
-            b.innerText === "USE",
+            b.id === "mode-toggle-btn",
         )!;
         toggle.click();
 

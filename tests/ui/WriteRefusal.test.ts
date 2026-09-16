@@ -58,7 +58,7 @@ async function mount(device: Device, boundIds: string[] = []): Promise<{ root: H
     const app = new AppUI(root, lib, adapter, midi, bm);
     app.render();
     const toggle = [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) =>
-        b.innerText === "USE",
+        b.id === "mode-toggle-btn",
     );
     toggle?.click();
     return { root, midi, adapter };

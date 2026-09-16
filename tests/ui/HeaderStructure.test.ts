@@ -73,7 +73,7 @@ function buttonsIn(el: HTMLElement): HTMLButtonElement[] {
 }
 
 function modeToggle(root: HTMLElement): HTMLButtonElement {
-    return buttonsIn(root).find((b) => b.innerText === "USE" || b.innerText === "EDIT")!;
+    return buttonsIn(root).find((b) => b.id === "mode-toggle-btn")!;
 }
 
 describe("Header Restructure B: two-group layout with EDIT/USE as final control, automation in secondary bar", () => {
@@ -99,13 +99,14 @@ describe("Header Restructure B: two-group layout with EDIT/USE as final control,
         // Mode badge always names the ACTIVE mode (edit here).
         const badge = left.querySelector(".mode-badge");
         expect(badge?.classList.contains("mode-badge--edit")).toBe(true);
-        expect(badge?.innerText).toBe("EDIT MODE");
+        expect(badge?.innerText).toBe("EDIT");
 
         // Right group: the mode toggle is the sole rightmost header control.
         expect(right.querySelector(".automation-strip")).toBeNull();
         const rightButtons = buttonsIn(right);
         expect(rightButtons).toHaveLength(1);
-        expect(rightButtons[0].innerText).toBe("USE");
+        expect(rightButtons[0].innerText).toBe("");
+        expect(rightButtons[0].querySelector("svg.mode-toggle-icon")).toBeTruthy();
         expect(right.lastElementChild).toBe(modeToggle(root));
 
         // The mode toggle is also the final control of the whole toolbar.
@@ -132,13 +133,14 @@ describe("Header Restructure B: two-group layout with EDIT/USE as final control,
         expect(right).toBeTruthy();
         expect(right.querySelector(".automation-strip")).toBeNull();
         const rightButtons = buttonsIn(right);
-        expect(rightButtons[rightButtons.length - 1].innerText).toBe("EDIT");
+        expect(rightButtons[rightButtons.length - 1].innerText).toBe("");
+        expect(rightButtons[rightButtons.length - 1].querySelector("svg.mode-toggle-icon")).toBeTruthy();
         expect(right.lastElementChild).toBe(modeToggle(root));
 
-        // Mode badge flips to USE MODE.
+        // Mode badge flips to USE.
         const badge = leftGroup(root).querySelector(".mode-badge");
         expect(badge?.classList.contains("mode-badge--use")).toBe(true);
-        expect(badge?.innerText).toBe("USE MODE");
+        expect(badge?.innerText).toBe("USE");
 
         // Automation strip is still in its own bar after mode switch.
         expect(automationBar(root).querySelector(".automation-strip")).toBeTruthy();
@@ -152,7 +154,7 @@ describe("Header Restructure B: two-group layout with EDIT/USE as final control,
 
         expect(root.querySelector(".editor-canvas")).toBeTruthy();
         const rightButtons = buttonsIn(rightGroup(root));
-        expect(rightButtons[rightButtons.length - 1].innerText).toBe("USE");
+        expect(rightButtons[rightButtons.length - 1].innerText).toBe("");
         expect(rightGroup(root).lastElementChild).toBe(modeToggle(root));
     });
 

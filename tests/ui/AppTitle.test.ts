@@ -151,10 +151,10 @@ describe("Device Title compactness and accessibility", () => {
         expect(toolbar.querySelector(".toolbar-right button")).toBeTruthy(); // Mode toggle
 
         const modeToggle = toolbar.querySelector<HTMLButtonElement>(".toolbar-right button")!;
-        expect(modeToggle.innerText).toBe("USE");
+        expect(modeToggle.querySelector("svg.mode-toggle-icon")).toBeTruthy();
         modeToggle.click();
         const updatedModeToggle = host.querySelector<HTMLButtonElement>(".toolbar .toolbar-right button")!;
-        expect(updatedModeToggle.innerText).toBe("EDIT");
+        expect(updatedModeToggle.querySelector("svg.mode-toggle-icon")).toBeTruthy();
         const title = host.querySelector<HTMLElement>(".toolbar .app-title h1")!;
         expect(title.title).toBe(longName);
     });
