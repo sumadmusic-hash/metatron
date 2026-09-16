@@ -1691,3 +1691,160 @@ body {
     -webkit-appearance: none;
     margin: 0;
 }
+
+/* ── GUI-Politur: Toolbar hierarchy, status chips, focus rings ─────────────── */
+
+/* Segmented groups in the main toolbar: Undo/Redo pair and the MOD toggle
+   read as compact segmented controls instead of loose buttons. */
+.toolbar-seg {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.22);
+}
+
+.toolbar-seg .btn {
+    border: 0;
+    border-radius: 0;
+    padding: 7px 12px;
+}
+
+.toolbar-seg .btn + .btn {
+    border-left: 1px solid var(--border-color);
+}
+
+.toolbar-seg .btn.active {
+    background: rgba(0, 229, 255, 0.16);
+    box-shadow: inset 0 0 0 1px rgba(0, 229, 255, 0.35);
+}
+
+.toolbar-seg--mod .btn {
+    letter-spacing: 0.5px;
+}
+
+/* Primary USE/EDIT pill: accent background with the alternate mode hinted as
+   a secondary half, giving a two-segment look without an extra DOM element. */
+.mode-toggle {
+    position: relative;
+    letter-spacing: 0.5px;
+    padding: 8px 18px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+/* Connection status chip: colored dot + pill background, text unchanged. */
+.connection-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 12px;
+}
+
+.connection-status::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    flex: 0 0 auto;
+}
+
+.connection-status.tone-ok::before {
+    background: #4CAF50;
+    box-shadow: 0 0 5px #4CAF50;
+}
+
+.connection-status.tone-warn::before {
+    background: #ffeb3b;
+    box-shadow: 0 0 5px #ffeb3b;
+}
+
+.connection-status.tone-err::before {
+    background: #f44336;
+    box-shadow: 0 0 5px #f44336;
+}
+
+/* Automation strip status reads as a quiet chip; "IDLE" keeps its text. */
+.automation-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+}
+
+.automation-status:not(:empty)::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-right: 6px;
+    background: var(--text-secondary);
+}
+
+/* Uniform knob cards: equal minimum height so same-size controls align;
+   the visual area gets consistent inner padding around the widget. */
+.control-wrapper {
+    min-height: 108px;
+}
+
+.control-visual-area {
+    padding: 10px;
+}
+
+/* Mod matrix density: row hover affordance + secondary-colored units. */
+.mod-source-row:hover,
+.mod-slot-row:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.mod-source-row.on:hover,
+.mod-slot-row.on:hover {
+    background: linear-gradient(90deg, rgba(0, 229, 255, 0.12), transparent 45%);
+}
+
+.mod-rate-unit,
+.mod-route-cap,
+.mod-source-label {
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.mod-rate-unit {
+    font-size: 10px;
+    letter-spacing: 0.5px;
+}
+
+/* Default focus ring for keyboard navigation (mouse clicks are unaffected). */
+.toolbar .btn:focus-visible,
+.mini-btn:focus-visible,
+.control-wrapper .knob-body:focus-visible,
+.control-wrapper .switch-body:focus-visible,
+.mod-matrix-drawer input:focus-visible,
+.mod-matrix-drawer select:focus-visible,
+.mod-matrix-drawer button:focus-visible,
+.sidebar-pane input:focus-visible,
+.sidebar-pane select:focus-visible,
+.sidebar-pane textarea:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
+}
+
+/* Placeholder for empty preset lists (device + instrument libraries). */
+.list-empty {
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 8px 4px;
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.02);
+    text-align: center;
+    margin: 4px 0;
+}

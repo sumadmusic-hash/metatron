@@ -609,6 +609,9 @@ export class AppUI {
             this.connectionStatusEl.innerText = text;
             this.connectionStatusEl.title = text;
             this.connectionStatusEl.style.color = color;
+            this.connectionStatusEl.classList.toggle("tone-ok", color === "#4CAF50");
+            this.connectionStatusEl.classList.toggle("tone-warn", color === "#ffeb3b");
+            this.connectionStatusEl.classList.toggle("tone-err", color === "#f44336");
         }
     }
 
@@ -747,8 +750,11 @@ toolbarLeft.appendChild(libraryBtn);
         this.redoBtn = redoBtn;
 
         this.syncHistoryButtons();
-        toolbarLeft.appendChild(undoBtn);
-        toolbarLeft.appendChild(redoBtn);
+        const historyGroup = document.createElement("div");
+        historyGroup.className = "toolbar-seg";
+        historyGroup.appendChild(undoBtn);
+        historyGroup.appendChild(redoBtn);
+        toolbarLeft.appendChild(historyGroup);
 
         const modBtn = document.createElement("button");
         modBtn.id = "mod-matrix-toggle";
@@ -760,10 +766,13 @@ toolbarLeft.appendChild(libraryBtn);
             this.modMatrixUI.toggleDrawer();
             this.render();
         };
-        toolbarLeft.appendChild(modBtn);
+        const modGroup = document.createElement("div");
+        modGroup.className = "toolbar-seg toolbar-seg--mod";
+        modGroup.appendChild(modBtn);
+        toolbarLeft.appendChild(modGroup);
 
         const modeToggle = document.createElement("button");
-        modeToggle.className = "btn primary";
+        modeToggle.className = "btn primary mode-toggle";
         modeToggle.innerText = this.currentMode === "EDIT" ? "USE" : "EDIT";
         modeToggle.onclick = () => {
             this.currentMode = this.currentMode === "EDIT" ? "USE" : "EDIT";

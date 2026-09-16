@@ -124,7 +124,6 @@ export class ModMatrixUI {
         const barsLabel = document.createElement("label");
         barsLabel.className = "mod-bake-label";
         barsLabel.innerText = "Bars";
-        barsLabel.htmlFor = "mod-bake-bars";
         const bars = document.createElement("input");
         bars.id = "mod-bake-bars";
         bars.name = "bars";
@@ -139,7 +138,6 @@ export class ModMatrixUI {
         const gridLabel = document.createElement("label");
         gridLabel.className = "mod-bake-label";
         gridLabel.innerText = "Grid";
-        gridLabel.htmlFor = "mod-bake-grid";
         const grid = document.createElement("select");
         grid.id = "mod-bake-grid";
         grid.name = "grid";
@@ -488,17 +486,14 @@ export class ModMatrixUI {
     /** Caption + control column using Metatron's caption language (small,
      *  uppercase, letter-spaced label stacked above the control). */
     private field(caption: string, control: HTMLElement, mod = ""): HTMLElement {
-        const wrap = document.createElement("div");
-        wrap.className = "mod-field" + mod.split(/\s+/).filter(Boolean).map((m) => ` mod-field--${m}`).join("");
         const label = document.createElement("label");
-        label.className = "mod-field-caption";
-        label.innerText = caption;
-        if (control.id) {
-            label.htmlFor = control.id;
-        }
-        wrap.appendChild(label);
-        wrap.appendChild(control);
-        return wrap;
+        label.className = "mod-field" + mod.split(/\s+/).filter(Boolean).map((m) => ` mod-field--${m}`).join("");
+        const cap = document.createElement("span");
+        cap.className = "mod-field-caption";
+        cap.innerText = caption;
+        label.appendChild(cap);
+        label.appendChild(control);
+        return label;
     }
 
     private sectionTitle(text: string): HTMLElement {
@@ -519,6 +514,7 @@ export class ModMatrixUI {
         const freeBtn = document.createElement("button");
         freeBtn.type = "button";
         freeBtn.className = "mod-seg-btn" + (src.bpmSync ? "" : " active");
+        freeBtn.setAttribute("aria-pressed", String(!src.bpmSync));
         freeBtn.innerText = "Free";
         freeBtn.onclick = () => this.setBpmSync(src, false);
         seg.appendChild(freeBtn);
@@ -526,6 +522,7 @@ export class ModMatrixUI {
         const syncBtn = document.createElement("button");
         syncBtn.type = "button";
         syncBtn.className = "mod-seg-btn" + (src.bpmSync ? " active" : "");
+        syncBtn.setAttribute("aria-pressed", String(src.bpmSync));
         syncBtn.innerText = "Sync";
         syncBtn.onclick = () => this.setBpmSync(src, true);
         seg.appendChild(syncBtn);

@@ -9,7 +9,7 @@ export class MidiAccess {
         }
 
         try {
-            this.midiAccess = await navigator.requestMIDIAccess();
+            this.midiAccess = await navigator.requestMIDIAccess({ sysex: false });
             
             // Listen to all currently connected inputs
             for (const input of this.midiAccess.inputs.values()) {

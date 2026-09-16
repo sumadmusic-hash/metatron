@@ -288,7 +288,7 @@ export class DeviceLibraryUI {
 
         if (device.presets.size === 0) {
             const empty = document.createElement("div");
-            empty.style.cssText = "color:var(--text-secondary);font-size:12px;padding:8px 4px;";
+            empty.className = "list-empty";
             empty.innerText = "No presets yet.";
             panel.appendChild(empty);
         } else {
@@ -589,7 +589,7 @@ export class DeviceLibraryUI {
         }
         if (list.length === 0) {
             const empty = document.createElement("div");
-            empty.style.cssText = "color:var(--text-secondary);font-size:12px;padding:8px 4px;";
+            empty.className = "list-empty";
             empty.innerText = "No instrument presets yet.";
             panel.appendChild(empty);
         } else {

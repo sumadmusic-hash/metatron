@@ -42,9 +42,9 @@ beforeEach(() => {
 });
 
 describe("ModMatrixUI — drawer", () => {
-function lookupLabel(root: HTMLElement, forId: string): HTMLLabelElement | null {
+function lookupLabelFor(root: HTMLElement, input: Element): HTMLLabelElement | null {
     return Array.from(root.querySelectorAll<HTMLLabelElement>("label")).find(
-        (label) => label.htmlFor === forId,
+        (label) => label.contains(input),
     ) ?? null;
 }
 
@@ -92,7 +92,7 @@ function lookupLabel(root: HTMLElement, forId: string): HTMLLabelElement | null 
         expect(container.querySelector<HTMLSelectElement>(".mod-bake-grid")).toBeTruthy();
     });
 
-    it("FIX 11 - the bake dialog controls carry stable ids and their labels reference them through htmlFor", () => {
+    it("FIX 11 - the bake dialog controls carry stable ids and their labels wrap the control (no htmlFor / for=)", () => {
         const { ui } = makeDeps(makeDevice());
         const container = mount(ui);
 
@@ -104,18 +104,18 @@ function lookupLabel(root: HTMLElement, forId: string): HTMLLabelElement | null 
         expect(bars).toBeTruthy();
         expect(bars?.id).toBe("mod-bake-bars");
         expect(bars?.name).toBe("bars");
-        const barsLabel = lookupLabel(container, "mod-bake-bars");
+        const barsLabel = lookupLabelFor(container, bars!);
         expect(barsLabel).toBeTruthy();
-        expect(barsLabel?.htmlFor).toBe("mod-bake-bars");
+        expect(barsLabel?.htmlFor).toBe("");
         expect(barsLabel?.control).toBe(bars);
 
         const grid = container.querySelector<HTMLSelectElement>("#mod-bake-grid");
         expect(grid).toBeTruthy();
         expect(grid?.id).toBe("mod-bake-grid");
         expect(grid?.name).toBe("grid");
-        const gridLabel = lookupLabel(container, "mod-bake-grid");
+        const gridLabel = lookupLabelFor(container, grid!);
         expect(gridLabel).toBeTruthy();
-        expect(gridLabel?.htmlFor).toBe("mod-bake-grid");
+        expect(gridLabel?.htmlFor).toBe("");
         expect(gridLabel?.control).toBe(grid);
     });
 
