@@ -1661,7 +1661,7 @@ body {
     cursor: pointer;
 }
 
-/* Routing ON — pill toggle instead of the native checkbox box.
+/* Routing ON — pill toggle matching the optimized SVG mockup.
  * The real <input type="checkbox"> stays in the DOM, clickable and
  * keyboard-operable; only its drawing is replaced. Pseudo-elements do not
  * render on inputs, so the sliding nub is a background radial-gradient whose
@@ -1672,28 +1672,27 @@ body {
     -moz-appearance: none;
     appearance: none;
     position: relative;
-    width: 34px;
-    height: 18px;
+    width: 40px;
+    height: 20px;
     margin: 0;
     padding: 0;
-    border: 1px solid var(--border-color);
-    border-radius: 999px;
-    background-color: rgba(0, 0, 0, 0.45);
-    background-image: radial-gradient(circle, #8a93a3 0 9%, rgba(40, 44, 52, 0.9) 100%);
-    background-size: 12px 12px;
+    border: 1px solid #272d3f;
+    border-radius: 10px;
+    background-color: #222838;
+    background-image: radial-gradient(circle, #6c7890 0 38%, #4a5060 100%);
+    background-size: 16px 16px;
     background-repeat: no-repeat;
-    background-position: 2px center;
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+    background-position: 1px center;
     cursor: pointer;
-    transition: background-color 0.12s ease, background-position 0.12s ease, box-shadow 0.12s ease;
+    transition: background-color 0.15s ease, background-position 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .mod-slot-row input[type="checkbox"].mod-slot-enable:checked {
-    background-color: rgba(0, 229, 255, 0.85);
-    border-color: var(--accent-hover);
-    background-image: radial-gradient(circle, #eafcff 0 9%, #a8f2ff 100%);
-    background-position: 20px center;
-    box-shadow: 0 0 6px rgba(0, 229, 255, 0.4);
+    background-color: rgba(0, 168, 181, 0.35);
+    border-color: rgba(0, 229, 255, 0.7);
+    background-image: radial-gradient(circle, #0c1018 0 38%, #1c2230 100%);
+    background-position: 21px center;
+    box-shadow: 0 0 5px rgba(0, 168, 181, 0.35);
 }
 
 .mod-slot-row input[type="checkbox"].mod-slot-enable:focus-visible {
