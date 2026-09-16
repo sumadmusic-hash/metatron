@@ -117,9 +117,9 @@ describe("Project URL survives AppUI re-renders without auto-connecting", () => 
 
         // Undo/Redo rebuilds (via + Knob / Undo / Redo).
         getButton(root, "+ Knob").click();
-        getButton(root, "Undo").click();
+        root.querySelector<HTMLButtonElement>("#history-undo")!.click();
         expect(getUrlInput(root).value).toBe(URL_A);
-        getButton(root, "Redo").click();
+        root.querySelector<HTMLButtonElement>("#history-redo")!.click();
         expect(getUrlInput(root).value).toBe(URL_A);
 
         // None of the rebuilds attempted a connection on their own.

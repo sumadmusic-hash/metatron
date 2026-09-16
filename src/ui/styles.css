@@ -21,16 +21,16 @@ body {
 
 /* Premium Toolbar */
 .toolbar {
-    height: 56px;
-    background: var(--bg-panel);
+    height: 52px;
+    background: linear-gradient(180deg, #161922 0%, #10121a 100%);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid #1e2230;
     display: flex;
     align-items: center;
     padding: 0 24px;
     justify-content: space-between;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
     z-index: 100;
     position: relative;
 }
@@ -58,15 +58,37 @@ body {
     max-width: 260px;
 }
 
-/* Connection status — stays permanently visible; the longest label truncates
-   with an ellipsis instead of expanding the header. The full text is exposed
-   via the native title tooltip (kept in sync by AppUI.applyStatusText). */
+/* Connection status — pill with a colored dot indicating connection state.
+   The dot color is driven by the --conn-color CSS variable set by AppUI.applyStatusText.
+   The full text is exposed via the native title tooltip. */
 .connection-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 12px;
     max-width: 220px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    color: var(--text-secondary);
 }
+
+.connection-status::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--conn-color, #ff3366);
+    flex: 0 0 auto;
+}
+
+.connection-status.tone-ok { color: #4CAF50; }
+.connection-status.tone-warn { color: #ffeb3b; }
+.connection-status.tone-err { color: #f44336; }
 
 /* Secondary bar housing the automation strip below the main header */
 .automation-bar {
@@ -360,25 +382,34 @@ body {
     max-width: 100%;
 }
 
+/* Modulation-active knob: amber label + glowing status dot (SVG KNOB 1). */
+.control-wrapper.modulated .control-name {
+    color: #ffb84d;
+}
+.control-wrapper.modulated .control-name::before {
+    content: "";
+    display: inline-block;
+    flex: 0 0 auto;
+    width: 5px;
+    height: 5px;
+    margin-right: 5px;
+    border-radius: 50%;
+    vertical-align: middle;
+    background: #ff9a00;
+    box-shadow: 0 0 4px #ff9a00;
+}
+.control-wrapper.modulated .control-visual-area {
+    border-color: rgba(255, 154, 0, 0.12);
+}
+
 /* The physical Knob. Remains geometrically square (aspect-ratio 1/1) —
-   the parent Control may be rectangular, the knob never becomes an ellipse. */
+   the parent Control may be rectangular, the knob never becomes an ellipse.
+   Hardware look per SVG: recessed socket chassis, neon indicator ring,
+   ribbed plastic cap with concave top and glowing pointer notch. */
 .knob-body {
     aspect-ratio: 1 / 1;
     border-radius: 50%;
     box-sizing: border-box;
-    background:
-        linear-gradient(155deg,
-            #2a2d32 0%,
-            #1e2024 35%,
-            #16181b 65%,
-            #0f1012 100%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow:
-        3px 5px 10px rgba(0, 0, 0, 0.5),
-        -1px -1px 4px rgba(255, 255, 255, 0.02),
-        inset 0 1px 0 rgba(255, 255, 255, 0.12),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.25),
-        inset 0 0 6px rgba(0, 0, 0, 0.1);
     position: relative;
     display: flex;
     justify-content: center;
@@ -387,112 +418,331 @@ body {
     overflow: hidden;
 }
 
-.knob-body::before {
-    content: "";
+/* Recessed chassis socket (radial sink behind the ring). */
+.knob-socket {
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    background:
-        radial-gradient(
-            ellipse at 38% 28%,
-            rgba(255, 255, 255, 0.1) 0%,
-            rgba(255, 255, 255, 0.04) 20%,
-            transparent 45%
-        );
+    background: radial-gradient(
+        circle at 50% 50%,
+        #0c0d12 0%,
+        #14161c 78%,
+        #1c1f2a 94%,
+        #07080a 100%
+    );
+    box-shadow: inset 0 0 0 1px #000, inset 0 1px 3px rgba(0, 0, 0, 0.7);
     pointer-events: none;
-    z-index: 1;
 }
 
-.knob-body::after {
-    content: "";
+/* Neon indicator ring. Cyan (normal) or switched to the amber family when the
+   knob is modulated (.modulated). Arc start -135°, end = --knob-arc-end. */
+/* Neon indicator ring. Width mirrors the SVG (r34, stroke 3.5 → 82.5–91.5%
+   of the socket radius, i.e. a wide 9% band). Cyan (normal) or amber when
+   the knob is modulated (.modulated). Arc start -135°, end = --knob-arc-end. */
+.knob-led-ring {
+    --knob-ring-track: #1c202c;
+    --knob-arc-color: #00e5ff;
     position: absolute;
-    inset: 14%;
+    inset: 0;
     border-radius: 50%;
-    background: linear-gradient(155deg, #25292e 0%, #181b1f 100%);
-    box-shadow:
-        inset 0 1px 1px rgba(255, 255, 255, 0.07),
-        inset 0 -1px 1px rgba(0, 0, 0, 0.35),
-        inset 0 0 3px 1px rgba(0, 0, 0, 0.45),
-        0 0 0 1px rgba(255, 255, 255, 0.04);
-    pointer-events: none;
-    z-index: 1;
-}
-
-.knob-position {
-    position: absolute;
-    left: 50%;
-    margin-left: -1.5px;
-    width: 3px;
-    border-radius: 1px;
-    background: rgba(255, 255, 255, 0.85);
-    box-shadow: 0 0 2px rgba(0, 0, 0, 0.4);
     pointer-events: none;
     z-index: 2;
-    /* top, height und transform-origin werden ausschließlich durch applyControlLayout() gesetzt; transform = Drehung */
+    background: conic-gradient(
+        from -135deg,
+        var(--knob-arc-color) 0deg,
+        var(--knob-arc-color) var(--knob-arc-end, -135deg),
+        var(--knob-ring-track) var(--knob-arc-end, -135deg),
+        var(--knob-ring-track) 270deg,
+        transparent 270deg
+    );
+    mask-image: radial-gradient(closest-side, transparent 81.5%, black 82.5%, black 91.5%, transparent 92.5%);
+    -webkit-mask-image: radial-gradient(closest-side, transparent 81.5%, black 82.5%, black 91.5%, transparent 92.5%);
+    filter: drop-shadow(0 0 4px var(--knob-arc-color));
 }
 
-/* Phase 2 — Mod-Nadel: zweite, schmalere Nadel in Warning-Amber; zeigt den
-   MODULIERTEN Wert, während die Matrix läuft. Der Base-Wert bleibt auf
-   .knob-position (weiß). Geometrie (top/height/transform-origin) setzt
-   ausschließlich applyControlLayout(); applyModDisplay setzt nur transform. */
-.knob-mod-position {
+/* Modulation active: base arc turns electric amber, track darkens. */
+.knob-body.modulated .knob-led-ring {
+    --knob-ring-track: #261b10;
+    --knob-arc-color: #ff9a00;
+}
+
+/* Dynamic modulation range overlay — a thinner warm-gold arc slicing the band
+   from the base value to the current modulated value. Live only in USE mode. */
+/* Dynamic modulation range overlay — a thinner warm-gold arc slicing the band
+   from the base value to the current modulated value. Width mirrors the SVG
+   overlay (r34, stroke 2 → ~84.6–89.7% of the socket radius). */
+.knob-mod-ring {
+    --knob-mod-start: -135deg;
+    --knob-mod-end: -135deg;
     position: absolute;
-    left: 50%;
-    margin-left: -1px;
-    width: 2px;
-    border-radius: 1px;
-    background: var(--text-warning);
-    box-shadow: 0 0 3px rgba(251, 191, 36, 0.8);
+    inset: 0;
+    border-radius: 50%;
     pointer-events: none;
     z-index: 3;
+    opacity: 0.85;
+    background: conic-gradient(
+        from -135deg,
+        transparent 0deg,
+        transparent var(--knob-mod-start),
+        #ffc800 var(--knob-mod-start) var(--knob-mod-end),
+        transparent var(--knob-mod-end),
+        transparent 270deg
+    );
+    mask-image: radial-gradient(closest-side, transparent 84%, black 84.6%, black 89.7%, transparent 90.4%);
+    -webkit-mask-image: radial-gradient(closest-side, transparent 84%, black 84.6%, black 89.7%, transparent 90.4%);
+    filter: drop-shadow(0 0 3px #ffc800);
 }
-.knob-mod-position.idle {
+.knob-mod-ring.idle {
     display: none;
 }
 
-/* LED-Lichtkranz: Leuchtender Bogen um den Knob, der den aktuellen Wert
-   als Akzent-Arc darstellt. Start bei -135°, Ende = --knob-arc-end (Winkel).
-   Außerhalb des 270°-Bereichs (unten) ist der Ring transparent. */
-.knob-led-ring {
+/* Plastic cap stack (ribbed grip rim + cap body + concave top).
+   `.knob-cap::before` = gradient bevel ring (SVG bevelLight), `.knob-cap::after`
+   = specular highlight arc along the upper-left of the dished top (SVG path). */
+.knob-cap {
+    position: absolute;
+    inset: 16%;
+    border-radius: 50%;
+    z-index: 1;
+    filter: drop-shadow(0 6px 5px rgba(0, 0, 0, 0.75)) drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
+    pointer-events: none;
+    background: radial-gradient(
+        circle at 35% 30%,
+        #626a7e 0%,
+        #3d4454 30%,
+        #242834 70%,
+        #141720 100%
+    );
+}
+
+/* Gradient bevel light ringing the cap rim (bright upper-left → dark lower-right).
+   SVG r24.2 of cap r26.5 → 91.3% of the cap radius, so the ring band sits
+   around 90–94% of the cap. */
+.knob-cap::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: linear-gradient(
+        160deg,
+        rgba(168, 179, 202, 0.85) 0%,
+        rgba(80, 88, 110, 0.38) 35%,
+        rgba(18, 21, 29, 0.9) 70%,
+        rgba(4, 5, 7, 1) 100%
+    );
+    mask-image: radial-gradient(closest-side, transparent 89.5%, black 90%, black 93.5%, transparent 94.5%);
+    -webkit-mask-image: radial-gradient(closest-side, transparent 89.5%, black 90%, black 93.5%, transparent 94.5%);
+}
+
+/* Specular arc: crisp curved highlight sweeping the dished top. SVG path
+   radius r17 = 64% of the cap radius → diameter 64% of the cap box → inset
+   (100 − 64)/2 = 18% (inset is relative to the CAP, which is 68% of body). */
+.knob-cap::after {
+    content: "";
+    position: absolute;
+    inset: 18%;
+    border-radius: 50%;
+    border: 1.4px solid transparent;
+    border-top-color: rgba(255, 255, 255, 0.32);
+    transform: rotate(-12deg);
+}
+
+/* Ribbed grip ring: dashed tick marks around the cap RIM. SVG keeps the two
+   dash rings at r26 of the r26.5 cap, i.e. ~98% of the cap radius. */
+.knob-rib {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: repeating-conic-gradient(
+        from -2deg,
+        #11131a 0deg 1.6deg,
+        transparent 1.6deg 3.2deg,
+        #11131a 3.2deg 4.8deg,
+        transparent 4.8deg 6.4deg,
+        #5a637a 6.4deg 7deg,
+        transparent 7deg 7.2deg
+    );
+    mask-image: radial-gradient(closest-side, transparent 95%, black 96%, black 98%, transparent 99%);
+    -webkit-mask-image: radial-gradient(closest-side, transparent 95%, black 96%, black 98%, transparent 99%);
+}
+
+/* Concave dished top surface (concaveTop + dark rim + inner bright ring).
+   r20 of the r39 socket = 51.3% of the body radius. Since this element's
+   inset is relative to the CAP box (68% of body), a diameter of 75.4% of the
+   cap equals 51.3% of the body → inset = (100 − 75.4)/2 = 12.3%. */
+.knob-top {
+    position: absolute;
+    inset: 12.3%;
+    border-radius: 50%;
+    background: radial-gradient(
+        circle at 30% 25%,
+        #485063 0%,
+        #2a2f3e 50%,
+        #1a1e28 90%,
+        #141720 100%
+    );
+    box-shadow:
+        inset 0 0 0 1.5px rgba(11, 13, 18, 0.7),
+        inset 0 0 0 2.2px rgba(255, 255, 255, 0.18),
+        inset 0 3px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* Pointer notch: a small rounded groove across the concave rim that rotates
+   with the value about the knob centre. Geometry mirrors the SVG notch
+   (user units 18.5→7 from centre on the r39 socket). */
+.knob-position {
     position: absolute;
     inset: 0;
     border-radius: 50%;
     pointer-events: none;
-    background: conic-gradient(
-        from -135deg,
-        color-mix(in srgb, var(--accent-color) 72%, #0f1012) 0deg,
-        color-mix(in srgb, var(--accent-color) 72%, #0f1012) var(--knob-arc-end, -135deg),
-        rgba(255, 255, 255, 0.08) var(--knob-arc-end, -135deg),
-        rgba(255, 255, 255, 0.08) 270deg,
-        transparent 270deg
-    );
-    mask-image: radial-gradient(closest-side, transparent 80%, black 83%, black 95%, transparent 98%);
-    -webkit-mask-image: radial-gradient(closest-side, transparent 80%, black 83%, black 95%, transparent 98%);
-    z-index: 2;
+    z-index: 4;
+    /* transform-origin: 50% 50%; set by applyControlLayout */
 }
-
-/* Switch Component (a vertical rail; its thumb stays circular) */
-.switch-body {
-    background: #111;
-    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.8);
-    position: relative;
-    border: 1px solid var(--border-color);
-    --toggle-travel: 14px;
-}
-
-.switch-toggle {
-    border-radius: 50%;
+.knob-position::before {
+    content: "";
     position: absolute;
-    top: 2px;
-    background: linear-gradient(145deg, #333, #222);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    left: 50%;
+    top: 26.5%;
+    width: 5%;
+    height: 14.5%;
+    transform: translateX(-50%);
+    border-radius: 1.5px;
+    background: linear-gradient(180deg, #080a0e 0%, #171a24 45%, #14161f 55%, #282d3d 100%);
+    box-shadow: 0 0 0 0.8px rgba(10, 12, 16, 0.9);
+}
+.knob-position::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 28%;
+    width: 2.6%;
+    height: 10.4%;
+    transform: translateX(-50%);
+    border-radius: 1px;
+    background: #00e5ff;
+    filter: drop-shadow(0 0 2px #00e5ff);
+}
+.knob-body.modulated .knob-position::after {
+    background: #ff9a00;
+    filter: drop-shadow(0 0 2px #ff9a00);
+}
+
+/* Switch — vertical 3D slider (POWER-style): recessed track slot, central
+   groove, and a wide rectangular grip handle. ON = handle up with the top of
+   the groove lit cyan; OFF = handle down. */
+.switch-body {
+    position: relative;
+    box-sizing: border-box;
+    --toggle-travel: 14px;
+    background: transparent;
+    border: none;
+}
+
+/* Recessed socket slot the slider rides in. */
+.switch-body::before {
+    content: "";
+    position: absolute;
+    left: 25%;
+    right: 25%;
+    top: 2%;
+    bottom: 2%;
+    border-radius: 6px;
+    background: radial-gradient(
+        circle at 50% 50%,
+        #0c0d12 0%,
+        #161920 72%,
+        #1c1f2a 92%,
+        #07080a 100%
+    );
+    box-shadow: inset 0 0 0 2px #000, inset 0 0 0 3px rgba(40, 44, 58, 0.5);
+    pointer-events: none;
+}
+
+/* Central track groove. */
+.switch-track {
+    position: absolute;
+    left: 46%;
+    right: 46%;
+    top: 7%;
+    bottom: 7%;
+    border-radius: 3px;
+    background: #07080b;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.9);
+    pointer-events: none;
+}
+
+/* ON: the upper part of the groove glows cyan (lit track highlight). */
+.switch-body.on .switch-track::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 4%;
+    transform: translateX(-50%);
+    width: 42%;
+    height: 32%;
+    border-radius: 2px;
+    background: #00e5ff;
+    opacity: 0.75;
+    filter: drop-shadow(0 0 2px #00e5ff);
+}
+
+/* Grip handle: wider than the track, slides vertically. Tactile side grip
+   grooves (SVG lines at x=±14) via a layered width-gradient, bevel ring and
+   top specular highlight via box-shadow. */
+.switch-toggle {
+    position: absolute;
+    left: 50%;
+    top: 4%;
+    width: 46%;
+    height: 30%;
+    box-sizing: border-box;
+    border-radius: 5px;
+    background:
+        linear-gradient(
+            90deg,
+            transparent 0 calc(14% - 0.75px),
+            rgba(20, 23, 32, 0.9) calc(14% - 0.75px) calc(14% + 0.75px),
+            transparent calc(14% + 0.75px) calc(86% - 0.75px),
+            rgba(20, 23, 32, 0.9) calc(86% - 0.75px) calc(86% + 0.75px),
+            transparent calc(86% + 0.75px) 100%
+        ),
+        linear-gradient(180deg, #565f73 0%, #3a4050 25%, #222632 75%, #12151c 100%);
+    box-shadow:
+        0 4px 8px rgba(0, 0, 0, 0.6),
+        0 1px 2px rgba(0, 0, 0, 0.4),
+        0 0 0 1px rgba(168, 179, 202, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.30);
+    z-index: 1;
+    pointer-events: auto;
+    cursor: pointer;
     transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* OFF = handle down; ON = handle up (matching the SVG: upper = ON). */
+.switch-toggle {
+    transform: translateX(-50%) translateY(var(--toggle-travel, 14px));
+}
 .switch-body.on .switch-toggle {
-    transform: translateY(var(--toggle-travel, 14px));
-    background: linear-gradient(145deg, var(--accent-color), var(--accent-hover));
-    box-shadow: 0 2px 10px var(--accent-color);
+    transform: translateX(-50%) translateY(0);
+}
+
+/* Active neon center bar on the handle. */
+.switch-toggle::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 52%;
+    height: 12%;
+    border-radius: 2px;
+    background: rgba(0, 229, 255, 0.2);
+    filter: drop-shadow(0 0 2px rgba(0, 229, 255, 0.4));
+    transition: background 0.2s ease, filter 0.2s ease;
+}
+.switch-body.on .switch-toggle::after {
+    background: #00e5ff;
+    filter: drop-shadow(0 0 3px #00e5ff);
 }
 
 /* ---------- Phase A editor additions ---------- */
@@ -523,9 +773,10 @@ body {
 }
 
 .btn.active {
-    background: var(--accent-color);
-    color: #000;
-    border-color: transparent;
+    background: rgba(0, 229, 255, 0.15);
+    color: var(--accent-color);
+    border-color: rgba(0, 229, 255, 0.35);
+    box-shadow: 0 0 6px rgba(0, 229, 255, 0.3);
 }
 
 .editor-canvas-inner {
@@ -1328,17 +1579,24 @@ body {
     user-select: none;
 }
 
+/* ── MatriX row cosmetics: every route row sits on a subtle raised card, the
+   active row carries an amber wash + spine (amber = modulation language),
+   inactive (gated) rows stay legible but dimmed. */
 .mod-source-row,
 .mod-slot-row {
     display: flex;
     align-items: center;
     gap: 8px;
-    height: 38px;
+    height: 42px;
     box-sizing: border-box;
-    padding: 0;
+    padding: 4px 8px;
+    margin: 2px 0;
+    border-radius: 6px;
+    background: rgba(22, 26, 36, 0.55);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
     font-size: 12px;
     color: var(--text-primary);
-    transition: opacity 0.15s ease;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 
 /* Extra compact controls inside routing rows. */
@@ -1347,11 +1605,11 @@ body {
     height: 24px;
 }
 
-/* Active rows carry a slim accent spine + wash; inactive rows are dimmed. */
+/* Active rows carry a slim amber spine + wash; inactive rows are dimmed. */
 .mod-source-row.on,
 .mod-slot-row.on {
-    background: linear-gradient(90deg, rgba(0, 229, 255, 0.07), transparent 45%);
-    box-shadow: inset 2px 0 0 var(--accent-color);
+    background: linear-gradient(90deg, rgba(255, 154, 0, 0.10), rgba(255, 200, 0, 0.02) 55%);
+    box-shadow: inset 2px 0 0 #ff9a00;
 }
 
 .mod-source-row.on > .mod-source-label,
@@ -1403,13 +1661,13 @@ body {
     cursor: pointer;
 }
 
-/* Modulation ENABLE / ON — pill toggle instead of the native checkbox box.
+/* Routing ON — pill toggle instead of the native checkbox box.
  * The real <input type="checkbox"> stays in the DOM, clickable and
  * keyboard-operable; only its drawing is replaced. Pseudo-elements do not
  * render on inputs, so the sliding nub is a background radial-gradient whose
- * background-position shifts between the two states. */
-.mod-source-row .mod-source-enable,
-.mod-slot-row .mod-slot-enable {
+ * background-position shifts between the two states. Sources are always on
+ * (no enable switch); the routing slot's ON toggle gates the flow. */
+.mod-slot-row input[type="checkbox"].mod-slot-enable {
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
@@ -1430,8 +1688,7 @@ body {
     transition: background-color 0.12s ease, background-position 0.12s ease, box-shadow 0.12s ease;
 }
 
-.mod-source-row .mod-source-enable:checked,
-.mod-slot-row .mod-slot-enable:checked {
+.mod-slot-row input[type="checkbox"].mod-slot-enable:checked {
     background-color: rgba(0, 229, 255, 0.85);
     border-color: var(--accent-hover);
     background-image: radial-gradient(circle, #eafcff 0 9%, #a8f2ff 100%);
@@ -1439,8 +1696,7 @@ body {
     box-shadow: 0 0 6px rgba(0, 229, 255, 0.4);
 }
 
-.mod-source-row .mod-source-enable:focus-visible,
-.mod-slot-row .mod-slot-enable:focus-visible {
+.mod-slot-row input[type="checkbox"].mod-slot-enable:focus-visible {
     outline: 1px solid var(--accent-color);
     outline-offset: 2px;
 }
@@ -1729,10 +1985,34 @@ body {
     border: 0;
     border-radius: 0;
     padding: 7px 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .toolbar-seg .btn + .btn {
     border-left: 1px solid var(--border-color);
+}
+
+.toolbar-seg .btn .history-icon {
+    width: 19px;
+    height: 19px;
+    fill: currentColor;
+}
+
+/* Icon + label buttons in the header: inline-flex so the SVG and text sit on
+   one baseline, matching the SVG mockup's compact controls. */
+.toolbar-left > .btn,
+.toolbar-right > .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.library-icon {
+    width: 13px;
+    height: 13px;
+    color: currentColor;
 }
 
 .toolbar-seg .btn.active {
@@ -1740,8 +2020,31 @@ body {
     box-shadow: inset 0 0 0 1px rgba(0, 229, 255, 0.35);
 }
 
+/* Mod-matrix toggle: compact 34×22 grid-map button. Idle = dark chassis;
+   active (matrix drawer open) = solid accent + glow, mirroring the SVG. */
 .toolbar-seg--mod .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 22px;
+    padding: 0;
+    background: #191c24;
+    color: #8a93a3;
     letter-spacing: 0.5px;
+}
+
+.toolbar-seg--mod .btn .mod-grid-icon {
+    display: block;
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
+.toolbar-seg--mod .btn.active {
+    background: #00e5ff;
+    color: #0b0c0e;
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.7);
 }
 
 /* Primary USE/EDIT pill: accent background with the alternate mode hinted as
@@ -1751,42 +2054,6 @@ body {
     letter-spacing: 0.5px;
     padding: 8px 18px;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-}
-
-/* Connection status chip: colored dot + pill background, text unchanged. */
-.connection-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--border-color);
-    background: rgba(255, 255, 255, 0.04);
-    font-size: 12px;
-}
-
-.connection-status::before {
-    content: "";
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--text-secondary);
-    flex: 0 0 auto;
-}
-
-.connection-status.tone-ok::before {
-    background: #4CAF50;
-    box-shadow: 0 0 5px #4CAF50;
-}
-
-.connection-status.tone-warn::before {
-    background: #ffeb3b;
-    box-shadow: 0 0 5px #ffeb3b;
-}
-
-.connection-status.tone-err::before {
-    background: #f44336;
-    box-shadow: 0 0 5px #f44336;
 }
 
 /* Automation strip status reads as a quiet chip; "IDLE" keeps its text. */
@@ -2142,7 +2409,7 @@ body {
 }
 
 .mode-badge--use {
-    color: #5cd67a;
-    background: rgba(92, 214, 122, 0.1);
-    border-color: rgba(92, 214, 122, 0.35);
+    color: #00e676;
+    background: rgba(0, 230, 118, 0.1);
+    border-color: rgba(0, 230, 118, 0.35);
 }

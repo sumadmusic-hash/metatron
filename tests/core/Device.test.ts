@@ -208,16 +208,14 @@ describe('Core Data Model Invariants', () => {
             expect(slot.enabled).toBe(true);
         });
 
-        it('severs and disables macro sources bound to the deleted control', () => {
+        it('severs macro sources bound to the deleted control', () => {
             const macro = d.modulation.sources[0];
             macro.type = 'macro';
             macro.sourceId = ctl.id;
-            macro.enabled = true;
 
             d.removeControl(ctl.id, true);
 
             expect(macro.sourceId).toBe('');
-            expect(macro.enabled).toBe(false);
         });
 
         it('leaves macro sources bound to a surviving control intact', () => {
@@ -226,12 +224,10 @@ describe('Core Data Model Invariants', () => {
             const macro = d.modulation.sources[0];
             macro.type = 'macro';
             macro.sourceId = other.id;
-            macro.enabled = true;
 
             d.removeControl(ctl.id, true);
 
             expect(macro.sourceId).toBe(other.id);
-            expect(macro.enabled).toBe(true);
         });
 
         it('soft delete keeps modulation references and the control in the map', () => {

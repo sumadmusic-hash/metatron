@@ -34,7 +34,7 @@ function mockBindingManager() {
 }
 
 /* ------------------------------------------------------------------ *
- *  Device with one enabled source + one enabled slot → viable matrix
+ *  Device with one source (always active) + one enabled slot → viable matrix
  * ------------------------------------------------------------------ */
 
 function makeModDevice(controlId = "cutoff"): Device {
@@ -44,9 +44,6 @@ function makeModDevice(controlId = "cutoff"): Device {
     device.addControl(control);
 
     const matrix = createDefaultMatrix();
-    // Enable source 1 (sine LFO, 1 Hz)
-    matrix.sources[0].enabled = true;
-    // Enable slot 1 → destination = our control
     matrix.slots[0].enabled = true;
     matrix.slots[0].destControlId = controlId;
     matrix.slots[0].amount = 1;
@@ -169,7 +166,6 @@ describe("ModulationRunner — Capture-Arbitration", () => {
         device.addControl(c2);
 
         const matrix = createDefaultMatrix();
-        matrix.sources[0].enabled = true;
         matrix.slots[0].enabled = true;
         matrix.slots[0].destControlId = "c1";
         matrix.slots[0].amount = 1;
@@ -201,7 +197,6 @@ describe("ModulationRunner — Capture-Arbitration", () => {
         device.addControl(c2);
 
         const matrix = createDefaultMatrix();
-        matrix.sources[0].enabled = true;
         matrix.slots[0].enabled = true;
         matrix.slots[0].destControlId = "c1";
         matrix.slots[0].amount = 1;
@@ -212,7 +207,8 @@ describe("ModulationRunner — Capture-Arbitration", () => {
         matrix.slots[1].sourceId = matrix.sources[0].id;
         device.modulation = matrix;
 
-        const { runner, surface } = makeRunner(device);
+        const { runner, recorder, adapter, surface } = makeRunner(device, "IDLE");
+
         runner.start();
 
         (runner as any).tick(performance.now());
@@ -324,22 +320,34 @@ describe("SurfaceUI.applyModDisplay — idle-Toggle", () => {
             () => {},
         );
 
+        // The modulated knob carries the amber ring state; an unmodulated
+        // second control must NOT — the glow ring stays cyan for it.
+        device.addControl(new Control("knob", "Reso", { x: 0, y: 0 }, "reso"));
+
         // Render to create the knob DOM
         const root = document.createElement("div");
         document.body.appendChild(root);
         surface.render(root);
 
-        const modPos = root.querySelector<HTMLElement>(".knob-mod-position");
-        expect(modPos).toBeTruthy();
-        expect(modPos!.classList.contains("idle")).toBe(true);
+        const cutoffBody = root.querySelector<HTMLElement>(".knob-body.modulated");
+        expect(cutoffBody).toBeTruthy();
+        (root.querySelectorAll(".knob-body") as unknown as HTMLElement[]).forEach((b) => {
+            const name = b.closest("[data-ctl-id]")?.getAttribute("data-ctl-id");
+            expect(b.classList.contains("modulated")).toBe(name === "cutoff");
+        });
 
-        // applyModDisplay with a value → idle removed, transform set
+        const modRing = root.querySelector<HTMLElement>(".knob-mod-ring");
+        expect(modRing).toBeTruthy();
+        expect(modRing!.classList.contains("idle")).toBe(true);
+
+        // applyModDisplay with a value → idle removed, amber arc end set
         surface.applyModDisplay("cutoff", 0.7);
-        expect(modPos!.classList.contains("idle")).toBe(false);
-        expect(modPos!.style.transform).toContain("rotate");
+        expect(modRing!.classList.contains("idle")).toBe(false);
+        expect(modRing!.style.getPropertyValue("--knob-mod-start")).toContain("deg");
+        expect(modRing!.style.getPropertyValue("--knob-mod-end")).toBe("54deg");
 
         // applyModDisplay with null → idle added
         surface.applyModDisplay("cutoff", null);
-        expect(modPos!.classList.contains("idle")).toBe(true);
+        expect(modRing!.classList.contains("idle")).toBe(true);
     });
 });

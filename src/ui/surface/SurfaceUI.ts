@@ -7,6 +7,7 @@ import { NexusLearnFlow } from "../../nexus/NexusLearnFlow";
 import { MidiLearn, MidiLearnTimeoutError } from "../../midi/MidiLearn";
 import { Toast } from "../Toast";
 import { computeControlLayout } from "../geometry";
+import { isModulated } from "../../core/modulation/ModulationMatrix";
 import { WRITE_REFUSED_CLASS, WRITE_REFUSED_TITLE } from "../writeRefusal";
 import type { MidiBindingDefinition } from "../../core/model/types";
 
@@ -36,7 +37,7 @@ private container!: HTMLElement;
     /** Phase 2 — rendered element cache (FIX 10): every control's live DOM
      *  refs, rebuilt on each render, so per-tick value updates never query the
      *  container again. */
-    private ctlElements = new Map<string, { ring: HTMLElement | null; pos: HTMLElement | null; sw: HTMLElement | null; modPos: HTMLElement | null }>();
+    private ctlElements = new Map<string, { ring: HTMLElement | null; pos: HTMLElement | null; sw: HTMLElement | null; modRing: HTMLElement | null }>();
 
     constructor(
         deviceLibrary: DeviceLibrary,
@@ -132,6 +133,14 @@ private container!: HTMLElement;
         if (refs.ring) {
             refs.ring.style.setProperty("--knob-arc-end", `${value * 270}deg`);
         }
+        if (refs.modRing) {
+            refs.modRing.dataset.baseValue = String(value);
+            const end = this.modLiveEnd.get(controlId);
+            if (end !== undefined && !refs.modRing.classList.contains("idle")) {
+                refs.modRing.style.setProperty("--knob-mod-start", `${-135 + (value * 270)}deg`);
+                refs.modRing.style.setProperty("--knob-mod-end", `${end}deg`);
+            }
+        }
         if (refs.pos) {
             refs.pos.style.transform = `rotate(${-135 + (value * 270)}deg)`;
         }
@@ -140,17 +149,26 @@ private container!: HTMLElement;
         }
     }
 
-    /** Phase 2 — Mod-Anzeige: dreht die Amber-Nadel auf den modulierten Wert,
-     *  ohne control.value anzutasten (Base bleibt Base). null = Nadel aus. */
+    /** Phase 2 — last live modulated end-angle per control (for base updates). */
+    private modLiveEnd = new Map<string, number>();
+
+    /** Phase 2 — Mod-Anzeige: zeichnet den Amber-Modulationsbogen auf dem
+     *  Ring von der Basis (control.value) bis zum modulierten Wert. Ohne
+     *  control.value anzutasten (Base bleibt Base). null = Bogen aus. */
     public applyModDisplay(controlId: string, modulated: number | null): void {
         const refs = this.ctlElements.get(controlId);
-        if (!refs?.modPos) return;
+        if (!refs?.modRing) return;
         if (modulated === null) {
-            refs.modPos.classList.add("idle");
+            refs.modRing.classList.add("idle");
+            this.modLiveEnd.delete(controlId);
             return;
         }
-        refs.modPos.classList.remove("idle");
-        refs.modPos.style.transform = `rotate(${-135 + (modulated * 270)}deg)`;
+        refs.modRing.classList.remove("idle");
+        const base = Number(refs.modRing.dataset.baseValue ?? 0);
+        const end = -135 + (modulated * 270);
+        this.modLiveEnd.set(controlId, end);
+        refs.modRing.style.setProperty("--knob-mod-start", `${-135 + (base * 270)}deg`);
+        refs.modRing.style.setProperty("--knob-mod-end", `${end}deg`);
     }
 
     /**
@@ -223,25 +241,40 @@ private container!: HTMLElement;
         }
 
         if (control.type === "knob") {
+            const device = this.deviceLibrary.currentDevice;
+            const modulated = !!device && isModulated(device.modulation, control.id);
+            if (modulated) el.classList.add("modulated");
             const body = document.createElement("div");
-            body.className = "knob-body";
+            body.className = "knob-body" + (modulated ? " modulated" : "");
+
+            const socket = document.createElement("div");
+            socket.className = "knob-socket";
+            body.appendChild(socket);
 
             const ring = document.createElement("div");
             ring.className = "knob-led-ring";
             ring.style.setProperty("--knob-arc-end", `${control.value * 270}deg`);
             body.appendChild(ring);
 
+            // Phase 2 — dynamic amber arc: base value → modulated value on the
+            // ring band. Toggled by applyModDisplay; `.idle` hides it.
+            const modRing = document.createElement("div");
+            modRing.className = "knob-mod-ring idle";
+            body.appendChild(modRing);
+
+            const cap = document.createElement("div");
+            cap.className = "knob-cap";
+            const rib = document.createElement("div");
+            rib.className = "knob-rib";
+            const top = document.createElement("div");
+            top.className = "knob-top";
+            cap.append(rib, top);
+            body.appendChild(cap);
+
             const position = document.createElement("div");
             position.className = "knob-position";
             position.style.transform = `rotate(${-135 + (control.value * 270)}deg)`;
             body.appendChild(position);
-
-            // Phase 2 — amber modulation needle (second, slimmer pointer). The
-            // runner drives it via applyModDisplay; geometry is set by
-            // applyControlLayout. `.idle` hides it when not modulated.
-            const modPos = document.createElement("div");
-            modPos.className = "knob-mod-position idle";
-            body.appendChild(modPos);
 
             visualArea.appendChild(body);
 
@@ -249,6 +282,9 @@ private container!: HTMLElement;
         } else {
             const body = document.createElement("div");
             body.className = "switch-body" + (control.value > 0.5 ? " on" : "");
+            const track = document.createElement("div");
+            track.className = "switch-track";
+            body.appendChild(track);
             const toggle = document.createElement("div");
             toggle.className = "switch-toggle";
             body.appendChild(toggle);
@@ -363,7 +399,7 @@ private container!: HTMLElement;
             ring: el.querySelector(".knob-led-ring"),
             pos: el.querySelector(".knob-position"),
             sw: el.querySelector(".switch-body"),
-            modPos: el.querySelector(".knob-mod-position"),
+            modRing: el.querySelector(".knob-mod-ring"),
         });
     }
 
@@ -478,27 +514,14 @@ private container!: HTMLElement;
             widget.style.borderRadius = "50%";
             const pos = el.querySelector<HTMLElement>(".knob-position");
             if (pos) {
-                const topPct = 0.18;
-                const heightPct = 0.18;
-                pos.style.top = `${layout.widgetWidth * topPct}px`;
-                pos.style.height = `${Math.max(6, Math.round(layout.widgetWidth * heightPct))}px`;
-                pos.style.transformOrigin = `50% ${layout.widgetWidth * (0.5 - topPct)}px`;
-            }
-            const modPos = el.querySelector<HTMLElement>(".knob-mod-position");
-            if (modPos) {
-                modPos.style.top = `${layout.widgetWidth * 0.18}px`;
-                modPos.style.height = `${Math.max(5, Math.round(layout.widgetWidth * 0.14))}px`;
-                modPos.style.transformOrigin = `50% ${layout.widgetWidth * (0.5 - 0.18)}px`;
+                pos.style.inset = "0";
+                pos.style.transformOrigin = "50% 50%";
             }
         } else {
-            widget.style.borderRadius = `${layout.widgetWidth / 2}px`;
+            widget.style.borderRadius = "6px";
             const toggle = el.querySelector<HTMLElement>(".switch-toggle");
             if (toggle) {
-                const toggleSize = Math.max(14, layout.widgetWidth - 4);
-                toggle.style.width = `${toggleSize}px`;
-                toggle.style.height = `${toggleSize}px`;
-                toggle.style.left = `${(layout.widgetWidth - toggleSize) / 2}px`;
-                const travel = Math.max(0, layout.widgetHeight - toggleSize - 2);
+                const travel = Math.max(8, Math.round(layout.widgetHeight * 0.66));
                 widget.style.setProperty("--toggle-travel", `${travel}px`);
             }
         }

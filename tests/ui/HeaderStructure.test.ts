@@ -92,7 +92,7 @@ describe("Header Restructure B: two-group layout with EDIT/USE as final control,
         // Left group: title, Library, connection UI (URL + Connect + status), Undo, Redo.
         expect(left.querySelector(".app-title")).toBeTruthy();
         expect(buttonsIn(left).map((b) => b.innerText)).toEqual(
-            expect.arrayContaining(["Library", "Connect", "Undo", "Redo"]),
+            expect.arrayContaining(["Library", "Connect"]),
         );
         expect(left.querySelector<HTMLInputElement>("input[placeholder='Audiotool Project URL...']")).toBeTruthy();
 
@@ -180,10 +180,10 @@ describe("Header Restructure B: two-group layout with EDIT/USE as final control,
         expect(wrappers()).toBe(2);
         expect(document.getElementById("history-undo")).toBeTruthy();
 
-        buttonsIn(root).find((b) => b.innerText === "Undo")!.click();
+        document.getElementById("history-undo")!.click();
         expect(wrappers()).toBe(1);
 
-        buttonsIn(root).find((b) => b.innerText === "Redo")!.click();
+        document.getElementById("history-redo")!.click();
         expect(wrappers()).toBe(2);
     });
 
@@ -218,7 +218,7 @@ describe("Header Restructure B: two-group layout with EDIT/USE as final control,
 
         expect(root.querySelector(".app-title")!.textContent).toBe("Metatron | HDR");
         expect(buttonsIn(root).map((b) => b.innerText)).toEqual(
-            expect.arrayContaining(["Library", "Connect", "Undo", "Redo"]),
+            expect.arrayContaining(["Library", "Connect"]),
         );
         expect(root.querySelector<HTMLInputElement>("input[placeholder='Audiotool Project URL...']")).toBeTruthy();
         expect(root.querySelector(".automation-strip")).toBeTruthy();

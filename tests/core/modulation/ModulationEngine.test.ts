@@ -19,7 +19,6 @@ function source(partial: Partial<ModSource> & { id: string }): ModSource {
         noteDivision: 4,
         phase: 0,
         drift: 0.5,
-        enabled: true,
         sourceId: "",
         smoothMs: 200,
         ...partial,
@@ -124,8 +123,6 @@ describe("ModulationEngine — evaluateDestinations", () => {
         const matrix = createDefaultMatrix();
         matrix.sources[0].waveform = "square";
         matrix.sources[1].waveform = "square";
-        matrix.sources[0].enabled = true;
-        matrix.sources[1].enabled = true;
         matrix.slots[0] = { ...matrix.slots[0], enabled: true, sourceId: "mod1", destControlId: "cut", amount: amounts[0] };
         matrix.slots[1] = { ...matrix.slots[1], enabled: true, sourceId: "mod2", destControlId: "cut", amount: amounts[1] };
         return matrix;
@@ -147,7 +144,6 @@ describe("ModulationEngine — evaluateDestinations", () => {
     it("skips disabled slots, dangling sourceIds, and missing destinations", () => {
         const matrix = createDefaultMatrix();
         matrix.sources[0].waveform = "square";
-        matrix.sources[0].enabled = true;
         matrix.slots[0] = { ...matrix.slots[0], enabled: true, sourceId: "mod1", destControlId: "cut", amount: 0.5 };
         matrix.slots[1] = { ...matrix.slots[1], enabled: true, sourceId: "ghost", destControlId: "other", amount: 0.5 };
         matrix.slots[2] = { ...matrix.slots[2], enabled: true, sourceId: "mod1", destControlId: "missing", amount: 0.5 };
@@ -189,8 +185,6 @@ describe("ModulationEngine — macro sources (FIX 7)", () => {
         const matrix = createDefaultMatrix();
         matrix.sources[0] = { ...matrix.sources[0], type: "macro", sourceId: "ctlA" };
         matrix.sources[1] = { ...matrix.sources[1], type: "macro", sourceId: "ctlB" };
-        matrix.sources[0].enabled = true;
-        matrix.sources[1].enabled = true;
         matrix.slots[0] = { ...matrix.slots[0], enabled: true, sourceId: "mod1", destControlId: "x", amount: 1 };
         matrix.slots[1] = { ...matrix.slots[1], enabled: true, sourceId: "mod2", destControlId: "y", amount: 1 };
         const macroValue = (id: string): number => (id === "ctlA" ? 1 : 0);

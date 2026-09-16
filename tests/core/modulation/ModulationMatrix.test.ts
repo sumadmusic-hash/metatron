@@ -13,12 +13,11 @@ import { evaluateDestinations } from "../../../src/core/modulation/ModulationEng
 import { Device } from "../../../src/core/model/Device";
 
 describe("ModulationMatrix — defaults (FIX 4 fallback)", () => {
-    it("parse(undefined) → default matrix with 10 sources and 20 slots, everything disabled", () => {
+    it("parse(undefined) → default matrix with 10 sources and 20 slots, all slots disabled", () => {
         const matrix = parseModulationMatrix(undefined);
         expect(matrix.sources).toHaveLength(MAX_MOD_SOURCES);
         expect(matrix.slots).toHaveLength(MAX_MOD_SLOTS);
         for (const s of matrix.sources) {
-            expect(s.enabled).toBe(false);
             expect(s.type).toBe("lfo");
             expect(s.waveform).toBe("sine");
         }
@@ -107,7 +106,7 @@ describe("ModulationMatrix — roundtrip and Device integration", () => {
     it("serialize → parse roundtrip preserves the matrix exactly", () => {
         const matrix = createDefaultMatrix();
         matrix.slots[0] = { ...matrix.slots[0], enabled: true, sourceId: "mod1", destControlId: "knob1", amount: 0.6 };
-        matrix.sources[0] = { ...matrix.sources[0], waveform: "saw", rateHz: 4, phase: 0.25, enabled: true };
+        matrix.sources[0] = { ...matrix.sources[0], waveform: "saw", rateHz: 4, phase: 0.25 };
 
         const parsed = parseModulationMatrix(serializeModulationMatrix(matrix));
         expect(parsed).toEqual(matrix);

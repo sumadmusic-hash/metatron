@@ -183,25 +183,6 @@ function lookupLabelFor(root: HTMLElement, input: Element): HTMLLabelElement | n
 });
 
 describe("ModMatrixUI — history integration", () => {
-    it("a source-row enable toggle records ONE undoable matrix.edit and restores exactly on undo", () => {
-        const device = makeDevice();
-        const { history, ui } = makeDeps(device);
-        const container = mount(ui);
-
-        const checkbox = container.querySelector<HTMLInputElement>(".mod-source-row .mod-source-enable");
-        expect(checkbox).toBeTruthy();
-        expect(device.modulation.sources[0].enabled).toBe(false);
-
-        checkbox!.checked = true;
-        checkbox!.dispatchEvent(new Event("change", { bubbles: true }));
-        expect(device.modulation.sources[0].enabled).toBe(true);
-
-        expect(history.canUndoOnCurrentDevice).toBe(true);
-
-        history.undo();
-        expect(device.modulation.sources[0].enabled).toBe(false);
-    });
-
     it("matrix edit is undoable and restores the matrix exactly", () => {
         const device = makeDevice();
         const { history, ui } = makeDeps(device);
@@ -209,7 +190,6 @@ describe("ModMatrixUI — history integration", () => {
         ui.render();
 
         const snapshotBefore = history.captureDeviceState(device);
-        device.modulation.sources[0].enabled = true;
         device.modulation.slots[0].enabled = true;
         const snapshotAfter = history.captureDeviceState(device);
         history.record({
@@ -220,11 +200,9 @@ describe("ModMatrixUI — history integration", () => {
         expect(history.canUndoOnCurrentDevice).toBe(true);
 
         history.undo();
-        expect(device.modulation.sources[0].enabled).toBe(false);
         expect(device.modulation.slots[0].enabled).toBe(false);
 
         history.redo();
-        expect(device.modulation.sources[0].enabled).toBe(true);
         expect(device.modulation.slots[0].enabled).toBe(true);
     });
 });

@@ -103,9 +103,8 @@ export class ModulationRunner {
         if (!device) return;
         const tSec = (now - this.startTimeSec) / 1000;
 
-        const sources = device.modulation.sources;
         const slots = device.modulation.slots;
-        if (!sources.some((s) => s.enabled) || !slots.some((s) => s.enabled)) {
+        if (!slots.some((s) => s.enabled)) {
             this.activeDestinationIds.clear();
             return;
         }

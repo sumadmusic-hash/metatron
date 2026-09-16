@@ -89,7 +89,6 @@ export class Device {
         for (const src of this.modulation.sources) {
             if (src.type === "macro" && src.sourceId === controlId) {
                 src.sourceId = "";
-                src.enabled = false;
             }
         }
     }

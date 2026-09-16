@@ -351,7 +351,7 @@ export class ModMatrixUI {
     private renderSourceRow(src: ModSource, index: number): HTMLElement {
         const device = this.deviceLibrary.currentDevice;
         const row = document.createElement("div");
-        row.className = "mod-source-row" + (src.enabled ? " on" : " off");
+        row.className = "mod-source-row on";
         row.dataset.sourceId = src.id;
 
         const label = document.createElement("span");
@@ -435,18 +435,6 @@ export class ModMatrixUI {
             drift.onchange = () => this.editSource(src, () => { src.drift = Number(drift.value); });
             row.appendChild(this.field("Drift", drift));
         }
-
-        const enable = document.createElement("input");
-        enable.type = "checkbox";
-        enable.id = `mod-src-enable-${src.id}`;
-        enable.className = "mod-source-enable";
-        enable.checked = src.enabled;
-        enable.onchange = () => {
-            this.editSource(src, () => { src.enabled = enable.checked; });
-            row.classList.toggle("on", enable.checked);
-            row.classList.toggle("off", !enable.checked);
-        };
-        row.appendChild(this.field("Enable", enable, "check"));
 
         return row;
     }

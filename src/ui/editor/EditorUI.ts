@@ -9,6 +9,7 @@ import { MidiMapping } from "../../midi/MidiMapping";
 import { NexusLearnFlow } from "../../nexus/NexusLearnFlow";
 import { MidiLearn, MidiLearnTimeoutError } from "../../midi/MidiLearn";
 import { computeControlLayout, CONTROL_MIN_SIZE, contrastTextColor } from "../geometry";
+import { isModulated } from "../../core/modulation/ModulationMatrix";
 import { DeviceHistory } from "../../core/history/DeviceHistory";
 import { patchesEqual } from "../../core/history/HistoryAction";
 import { WRITE_REFUSED_CLASS, WRITE_REFUSED_TITLE } from "../writeRefusal";
@@ -372,30 +373,48 @@ export class EditorUI {
 
         // Physical knob / switch (the knob stays geometrically square)
         if (control.type === "knob") {
+            const device = this.deviceLibrary.currentDevice;
+            const modulated = !!device && isModulated(device.modulation, control.id);
+            if (modulated) el.classList.add("modulated");
             const body = document.createElement("div");
-            body.className = "knob-body";
+            body.className = "knob-body" + (modulated ? " modulated" : "");
+
+            const socket = document.createElement("div");
+            socket.className = "knob-socket";
+            body.appendChild(socket);
 
             const ring = document.createElement("div");
             ring.className = "knob-led-ring";
             ring.style.setProperty("--knob-arc-end", `${control.value * 270}deg`);
             body.appendChild(ring);
 
+            // Phase 2 — amber modulation arc (dormant in EDIT mode: the runner
+            // only drives the USE surface). `.idle` keeps it hidden by default.
+            const modRing = document.createElement("div");
+            modRing.className = "knob-mod-ring idle";
+            body.appendChild(modRing);
+
+            const cap = document.createElement("div");
+            cap.className = "knob-cap";
+            const rib = document.createElement("div");
+            rib.className = "knob-rib";
+            const top = document.createElement("div");
+            top.className = "knob-top";
+            cap.append(rib, top);
+            body.appendChild(cap);
+
             const position = document.createElement("div");
             position.className = "knob-position";
             position.style.transform = `rotate(${-135 + (control.value * 270)}deg)`;
             body.appendChild(position);
 
-            // Phase 2 — amber modulation needle (dormant in EDIT mode: the
-            // runner only drives the USE surface). Geometry set by
-            // applyControlLayout; `.idle` keeps it hidden by default.
-            const modPos = document.createElement("div");
-            modPos.className = "knob-mod-position idle";
-            body.appendChild(modPos);
-
             visualArea.appendChild(body);
         } else {
             const body = document.createElement("div");
             body.className = "switch-body" + (control.value > 0.5 ? " on" : "");
+            const track = document.createElement("div");
+            track.className = "switch-track";
+            body.appendChild(track);
             const toggle = document.createElement("div");
             toggle.className = "switch-toggle";
             body.appendChild(toggle);
@@ -662,27 +681,14 @@ export class EditorUI {
             widget.style.borderRadius = "50%";
             const pos = el.querySelector<HTMLElement>(".knob-position");
             if (pos) {
-                const topPct = 0.18;
-                const heightPct = 0.18;
-                pos.style.top = `${layout.widgetWidth * topPct}px`;
-                pos.style.height = `${Math.max(6, Math.round(layout.widgetWidth * heightPct))}px`;
-                pos.style.transformOrigin = `50% ${layout.widgetWidth * (0.5 - topPct)}px`;
-            }
-            const modPos = el.querySelector<HTMLElement>(".knob-mod-position");
-            if (modPos) {
-                modPos.style.top = `${layout.widgetWidth * 0.18}px`;
-                modPos.style.height = `${Math.max(5, Math.round(layout.widgetWidth * 0.14))}px`;
-                modPos.style.transformOrigin = `50% ${layout.widgetWidth * (0.5 - 0.18)}px`;
+                pos.style.inset = "0";
+                pos.style.transformOrigin = "50% 50%";
             }
         } else {
-            widget.style.borderRadius = `${layout.widgetWidth / 2}px`;
+            widget.style.borderRadius = "6px";
             const toggle = el.querySelector<HTMLElement>(".switch-toggle");
             if (toggle) {
-                const toggleSize = Math.max(14, layout.widgetWidth - 4);
-                toggle.style.width = `${toggleSize}px`;
-                toggle.style.height = `${toggleSize}px`;
-                toggle.style.left = `${(layout.widgetWidth - toggleSize) / 2}px`;
-                const travel = Math.max(0, layout.widgetHeight - toggleSize - 2);
+                const travel = Math.max(8, Math.round(layout.widgetHeight * 0.66));
                 widget.style.setProperty("--toggle-travel", `${travel}px`);
             }
         }

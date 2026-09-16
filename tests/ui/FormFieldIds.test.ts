@@ -38,7 +38,6 @@ function buildDevice(): Device {
     device.setControlGroup("c1", group.id);
 
     const matrix = createDefaultMatrix();
-    matrix.sources[0].enabled = true;
     matrix.slots[0].enabled = true;
     matrix.slots[0].destControlId = "c1";
     matrix.slots[0].sourceId = matrix.sources[0].id;
@@ -91,7 +90,6 @@ describe("Form field id/name hygiene (autofill warning)", () => {
         expect(root.querySelector(`#ctl-color-${c1.id}`)).toBeTruthy();
         expect(root.querySelector(`#ctl-group-${c1.id}`)).toBeTruthy();
         expect(root.querySelector(`#grp-color-${group.id}`)).toBeTruthy();
-        expect(root.querySelector("#mod-src-enable-mod1")).toBeTruthy();
         expect(root.querySelector("#mod-slot-src-slot1")).toBeTruthy();
         expect(root.querySelector("#mod-slot-dest-slot1")).toBeTruthy();
     });

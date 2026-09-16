@@ -86,7 +86,6 @@ function sanitizeSource(source: unknown, index: number): ModSource {
         noteDivision: Math.max(1, Math.round(finiteNum(record.noteDivision, 4))),
         phase: clampPhase(record.phase),
         drift: clamp(finiteNum(record.drift, 0.5), 0, 1),
-        enabled: record.enabled === true,
         sourceId: typeof record.sourceId === "string" ? record.sourceId : "",
         smoothMs: Math.min(10000, Math.max(0, finiteNum(record.smoothMs, 200))),
     };
@@ -165,4 +164,10 @@ export function parseModulationMatrix(value: unknown): ModulationMatrixConfig {
  *  clone so the stored JSON can never alias the live Device matrix. */
 export function serializeModulationMatrix(matrix: ModulationMatrixConfig): unknown {
     return cloneModulationMatrix(matrix);
+}
+
+/** True when a control is the destination of at least one ENABLED routing slot
+ *  (i.e. it is currently being modulated). Used for the amber knob visuals. */
+export function isModulated(matrix: ModulationMatrixConfig, controlId: string): boolean {
+    return matrix.slots.some((slot) => slot.enabled && slot.destControlId === controlId);
 }

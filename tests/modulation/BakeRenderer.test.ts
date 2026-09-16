@@ -19,7 +19,6 @@ function makeDevice(): Device {
     ctl1.value = 0.5;
 
     const src = device.modulation.sources[0];
-    src.enabled = true;
     src.waveform = "sine";
     src.rateHz = 2;
 
@@ -100,7 +99,6 @@ describe("renderMatrixToRecording", () => {
         const macro = device.modulation.sources[1];
         macro.type = "macro";
         macro.sourceId = ctl.id;
-        macro.enabled = true;
 
         const slot = device.modulation.slots[0];
         slot.enabled = true;

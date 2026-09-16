@@ -591,7 +591,7 @@ export class AppUI {
         // FIX 6 — Runner-Lifecycle: bei JEDEM Device-Wechsel stoppen (auch wenn
         // kein Device bleibt), nur für eine modulierungsfähige Matrix starten.
         this.modRunner?.stop();
-        if (device && device.modulation.sources.some((s) => s.enabled) && device.modulation.slots.some((s) => s.enabled)) {
+        if (device && device.modulation.slots.some((s) => s.enabled)) {
             this.modRunner?.start();
         }
         this.render();
@@ -608,7 +608,7 @@ export class AppUI {
         if (this.connectionStatusEl) {
             this.connectionStatusEl.innerText = text;
             this.connectionStatusEl.title = text;
-            this.connectionStatusEl.style.color = color;
+            this.connectionStatusEl.style.setProperty("--conn-color", color);
             this.connectionStatusEl.classList.toggle("tone-ok", color === "#4CAF50");
             this.connectionStatusEl.classList.toggle("tone-warn", color === "#ffeb3b");
             this.connectionStatusEl.classList.toggle("tone-err", color === "#f44336");
@@ -663,7 +663,12 @@ export class AppUI {
 
 const libraryBtn = document.createElement("button");
 libraryBtn.className = "btn" + (this.sidebarCollapsed ? "" : " active");
-libraryBtn.innerText = "Library";
+libraryBtn.innerHTML =
+    '<svg class="library-icon" viewBox="0 0 14 14" aria-hidden="true" focusable="false">' +
+    '<rect x="1" y="1" width="8" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/>' +
+    '<line x1="6" y1="1" x2="6" y2="13" stroke="currentColor" stroke-width="1.2"/>' +
+    '</svg>' +
+    '<span>Library</span>';
 libraryBtn.title = this.sidebarCollapsed ? "Show library" : "Hide library";
 libraryBtn.onclick = () => {
     this.sidebarCollapsed = !this.sidebarCollapsed;
@@ -697,8 +702,8 @@ toolbarLeft.appendChild(libraryBtn);
         
         const connectionStatus = document.createElement("span");
         connectionStatus.className = "connection-status";
-        connectionStatus.style.fontSize = "12px";
-        connectionStatus.style.color = this.currentConnectionStatus?.color ?? "var(--text-secondary)";
+        const statusColor = this.currentConnectionStatus?.color ?? "#ff3366";
+        connectionStatus.style.setProperty("--conn-color", statusColor);
         connectionStatus.innerText = this.currentConnectionStatus?.text ?? this.connectionLabel();
         connectionStatus.title = connectionStatus.innerText;
         this.connectionStatusEl = connectionStatus;
@@ -738,7 +743,11 @@ toolbarLeft.appendChild(libraryBtn);
         const undoBtn = document.createElement("button");
         undoBtn.id = "history-undo";
         undoBtn.className = "btn";
-        undoBtn.innerText = "Undo";
+        undoBtn.innerHTML =
+            '<svg class="history-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+            '<path d="M9 10h6c1.654 0 3 1.346 3 3s-1.346 3-3 3h-3v2h3c2.757 0 5-2.243 5-5s-2.243-5-5-5H9V5L4 9l5 4v-3z" fill="currentColor"/>' +
+            '</svg>';
+        undoBtn.setAttribute("aria-label", "Undo last action (Cmd/Ctrl+Z)");
         undoBtn.title = "Undo last action (Cmd/Ctrl+Z)";
         undoBtn.onclick = () => this.performUndoRedo("undo");
         this.undoBtn = undoBtn;
@@ -746,7 +755,11 @@ toolbarLeft.appendChild(libraryBtn);
         const redoBtn = document.createElement("button");
         redoBtn.id = "history-redo";
         redoBtn.className = "btn";
-        redoBtn.innerText = "Redo";
+        redoBtn.innerHTML =
+            '<svg class="history-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+            '<path transform="translate(24,0) scale(-1,1)" d="M9 10h6c1.654 0 3 1.346 3 3s-1.346 3-3 3h-3v2h3c2.757 0 5-2.243 5-5s-2.243-5-5-5H9V5L4 9l5 4v-3z" fill="currentColor"/>' +
+            '</svg>';
+        redoBtn.setAttribute("aria-label", "Redo last undone action (Shift+Cmd/Ctrl+Z)");
         redoBtn.title = "Redo last undone action (Shift+Cmd/Ctrl+Z)";
         redoBtn.onclick = () => this.performUndoRedo("redo");
         this.redoBtn = redoBtn;
@@ -761,8 +774,16 @@ toolbarLeft.appendChild(libraryBtn);
         const modBtn = document.createElement("button");
         modBtn.id = "mod-matrix-toggle";
         modBtn.className = "btn" + (this.modMatrixOpen ? " active" : "");
-        modBtn.innerText = "MOD";
+        modBtn.setAttribute("aria-label", "Toggle modulation matrix");
         modBtn.title = "Toggle modulation matrix";
+        // 2×2 grid icon — the modulation matrix's map symbol.
+        modBtn.innerHTML =
+            '<svg class="mod-grid-icon" viewBox="0 0 14 14" aria-hidden="true" focusable="false">' +
+            '<rect x="0" y="0" width="5.5" height="5.5" rx="1"/>' +
+            '<rect x="8.5" y="0" width="5.5" height="5.5" rx="1"/>' +
+            '<rect x="0" y="8.5" width="5.5" height="5.5" rx="1"/>' +
+            '<rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1"/>' +
+            "</svg>";
         modBtn.onclick = () => {
             this.modMatrixOpen = !this.modMatrixOpen;
             this.modMatrixUI.toggleDrawer();
@@ -845,7 +866,7 @@ toolbarLeft.appendChild(libraryBtn);
         // FIX 6 — start the runner when a modulatable matrix is live after
         // every render; otherwise keep it stopped.
         const modDevice = this.deviceLibrary.currentDevice;
-        if (modDevice && modDevice.modulation.sources.some((s) => s.enabled) && modDevice.modulation.slots.some((s) => s.enabled)) {
+        if (modDevice && modDevice.modulation.slots.some((s) => s.enabled)) {
             this.modRunner?.start();
         } else {
             this.modRunner?.stop();

@@ -33,7 +33,6 @@ function makeDevice(): { device: Device; ctrl: Control } {
     device.addControl(ctrl);
 
     const matrix = createDefaultMatrix();
-    matrix.sources[0].enabled = true;
     matrix.slots[0].enabled = true;
     matrix.slots[0].destControlId = "k1";
     matrix.slots[0].sourceId = matrix.sources[0].id;

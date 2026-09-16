@@ -40,8 +40,6 @@ export interface ModSource {
     phase: number;
     /** Random depth (noise sources scale their output by this). */
     drift: number;
-    /** Whether the source participates in live engine evaluation. */
-    enabled: boolean;
     /** Reference key: macro control id for "macro", seed namespace for noise. */
     sourceId: string;
     /** Random-source smoothing window in milliseconds ([0, 10000], default 200). */
@@ -83,7 +81,6 @@ export function createDefaultMatrix(): ModulationMatrixConfig {
             noteDivision: 4,
             phase: 0,
             drift: 0.5,
-            enabled: false,
             sourceId: "",
             smoothMs: 200,
         });

@@ -66,8 +66,6 @@ export function evaluateSource(
     macroValue: (controlId: string) => number,
     macroActive: (id: string) => boolean,
 ): number {
-    if (!src.enabled) return 0;
-
     if (src.type === "macro") {
         if (!src.sourceId || !macroActive(src.sourceId)) return 0;
         return clamp(macroValue(src.sourceId) * 2 - 1, -1, 1);
