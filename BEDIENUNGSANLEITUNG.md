@@ -6,6 +6,28 @@ und steuerst dort live Parameter.
 
 ---
 
+## Kurzeinstieg – in 60 Sekunden zum ersten Sound
+
+> Für alle, die sofort loslegen wollen.
+
+1. **App öffnen.** Du siehst die Toolbar, links das Bibliotheks-Panel, rechts
+   das Editor-Raster und den blauen Chip **EDIT MODE**.
+2. **Gerät anlegen.** Unten im Panel auf `+ New Device` klicken → „My Device" entsteht.
+3. **Regler hinzufügen.** In der schwebenden Edit-Leiste auf `+ Knob` klicken –
+   ein Drehregler erscheint auf der Fläche. Nochmal klicken für einen zweiten.
+4. **Optional: Gruppieren.** `+ Group` erzeugt eine farbige Fläche, in die du
+   Regler ziehen kannst. Regler innerhalb einer Gruppe verschieben sich gemeinsam.
+5. **Verbinden.** Audiotoool-Projekt-URL ins obere URL-Feld einfügen, `Connect`
+   drücken. Status wird grün (Connected).
+6. **Live spielen.** Auf `USE` klicken – das Badge wird grün (USE MODE).
+   Ziehe vertikal auf einem Regler, um den Wert zu ändern; klicke auf Schalter.
+7. **Zurück zum Editor.** `EDIT` drücken – du kehrst zum Bauen zurück.
+
+> **Tipp:** Den Modi erkennst du am farbigen Badge in der Kopfzeile:
+> Blau = EDIT (Bauen), Grün = USE (Spielen).
+
+---
+
 ## 1. Überblick
 
 - **Edit-Modus:** Du baust und gestaltest dein Gerät (Regler, Schalter, Gruppen, Farben).
