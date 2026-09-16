@@ -1706,14 +1706,16 @@ body {
     width: 100px;
 }
 
-/* FREE | SYNC segment toggle (compact, Metatron active-accent look). */
+/* FREE | SYNC segment toggle (subtle look, matching the SVG mockup): the
+   active half gets a teal tint + cyan border instead of a full accent fill;
+   the inactive half stays dimmed. */
 .mod-seg {
     display: inline-flex;
     height: 25px;
-    border: 1px solid var(--border-color);
+    border: 1px solid #202432;
     border-radius: 4px;
     overflow: hidden;
-    background: rgba(0, 0, 0, 0.25);
+    background: #151821;
 }
 
 .mod-seg-btn {
@@ -1721,10 +1723,10 @@ body {
     align-items: center;
     justify-content: center;
     border: 0;
-    background: transparent;
-    color: var(--text-secondary);
+    background: #181c26;
+    color: #5c677d;
     font-size: 10.5px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 0 6px;
@@ -1733,17 +1735,17 @@ body {
 }
 
 .mod-seg-btn + .mod-seg-btn {
-    border-left: 1px solid var(--border-color);
+    border-left: 1px solid #202432;
 }
 
 .mod-seg-btn:hover {
-    color: var(--text-primary);
+    color: #8892b0;
 }
 
 .mod-seg-btn.active {
-    background: var(--accent-color);
-    color: #000;
-    box-shadow: inset 0 0 0 1px var(--accent-hover);
+    background: rgba(0, 168, 181, 0.35);
+    color: #00e5ff;
+    box-shadow: inset 0 0 0 1px rgba(0, 229, 255, 0.7);
 }
 
 /* FREE-mode Hz: number readout (with explicit Hz unit) + compact slider. */
