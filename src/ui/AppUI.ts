@@ -813,6 +813,7 @@ toolbarLeft.appendChild(libraryBtn);
         modeToggle.title = this.currentMode === "EDIT"
             ? "Switch to Use Mode — live interaction on the control surface"
             : "Switch to Edit Mode — add and parameterize controls";
+        modeToggle.setAttribute("aria-label", modeToggle.title);
         modeToggle.onclick = () => {
             this.currentMode = this.currentMode === "EDIT" ? "USE" : "EDIT";
             // USE mode favors maximum controller width, so start the library
@@ -851,6 +852,7 @@ toolbarLeft.appendChild(libraryBtn);
         sidebarToggle.className = "sidebar-toggle";
         sidebarToggle.textContent = this.sidebarCollapsed ? "›" : "‹";
         sidebarToggle.title = this.sidebarCollapsed ? "Show library" : "Hide library";
+        sidebarToggle.setAttribute("aria-label", sidebarToggle.title);
         sidebarToggle.onclick = () => {
             this.sidebarCollapsed = !this.sidebarCollapsed;
             this.render();
