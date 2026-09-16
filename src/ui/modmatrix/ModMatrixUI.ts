@@ -410,7 +410,7 @@ export class ModMatrixUI {
             }
             select.value = hasRef ? src.sourceId : "";
             select.onchange = () => this.editSource(src, () => { src.sourceId = select.value; });
-            row.appendChild(this.field("Source", select));
+            row.appendChild(this.field("SRC", select));
         }
 
         if (src.type === "random") {
@@ -447,7 +447,7 @@ export class ModMatrixUI {
 
         const srcCap = document.createElement("span");
         srcCap.className = "mod-route-cap mod-route-cap--src";
-        srcCap.innerText = "Source";
+        srcCap.innerText = "SRC";
         row.appendChild(srcCap);
 
         const srcSelect = document.createElement("select");
