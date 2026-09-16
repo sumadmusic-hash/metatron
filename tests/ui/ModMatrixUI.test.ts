@@ -64,7 +64,7 @@ function lookupLabelFor(root: HTMLElement, input: Element): HTMLLabelElement | n
         const container = mount(ui);
         const rows = container.querySelectorAll(".mod-source-row");
         expect(rows.length).toBe(device.modulation.sources.length);
-        expect(rows[0].textContent).toContain("mod1");
+        expect(rows[0].textContent).toContain("LFO 1");
     });
 
     it("renders one slot row per slot", () => {
@@ -76,9 +76,9 @@ function lookupLabelFor(root: HTMLElement, input: Element): HTMLLabelElement | n
     });
 
     it("sourceLabel maps the flat ModSource to id · TYPE", () => {
-        expect(sourceLabel({ id: "mod1", type: "lfo" } as never, 0)).toBe("mod1 · LFO");
-        expect(sourceLabel({ id: "mod2", type: "macro" } as never, 1)).toBe("mod2 · MACRO");
-        expect(sourceLabel({ id: "mod3", type: "random" } as never, 2)).toBe("mod3 · RND");
+        expect(sourceLabel({ id: "mod1", type: "lfo" } as never, 0)).toBe("LFO 1");
+        expect(sourceLabel({ id: "mod2", type: "macro" } as never, 1)).toBe("MACRO 2");
+        expect(sourceLabel({ id: "mod3", type: "random" } as never, 2)).toBe("RND 3");
     });
 
     it("bake button opens the bake dialog", () => {

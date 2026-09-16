@@ -17,7 +17,8 @@ export interface ModMatrixUIDeps {
 
 export function sourceLabel(src: ModSource, _index: number): string {
     const typeTag = src.type === "lfo" ? "LFO" : src.type === "macro" ? "MACRO" : "RND";
-    return `${src.id} · ${typeTag}`;
+    const num = src.id.replace("mod", "");
+    return `${typeTag} ${num}`;
 }
 
 /** Height source for row sync. In the browser offsetHeight is authoritative;
