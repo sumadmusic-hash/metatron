@@ -672,9 +672,13 @@ libraryBtn.innerHTML =
     '<span>Library</span>';
 libraryBtn.title = this.sidebarCollapsed ? "Show library" : "Hide library";
 libraryBtn.onclick = () => {
-    this.sidebarCollapsed = !this.sidebarCollapsed;
     if (this.modMatrixOpen) {
-        this.sidebarCollapsedBeforeMod = this.sidebarCollapsed;
+        this.modMatrixOpen = false;
+        this.modMatrixUI.toggleDrawer();
+        this.sidebarCollapsedBeforeMod = null;
+        this.sidebarCollapsed = false;
+    } else {
+        this.sidebarCollapsed = !this.sidebarCollapsed;
     }
     this.render();
 };
@@ -865,9 +869,13 @@ toolbarLeft.appendChild(libraryBtn);
         sidebarToggle.title = this.sidebarCollapsed ? "Show library" : "Hide library";
         sidebarToggle.setAttribute("aria-label", sidebarToggle.title);
         sidebarToggle.onclick = () => {
-            this.sidebarCollapsed = !this.sidebarCollapsed;
             if (this.modMatrixOpen) {
-                this.sidebarCollapsedBeforeMod = this.sidebarCollapsed;
+                this.modMatrixOpen = false;
+                this.modMatrixUI.toggleDrawer();
+                this.sidebarCollapsedBeforeMod = null;
+                this.sidebarCollapsed = false;
+            } else {
+                this.sidebarCollapsed = !this.sidebarCollapsed;
             }
             this.render();
         };

@@ -140,4 +140,14 @@ describe("Collapsible left sidebar", () => {
         toggleMod(root); // close MOD
         expect(pane(root).classList.contains("collapsed")).toBe(true);
     });
+
+    it("clicking sidebar toggle while MOD is open closes MOD and opens sidebar", () => {
+        const { root } = mountApp(buildDevice());
+        toggleMod(root); // open MOD -> collapses sidebar
+        expect(pane(root).classList.contains("collapsed")).toBe(true);
+
+        click(toggle(root)); // click toggle while MOD open
+        expect(pane(root).classList.contains("collapsed")).toBe(false);
+        expect(root.querySelector(".mod-matrix-drawer")?.classList.contains("open")).toBe(false);
+    });
 });
