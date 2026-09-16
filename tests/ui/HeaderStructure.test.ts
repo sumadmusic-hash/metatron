@@ -96,6 +96,11 @@ describe("Header Restructure B: two-group layout with EDIT/USE as final control,
         );
         expect(left.querySelector<HTMLInputElement>("input[placeholder='Audiotool Project URL...']")).toBeTruthy();
 
+        // Mode badge always names the ACTIVE mode (edit here).
+        const badge = left.querySelector(".mode-badge");
+        expect(badge?.classList.contains("mode-badge--edit")).toBe(true);
+        expect(badge?.innerText).toBe("EDIT MODE");
+
         // Right group: the mode toggle is the sole rightmost header control.
         expect(right.querySelector(".automation-strip")).toBeNull();
         const rightButtons = buttonsIn(right);
@@ -129,6 +134,11 @@ describe("Header Restructure B: two-group layout with EDIT/USE as final control,
         const rightButtons = buttonsIn(right);
         expect(rightButtons[rightButtons.length - 1].innerText).toBe("EDIT");
         expect(right.lastElementChild).toBe(modeToggle(root));
+
+        // Mode badge flips to USE MODE.
+        const badge = leftGroup(root).querySelector(".mode-badge");
+        expect(badge?.classList.contains("mode-badge--use")).toBe(true);
+        expect(badge?.innerText).toBe("USE MODE");
 
         // Automation strip is still in its own bar after mode switch.
         expect(automationBar(root).querySelector(".automation-strip")).toBeTruthy();

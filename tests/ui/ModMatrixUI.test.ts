@@ -129,6 +129,57 @@ function lookupLabelFor(root: HTMLElement, input: Element): HTMLLabelElement | n
         renderBtn?.click();
         expect(document.body.textContent).toContain("No open document — cannot bake.");
     });
+
+    it("M1 - syncRowHeights aligns each routing row to its paired source row", () => {
+        const device = makeDevice();
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+        const srcRows = container.querySelectorAll<HTMLElement>(".mod-source-row");
+        const slotRows = container.querySelectorAll<HTMLElement>(".mod-slot-row");
+        expect(device.modulation.sources.length).toBe(srcRows.length);
+        expect(device.modulation.slots.length).toBe(slotRows.length);
+
+        // happy-dom has no layout engine (offsetHeight === 0), so the sync's
+        // explicit-height fallback drives the pairing in tests.
+        srcRows[0].style.height = "120px";
+        srcRows[1].style.height = "64px";
+        ui.syncRowHeights();
+
+        expect(slotRows[0].style.minHeight).toBe("120px");
+        expect(slotRows[1].style.minHeight).toBe("64px");
+        expect(slotRows[2].style.minHeight).toBe("");
+    });
+
+    it("O1 - an enabled routing slot lifts its source row across columns", () => {
+        const device = makeDevice();
+        device.modulation.slots[0].enabled = true; // slot1 -> mod1
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+        ui.highlightCrossColumn();
+
+        const src1 = container.querySelector<HTMLElement>('.mod-source-row[data-source-id="mod1"]')!;
+        const src2 = container.querySelector<HTMLElement>('.mod-source-row[data-source-id="mod2"]')!;
+        expect(src1.classList.contains("source-linked")).toBe(true);
+        expect(src2.classList.contains("source-linked")).toBe(false);
+    });
+
+    it("O1 - hover/focus (data-active) transiently links the source row", () => {
+        const device = makeDevice();
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+        const slotRow = container.querySelector<HTMLElement>('.mod-slot-row[data-slot-id="slot1"]')!;
+        const srcRow = container.querySelector<HTMLElement>('.mod-source-row[data-source-id="mod1"]')!;
+
+        slotRow.dispatchEvent(new Event("pointerover", { bubbles: true }));
+        expect(slotRow.dataset.active).toBe("true");
+        ui.highlightCrossColumn();
+        expect(srcRow.classList.contains("source-linked")).toBe(true);
+
+        slotRow.dispatchEvent(new Event("pointerout", { bubbles: true }));
+        expect(slotRow.dataset.active).toBeUndefined();
+        ui.highlightCrossColumn();
+        expect(srcRow.classList.contains("source-linked")).toBe(false);
+    });
 });
 
 describe("ModMatrixUI — history integration", () => {

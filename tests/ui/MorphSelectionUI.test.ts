@@ -86,7 +86,7 @@ describe("M12 — Morph A/B selection UI state", () => {
         slotBtn(root, "Crunch", "A").click();
 
         expect(status(root)).toContain("A: Crunch");
-        expect(status(root)).toContain("B: —");
+        expect(status(root)).toContain("B: Not set");
         expect(slotBtn(root, "Crunch", "A").className).toContain("active");
     });
 
@@ -97,7 +97,7 @@ describe("M12 — Morph A/B selection UI state", () => {
 
         slotBtn(root, "Clean", "B").click();
 
-        expect(status(root)).toContain("A: —");
+        expect(status(root)).toContain("A: Not set");
         expect(status(root)).toContain("B: Clean");
         expect(slotBtn(root, "Clean", "B").className).toContain("active");
     });
@@ -181,8 +181,8 @@ describe("M12 — Morph A/B selection UI state", () => {
         lib.currentDevice = second;
         ui.render(root);
 
-        expect(status(root)).toContain("A: —");
-        expect(status(root)).toContain("B: —");
+        expect(status(root)).toContain("A: Not set");
+        expect(status(root)).toContain("B: Not set");
         expect(s2Crunch).toBeTruthy();
     });
 
@@ -197,7 +197,7 @@ describe("M12 — Morph A/B selection UI state", () => {
         delBtn(root, "Crunch").click();
 
         expect([...row(root, "Clean").querySelectorAll("span")].length).toBeGreaterThan(0);
-        expect(status(root)).toContain("A: —");
+        expect(status(root)).toContain("A: Not set");
     });
 
     it("10. deleting the B preset clears B", () => {
@@ -210,7 +210,7 @@ describe("M12 — Morph A/B selection UI state", () => {
 
         delBtn(root, "Clean").click();
 
-        expect(status(root)).toContain("B: —");
+        expect(status(root)).toContain("B: Not set");
     });
 
     it("11. morph state is not serialized", () => {

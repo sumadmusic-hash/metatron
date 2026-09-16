@@ -653,6 +653,14 @@ export class AppUI {
         titleWrap.appendChild(title);
         toolbarLeft.appendChild(titleWrap);
 
+        const modeBadge = document.createElement("span");
+        modeBadge.className = "mode-badge mode-badge--" + this.currentMode.toLowerCase();
+        modeBadge.innerText = this.currentMode === "EDIT" ? "EDIT MODE" : "USE MODE";
+        modeBadge.title = this.currentMode === "EDIT"
+            ? "Currently editing: add and parameterize knobs, buttons, faders in the editor."
+            : "Currently using: live interaction on the control surface.";
+        toolbarLeft.appendChild(modeBadge);
+
 const libraryBtn = document.createElement("button");
 libraryBtn.className = "btn" + (this.sidebarCollapsed ? "" : " active");
 libraryBtn.innerText = "Library";
@@ -677,12 +685,6 @@ toolbarLeft.appendChild(libraryBtn);
         urlInput.placeholder = "Audiotool Project URL...";
         // Compact by CSS: fills available space up to 260px, never below 140px.
         urlInput.className = "url-input";
-        urlInput.style.padding = "8px 12px";
-        urlInput.style.backgroundColor = "rgba(0,0,0,0.2)";
-        urlInput.style.color = "white";
-        urlInput.style.border = "1px solid var(--border-color)";
-        urlInput.style.borderRadius = "6px";
-        urlInput.style.outline = "none";
         // Mirror edits into runtime state so the value survives `render()`.
         urlInput.value = this.connectionUrl;
         urlInput.addEventListener("input", () => {
@@ -774,6 +776,9 @@ toolbarLeft.appendChild(libraryBtn);
         const modeToggle = document.createElement("button");
         modeToggle.className = "btn primary mode-toggle";
         modeToggle.innerText = this.currentMode === "EDIT" ? "USE" : "EDIT";
+        modeToggle.title = this.currentMode === "EDIT"
+            ? "Switch to Use Mode — live interaction on the control surface"
+            : "Switch to Edit Mode — add and parameterize controls";
         modeToggle.onclick = () => {
             this.currentMode = this.currentMode === "EDIT" ? "USE" : "EDIT";
             // USE mode favors maximum controller width, so start the library

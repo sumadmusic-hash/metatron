@@ -115,7 +115,7 @@ export class DeviceLibraryUI {
         if (this.morphA !== undefined && !device.presets.has(this.morphA)) this.morphA = undefined;
         if (this.morphB !== undefined && !device.presets.has(this.morphB)) this.morphB = undefined;
         if (this.morphStatusEl) {
-            const slotName = (id?: string) => (id ? device.presets.get(id)?.name ?? "—" : "—");
+            const slotName = (id?: string) => (id ? device.presets.get(id)?.name ?? "Not set" : "Not set");
             this.morphStatusEl.innerText = `A: ${slotName(this.morphA)}    B: ${slotName(this.morphB)}`;
         }
         const presetA = this.morphA === undefined ? undefined : device.presets.get(this.morphA);
@@ -189,7 +189,7 @@ export class DeviceLibraryUI {
         // Actions for the active device
         if (this.deviceLibrary.currentDevice) {
             const actions = document.createElement("div");
-            actions.style.cssText = "display:flex;gap:6px;margin-top:14px;";
+            actions.className = "sidebar-actions";
 
             const rename = document.createElement("button");
             rename.className = "btn small";
@@ -248,8 +248,7 @@ export class DeviceLibraryUI {
         panel.appendChild(h3);
 
         const saveRow = document.createElement("div");
-        saveRow.style.display = "flex";
-        saveRow.style.gap = "6px";
+        saveRow.className = "preset-input-group";
 
         const input = document.createElement("input");
         input.className = "text-input";
@@ -257,11 +256,9 @@ export class DeviceLibraryUI {
         input.name = "presetName";
         input.placeholder = "Preset name";
         input.style.flex = "1";
-        input.style.padding = "5px 8px";
-        input.style.fontSize = "12px";
 
         const saveBtn = document.createElement("button");
-        saveBtn.className = "btn small";
+        saveBtn.className = "btn small preset-input-group-btn";
         saveBtn.innerText = "Save";
         saveBtn.onclick = () => {
             const name = input.value.trim();
@@ -439,17 +436,14 @@ export class DeviceLibraryUI {
         // slots only. The amount slider (M13) below is UI state only.
         const morphBlock = document.createElement("div");
         morphBlock.className = "preset-morph";
-        morphBlock.style.cssText = "margin-top:12px;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:rgba(255,255,255,0.03);";
         const morphTitle = document.createElement("div");
         morphTitle.className = "preset-morph-title";
         morphTitle.innerText = "MORPH";
-        morphTitle.style.cssText = "font-weight:700;letter-spacing:1px;font-size:11px;color:var(--text-secondary);margin-bottom:6px;";
         morphBlock.appendChild(morphTitle);
         const status = document.createElement("div");
         status.className = "preset-morph-status";
-        const slotName = (id?: string) => (id ? device.presets.get(id)?.name ?? "—" : "—");
+        const slotName = (id?: string) => (id ? device.presets.get(id)?.name ?? "Not set" : "Not set");
         status.innerText = `A: ${slotName(this.morphA)}    B: ${slotName(this.morphB)}`;
-        status.style.cssText = "font-size:12px;color:var(--text-primary);white-space:pre;overflow:hidden;text-overflow:ellipsis;";
         morphBlock.appendChild(status);
 
         // Morph amount slider (M13/M14) — moves update morphAmount and the
@@ -469,21 +463,17 @@ export class DeviceLibraryUI {
         const percent = document.createElement("div");
         percent.className = "preset-morph-percent";
         percent.innerText = `${Math.round(this.morphAmount * 100)}%`;
-        percent.style.cssText = "text-align:center;font-size:12px;color:var(--accent-color);font-weight:700;margin:8px 0 2px;";
         morphBlock.appendChild(percent);
         this.morphPercentEl = percent;
 
         const sliderRow = document.createElement("div");
         sliderRow.className = "preset-morph-slider-row";
-        sliderRow.style.cssText = "display:flex;align-items:center;gap:6px;";
         const aLabel = document.createElement("span");
         aLabel.className = "preset-morph-endcap";
         aLabel.innerText = "A";
-        aLabel.style.cssText = "font-size:11px;color:var(--text-secondary);font-weight:700;";
         const bLabel = document.createElement("span");
         bLabel.className = "preset-morph-endcap";
         bLabel.innerText = "B";
-        bLabel.style.cssText = "font-size:11px;color:var(--text-secondary);font-weight:700;";
         const slider = document.createElement("input");
         slider.className = "preset-morph-slider";
         slider.id = "morph-amount-slider";
@@ -494,7 +484,6 @@ export class DeviceLibraryUI {
         slider.step = "0.01";
         slider.value = String(this.morphAmount);
         slider.style.flex = "1";
-        slider.style.accentColor = "var(--accent-color)";
         this.morphSliderEl = slider;
         slider.oninput = () => {
             const raw = parseFloat(slider.value);
@@ -521,16 +510,22 @@ export class DeviceLibraryUI {
         const device = this.deviceLibrary.currentDevice;
         if (!device) return;
 
+        const headRow = document.createElement("div");
+        headRow.className = "section-head";
         const h3 = document.createElement("h3");
-        h3.style.marginTop = "20px";
         h3.innerText = "INSTRUMENT PRESETS";
-        panel.appendChild(h3);
+        headRow.appendChild(h3);
+        const info = document.createElement("span");
+        info.className = "info-icon";
+        info.innerText = "ⓘ";
+        info.title = "Connected project = SOURCE for export, TARGET for import. Connect first.";
+        info.setAttribute("role", "img");
+        info.setAttribute("aria-label", "Export and import source/target info");
+        headRow.appendChild(info);
+        panel.appendChild(headRow);
 
         const exportRow = document.createElement("div");
-        exportRow.style.display = "flex";
-        exportRow.style.flexWrap = "wrap";
-        exportRow.style.gap = "6px";
-        exportRow.style.boxSizing = "border-box";
+        exportRow.className = "sidebar-export-row";
 
         const input = document.createElement("input");
         input.className = "text-input";
@@ -540,8 +535,6 @@ export class DeviceLibraryUI {
         input.value = device.name;
         input.style.flex = "1 1 100%";
         input.style.boxSizing = "border-box";
-        input.style.padding = "5px 8px";
-        input.style.fontSize = "12px";
         input.title = "Name stored as the envelope name (v0.1)";
 
         const exportBtn = document.createElement("button");
@@ -558,7 +551,7 @@ export class DeviceLibraryUI {
         downloadBtn.onclick = () => void this.runInstrumentFileExport(input.value.trim() || device.name);
 
         const importFileBtn = document.createElement("button");
-        importFileBtn.className = "btn small";
+        importFileBtn.className = "btn small btn-import";
         importFileBtn.innerText = "Import .json";
         importFileBtn.title = "Pick a .metatron-preset.json file and import it into the connected TARGET project (confirmed first)";
         importFileBtn.style.flex = "1 1 100%";
@@ -570,12 +563,6 @@ export class DeviceLibraryUI {
         exportRow.appendChild(downloadBtn);
         exportRow.appendChild(importFileBtn);
         panel.appendChild(exportRow);
-
-        const emptyHint = "Connected project = SOURCE for export, TARGET for import. Connect first.";
-        const hint = document.createElement("div");
-        hint.style.cssText = "color:var(--text-secondary);font-size:11px;padding:6px 2px;";
-        hint.innerText = emptyHint;
-        panel.appendChild(hint);
 
         const report = InstrumentPresetLibrary.report();
         const list = report.entries;

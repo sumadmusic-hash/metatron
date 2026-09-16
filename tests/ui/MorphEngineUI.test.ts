@@ -193,7 +193,7 @@ describe("M14 — Morph slider connected to the Morph engine", () => {
         slotBtn(root, "P-B", "B").click();
         move(slider(root), "0.7");
 
-        expect(statusText(root)).toContain("A: —");
+        expect(statusText(root)).toContain("A: Not set");
         expect(dev.controls.get("cutoff")!.value).toBe(0.5);
         expect(dev.controls.get("res")!.value).toBe(0.5);
         expect(adapter.calls.length).toBe(0);
@@ -205,7 +205,7 @@ describe("M14 — Morph slider connected to the Morph engine", () => {
         slotBtn(root, "P-A", "A").click();
         move(slider(root), "0.7");
 
-        expect(statusText(root)).toContain("B: —");
+        expect(statusText(root)).toContain("B: Not set");
         expect(dev.controls.get("cutoff")!.value).toBe(0.5);
         expect(adapter.calls.length).toBe(0);
     });
@@ -217,7 +217,7 @@ describe("M14 — Morph slider connected to the Morph engine", () => {
         expect(statusText(root)).toContain("A: P-A");
         actBtn(root, "P-A", "✕").click();
 
-        expect(statusText(root)).toContain("A: —");
+        expect(statusText(root)).toContain("A: Not set");
         expect(dev.presets.has(device.presets.get("P-A")!)).toBe(false);
         move(slider(root), "0.7");
         expect(dev.controls.get("cutoff")!.value).toBe(0.5);

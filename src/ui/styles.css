@@ -1848,3 +1848,281 @@ body {
     text-align: center;
     margin: 4px 0;
 }
+
+/* ── GUI-Politur Runde 4: Sidebar, forms, morph, toolbar polish ───────────── */
+
+/* Global form base (0-specificity via :where()): never beats class-based
+   rules like .text-input or the scoped .mod-* selectors. */
+:where(input[type="text"], input[type="number"], input:not([type]), select, textarea) {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    box-sizing: border-box;
+    outline: none;
+}
+
+:where(input[type="text"], input[type="number"], input:not([type]), select, textarea):focus {
+    border-color: var(--accent-color);
+}
+
+/* Morph block — formerly inline styles, now class-driven. */
+.preset-morph {
+    margin-top: 12px;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.preset-morph-title {
+    font-weight: 700;
+    letter-spacing: 1px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.preset-morph-status {
+    font-size: 12px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-height: 16px;
+}
+
+.preset-morph-percent {
+    text-align: center;
+    font-size: 12px;
+    color: var(--accent-color);
+    font-weight: 700;
+    margin: 8px 0 2px;
+}
+
+.preset-morph-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.preset-morph-endcap {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 700;
+}
+
+.preset-morph-slider {
+    flex: 1;
+    appearance: none;
+    -webkit-appearance: none;
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent-color), rgba(0, 229, 255, 0.25));
+    cursor: pointer;
+}
+
+.preset-morph-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    border: 2px solid #0a0c10;
+    box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.3);
+}
+
+.preset-morph-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    border: 2px solid #0a0c10;
+    box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.3);
+}
+
+/* Automation bar contrast: slightly brighter bar, bolder labels, more
+   legible disabled state (still clearly inactive). */
+.automation-bar {
+    background: rgba(33, 38, 48, 0.85);
+}
+
+.automation-btn {
+    font-weight: 600;
+}
+
+.automation-btn:disabled {
+    opacity: 0.45;
+}
+
+/* Edit-mode context toolbar: more padding, hover feedback tying it to the
+   app-wide button language. */
+.editor-toolbar {
+    padding: 12px 14px;
+}
+
+.editor-toolbar .btn {
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.editor-toolbar .btn:hover {
+    background: rgba(0, 229, 255, 0.12);
+    border-color: rgba(0, 229, 255, 0.5);
+    transform: translateY(-1px);
+}
+
+/* Sidebar button rows get real breathing room. */
+.sidebar-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.sidebar-export-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    box-sizing: border-box;
+}
+
+/* Import .json stands out as the primary full-width action. */
+.btn-import {
+    border-color: rgba(0, 229, 255, 0.5);
+    color: var(--accent-color);
+    font-weight: 600;
+}
+
+.btn-import:hover {
+    background: rgba(0, 229, 255, 0.12);
+}
+
+/* Preset name + Save merge into one integrated input group. */
+.preset-input-group {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.preset-input-group .text-input {
+    flex: 1;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.preset-input-group-btn {
+    border: 0;
+    border-left: 1px solid var(--border-color);
+    border-radius: 0;
+}
+
+/* Section header + info icon (ⓘ) with native tooltip. */
+.section-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 20px;
+}
+
+.section-head h3 {
+    margin-top: 0;
+}
+
+.info-icon {
+    cursor: help;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1;
+}
+
+.info-icon:hover {
+    color: var(--accent-color);
+}
+
+/* Device list delete "×" — subtle, revealed on row hover. */
+.device-list-item .tool-btn {
+    min-width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 20px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+    cursor: pointer;
+}
+
+.device-list-item:hover .tool-btn {
+    opacity: 1;
+}
+
+.device-list-item .tool-btn:hover {
+    color: #fff;
+    background: rgba(244, 63, 94, 0.25);
+}
+
+/* Mod matrix: slot rows take their height from the paired source row. */
+.mod-slot-row {
+    min-height: 0;
+}
+
+/* Custom select arrow (replaces the native dropdown caret). */
+.mod-source-row select,
+.mod-slot-row select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%2388a0c0'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 7px center;
+    padding-right: 22px;
+}
+
+/* Cross-column highlight: riding source row mirrors the linked routing row. */
+.mod-source-row.source-linked {
+    background: rgba(0, 229, 255, 0.05);
+    box-shadow: inset 2px 0 0 var(--accent-color);
+}
+
+/* Mode indicator: always-visible chip naming the ACTIVE mode. */
+.mode-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    border: 1px solid transparent;
+    white-space: nowrap;
+    cursor: help;
+}
+
+.mode-badge::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.mode-badge--edit {
+    color: var(--accent-color);
+    background: rgba(0, 229, 255, 0.1);
+    border-color: rgba(0, 229, 255, 0.35);
+}
+
+.mode-badge--use {
+    color: #5cd67a;
+    background: rgba(92, 214, 122, 0.1);
+    border-color: rgba(92, 214, 122, 0.35);
+}

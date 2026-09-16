@@ -20,6 +20,13 @@ export function sourceLabel(src: ModSource, _index: number): string {
     return `${src.id} · ${typeTag}`;
 }
 
+/** Height source for row sync. In the browser offsetHeight is authoritative;
+ *  happy-dom has no layout engine (always 0), so the explicit CSS height/
+ *  minHeight serve as the fallback so behaviour stays testable. */
+function rowHeight(el: HTMLElement): number {
+    return el.offsetHeight || parseFloat(el.style.height) || parseFloat(el.style.minHeight) || 0;
+}
+
 export class ModMatrixUI {
     private readonly deviceLibrary: { currentDevice?: Device; saveCurrentDevice(): void };
     private readonly history: DeviceHistory;
@@ -28,6 +35,7 @@ export class ModMatrixUI {
 
     private container?: HTMLElement;
     private drawerOpen = false;
+    private rowObserver?: ResizeObserver;
 
     constructor({ deviceLibrary, history, bindingManager, nexusAdapter }: ModMatrixUIDeps) {
         this.deviceLibrary = deviceLibrary;
@@ -98,6 +106,92 @@ export class ModMatrixUI {
             matrix.appendChild(this.renderSlotRow(slot, index, device));
         });
         this.container.appendChild(matrix);
+
+        this.bindActiveTracking();
+        this.observeRowHeights();
+        if (typeof requestAnimationFrame === "function") {
+            requestAnimationFrame(() => this.syncLayout());
+        } else {
+            this.syncLayout();
+        }
+    }
+
+    /** Sync slot (routing) row heights to their index-paired source rows, and
+     *  mirror the active bidirectional link back onto the source column. */
+    public syncLayout(): void {
+        this.syncRowHeights();
+        this.highlightCrossColumn();
+    }
+
+    /** Read every source row height, then (in a second pass) apply the same
+     *  height to the matching routing row. Batched read->write order avoids
+     *  layout thrashing. */
+    public syncRowHeights(): void {
+        const rack = this.container?.querySelector(".mod-source-rack");
+        const matrix = this.container?.querySelector(".mod-slot-matrix");
+        if (!rack || !matrix) return;
+        const heights = Array.from(rack.querySelectorAll<HTMLElement>(".mod-source-row"))
+            .filter((r) => rowHeight(r) > 0)
+            .map((r) => rowHeight(r));
+        Array.from(matrix.querySelectorAll<HTMLElement>(".mod-slot-row")).forEach((slot, i) => {
+            if (heights[i]) {
+                slot.style.minHeight = `${heights[i]}px`;
+            }
+        });
+    }
+
+    /** A routing row that is enabled (.on) or currently hovered/focused
+     *  ([data-active]) surfaces its source on the left via .source-linked. */
+    public highlightCrossColumn(): void {
+        const rack = this.container?.querySelector(".mod-source-rack");
+        const matrix = this.container?.querySelector(".mod-slot-matrix");
+        const device = this.deviceLibrary.currentDevice;
+        if (!rack || !matrix || !device) return;
+        rack.querySelectorAll<HTMLElement>(".mod-source-row.source-linked").forEach((r) => {
+            r.classList.remove("source-linked");
+        });
+        matrix.querySelectorAll<HTMLElement>(".mod-slot-row.on, .mod-slot-row[data-active='true']").forEach((slotRow) => {
+            const srcId = device.modulation.slots.find((s) => s.id === slotRow.dataset.slotId)?.sourceId;
+            if (!srcId) return;
+            rack.querySelector<HTMLElement>(`.mod-source-row[data-source-id="${srcId}"]`)?.classList.add("source-linked");
+        });
+    }
+
+    /** Transient hover/focus tracking on slot rows (delegated, rebuilt each
+     *  render). data-active is cleared as the pointer/focus leaves. */
+    private bindActiveTracking(): void {
+        const matrix = this.container?.querySelector(".mod-slot-matrix");
+        if (!matrix) return;
+        const rowOf = (t: EventTarget | null): HTMLElement | null =>
+            t instanceof Element ? t.closest<HTMLElement>(".mod-slot-row") : null;
+        matrix.addEventListener("pointerover", (e) => {
+            const row = rowOf(e.target);
+            if (row) row.dataset.active = "true";
+        });
+        matrix.addEventListener("pointerout", (e) => {
+            const row = rowOf(e.target);
+            if (row) delete row.dataset.active;
+        });
+        matrix.addEventListener("focusin", (e) => {
+            const row = rowOf(e.target);
+            if (row) row.dataset.active = "true";
+        });
+        matrix.addEventListener("focusout", (e) => {
+            const row = rowOf(e.target);
+            if (row) delete row.dataset.active;
+        });
+    }
+
+    /** Re-sync source/slot row pairing whenever source content resizes
+     *  (window resize, zoom, font scaling). Re-armed on each render because
+     *  render() rebuilds the rack element. */
+    private observeRowHeights(): void {
+        const rack = this.container?.querySelector(".mod-source-rack");
+        if (!rack) return;
+        this.rowObserver?.disconnect();
+        if (typeof ResizeObserver === "undefined") return;
+        this.rowObserver = new ResizeObserver(() => this.syncRowHeights());
+        this.rowObserver.observe(rack);
     }
 
     private bakeDialogOpen = false;
