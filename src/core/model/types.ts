@@ -30,6 +30,12 @@ export interface DeviceData {
      * back to the default matrix instead of trusting the payload shape.
      */
     modulation?: unknown;
+    /**
+     * Optional MIDI CC binding for the preset-morph regulator (not a control:
+     * it addresses DeviceLibraryUI.setMorphAmountFromMidi). Optional, per-device
+     * and reused verbatim by applyMidiScaling.
+     */
+    morphMidi?: MidiBindingDefinition;
 }
 
 /** 

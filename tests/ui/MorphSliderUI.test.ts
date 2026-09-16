@@ -219,3 +219,76 @@ describe("M13 — Morph amount slider UI state", () => {
         expect(ctrl.value).toBe(0.8);
     });
 });
+
+describe("setMorphAmountFromMidi (extracted morph entry)", () => {
+    it("1. without A/B the amount is stored, readout updated, controls untouched", () => {
+        const device = saveTwoPresets(makeDevice());
+        const { root, ui, device: dev } = mount(device);
+        const ctrl = dev.controls.get("cutoff")!;
+        ctrl.value = 0.42;
+        ui.setMorphAmountFromMidi(0.25);
+        expect(percent(root)).toBe("25%");
+        expect(slider(root).value).toBe("0.25");
+        expect(ctrl.value).toBe(0.42);
+    });
+
+    it("2. MIDI 0 sets Morph to 0 and applies A", () => {
+        const device = saveTwoPresets(makeDevice());
+        const { root, ui, device: dev } = mount(device);
+        slotBtn(root, "Crunch", "A").click();
+        slotBtn(root, "Clean", "B").click();
+        const ctrl = dev.controls.get("cutoff")!;
+        ctrl.value = 0.42;
+        ui.setMorphAmountFromMidi(0);
+        expect(percent(root)).toBe("0%");
+        expect(slider(root).value).toBe("0");
+        expect(ctrl.value).toBeCloseTo(0.3, 10); // A=0.3 at t=0
+    });
+
+    it("3. MIDI 1 sets Morph to 1 and applies B", () => {
+        const device = saveTwoPresets(makeDevice());
+        const { root, ui, device: dev } = mount(device);
+        slotBtn(root, "Crunch", "A").click();
+        slotBtn(root, "Clean", "B").click();
+        const ctrl = dev.controls.get("cutoff")!;
+        ctrl.value = 0.42;
+        ui.setMorphAmountFromMidi(1);
+        expect(percent(root)).toBe("100%");
+        expect(slider(root).value).toBe("1");
+        expect(ctrl.value).toBeCloseTo(0.8, 10); // B=0.8 at t=1
+    });
+
+    it("4. values outside 0..1 are clamped", () => {
+        const device = saveTwoPresets(makeDevice());
+        const { root, ui, device: dev } = mount(device);
+        slotBtn(root, "Crunch", "A").click();
+        slotBtn(root, "Clean", "B").click();
+        const ctrl = dev.controls.get("cutoff")!;
+        ui.setMorphAmountFromMidi(1.5);
+        expect(percent(root)).toBe("100%");
+        expect(ctrl.value).toBeCloseTo(0.8, 10);
+        ui.setMorphAmountFromMidi(-3);
+        expect(percent(root)).toBe("0%");
+        expect(ctrl.value).toBeCloseTo(0.3, 10);
+    });
+
+    it("5. non-finite amount falls back to 0.5 like the slider", () => {
+        const device = saveTwoPresets(makeDevice());
+        const { root, ui } = mount(device);
+        ui.setMorphAmountFromMidi(Number.NaN);
+        expect(percent(root)).toBe("50%");
+        expect(slider(root).value).toBe("0.5");
+    });
+
+    it("6. existing UI slider morph path is unchanged", () => {
+        const device = saveTwoPresets(makeDevice());
+        const { root, device: dev } = mount(device);
+        slotBtn(root, "Crunch", "A").click();
+        slotBtn(root, "Clean", "B").click();
+        const ctrl = dev.controls.get("cutoff")!;
+        const s = slider(root);
+        move(s, "0.9");
+        expect(percent(root)).toBe("90%");
+        expect(ctrl.value).toBeCloseTo(0.75, 10); // A=0.3 B=0.8 t=0.9
+    });
+});

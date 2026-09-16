@@ -36,6 +36,11 @@ export class DeviceLibraryUI {
     private history?: DeviceHistory;
     private instrumentResultArea?: HTMLElement;
     private onControlValueChanged?: (controlId: string, value: number) => void;
+    /** Called for every control whose local value actually changed during a
+     *  Morph application (after `control.value` was reassigned). Mirrors the
+     *  existing callback/dependency style of this class; the caller decides
+     *  whether the change should be fed into the automation recorder. */
+    private onMorphControlChanged?: (controlId: string, value: number, controlType: string) => void;
 
     // Transient Morph A/B selection state (M12). Slot references and the
     // amount are deliberately NOT serialized: they are pure UI state and
@@ -45,6 +50,13 @@ export class DeviceLibraryUI {
     private morphAmount = 0.5;
     private activeMorphDeviceId?: string;
 
+    // Live DOM refs of the rendered Morph block — kept so the shared morph
+    // application path can refresh status/readout outside the render closure.
+    private morphStatusEl?: HTMLElement;
+    private morphSliderEl?: HTMLInputElement;
+    private morphPercentEl?: HTMLElement;
+    private morphBlockEl?: HTMLElement;
+
     constructor(
         deviceLibrary: DeviceLibrary,
         onDeviceChanged: () => void,
@@ -52,7 +64,8 @@ export class DeviceLibraryUI {
         nexusAdapter?: NexusAdapter,
         bindingManager?: BindingManager,
         history?: DeviceHistory,
-        onControlValueChanged?: (controlId: string, value: number) => void
+        onControlValueChanged?: (controlId: string, value: number) => void,
+        onMorphControlChanged?: (controlId: string, value: number, controlType: string) => void
     ) {
         this.deviceLibrary = deviceLibrary;
         this.onDeviceChanged = onDeviceChanged;
@@ -61,6 +74,7 @@ export class DeviceLibraryUI {
         this.bindingManager = bindingManager;
         this.history = history;
         this.onControlValueChanged = onControlValueChanged;
+        this.onMorphControlChanged = onMorphControlChanged;
     }
 
     /** Structural snapshot of the given device (device-scope actions). The
@@ -76,6 +90,72 @@ export class DeviceLibraryUI {
      *  history layer discards an action whose device switched mid-flight). */
     private recordDeviceAction(type: string, device: Device, before: DeviceStatePatch | null, after: DeviceStatePatch | null) {
         this.history?.recordDeviceAction(type, device, before, after);
+    }
+
+    /** Shared refresh of the Morph amount DOM readout (slider value, percent
+     *  text, block tooltip). Reused by the slider and by external morph
+     *  entries; mirrors the render logic exactly, so nothing is duplicated. */
+    private syncMorphAmountUI(): void {
+        const amount = this.morphAmount;
+        if (this.morphSliderEl) this.morphSliderEl.value = String(amount);
+        if (this.morphPercentEl) this.morphPercentEl.innerText = `${Math.round(amount * 100)}%`;
+        if (this.morphBlockEl) this.morphBlockEl.title = `Transient Morph state (not saved) — amount: ${amount.toFixed(2)} — applied to controls when A and B are set`;
+    }
+
+    /** Apply the transient morph state (A/B slots + amount) to the ACTIVE
+     *  device. Extracted out of the render closure so the amount slider and
+     *  external entries (e.g. MIDI) share one code path. Behavior equals the
+     *  historic closure: stale slots are cleared, a missing slot only refreshes
+     *  the status, otherwise applyMorphToDevice → Nexus sink → morph hook →
+     *  control reflection → device save. */
+    private applyMorphToCurrentDevice(): void {
+        const device = this.deviceLibrary.currentDevice;
+        if (!device) return;
+        // Clear slots whose preset no longer exists; never applies a stale ref.
+        if (this.morphA !== undefined && !device.presets.has(this.morphA)) this.morphA = undefined;
+        if (this.morphB !== undefined && !device.presets.has(this.morphB)) this.morphB = undefined;
+        if (this.morphStatusEl) {
+            const slotName = (id?: string) => (id ? device.presets.get(id)?.name ?? "—" : "—");
+            this.morphStatusEl.innerText = `A: ${slotName(this.morphA)}    B: ${slotName(this.morphB)}`;
+        }
+        const presetA = this.morphA === undefined ? undefined : device.presets.get(this.morphA);
+        const presetB = this.morphB === undefined ? undefined : device.presets.get(this.morphB);
+        if (!presetA || !presetB) return;
+
+        const result = applyMorphToDevice(device, presetA, presetB, this.morphAmount, {
+            updateBoundControl: (id, value) => {
+                if (!this.nexusAdapter) return Promise.resolve(true);
+                return this.nexusAdapter.updateBoundControl(id, value);
+            },
+        }, (control, value) => {
+            // Report each control that was ACTIVELY re-valued — the caller
+            // feeds it into the automation recorder if it wants to. The
+            // callback never holds a reference to the recorder itself.
+            this.onMorphControlChanged?.(control.id, value, control.type);
+        });
+        // Reflect the new control.values on the live surface widgets in place
+        // (the same mechanism normal local value changes use). No full render.
+        Object.keys(result).forEach((id) => {
+            this.onControlValueChanged?.(id, result[id]);
+        });
+        // Persist the RESULTING control.value state only (morph slots and the
+        // amount stay transient and are never serialized).
+        try {
+            this.deviceLibrary.saveCurrentDevice();
+        } catch (e) {
+            Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
+            return;
+        }
+    }
+
+    /** Minimal public entry for external morph driving (expected: MIDI). Clamps
+     *  to the existing valid 0..1 range, refreshes the shared readout and runs
+     *  the SAME morph application path as the slider. No MIDI logic, no binding
+     *  definitions, no recorder logic. */
+    public setMorphAmountFromMidi(amount: number): void {
+        this.morphAmount = Math.min(1, Math.max(0, Number.isFinite(amount) ? amount : 0.5));
+        this.syncMorphAmountUI();
+        this.applyMorphToCurrentDevice();
     }
 
     public render(parent: HTMLElement) {
@@ -381,41 +461,17 @@ export class DeviceLibraryUI {
         //   → CONNECTED controls pushed through NexusAdapter.updateBoundControl
         // With a missing slot: only the amount/percent update — no Morph
         // calculation, no control writes, no Nexus traffic.
-        const applyMorph = () => {
-            // Clear slots whose preset no longer exists; never applies a stale ref.
-            if (this.morphA !== undefined && !device.presets.has(this.morphA)) this.morphA = undefined;
-            if (this.morphB !== undefined && !device.presets.has(this.morphB)) this.morphB = undefined;
-            status.innerText = `A: ${slotName(this.morphA)}    B: ${slotName(this.morphB)}`;
-            const presetA = this.morphA === undefined ? undefined : device.presets.get(this.morphA);
-            const presetB = this.morphB === undefined ? undefined : device.presets.get(this.morphB);
-            if (!presetA || !presetB) return;
-
-            const result = applyMorphToDevice(device, presetA, presetB, this.morphAmount, {
-                updateBoundControl: (id, value) => {
-                    if (!this.nexusAdapter) return Promise.resolve(true);
-                    return this.nexusAdapter.updateBoundControl(id, value);
-                },
-            });
-            // Reflect the new control.values on the live surface widgets in place
-            // (the same mechanism normal local value changes use). No full render.
-            Object.keys(result).forEach((id) => {
-                this.onControlValueChanged?.(id, result[id]);
-            });
-            // Persist the RESULTING control.value state only (morph slots and the
-            // amount stay transient and are never serialized).
-            try {
-                this.deviceLibrary.saveCurrentDevice();
-            } catch (e) {
-                Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
-                return;
-            }
-        };
+        // Live refs so the shared morph path (applyMorphToCurrentDevice /
+        // setMorphAmountFromMidi) can keep the status and readout in sync.
+        this.morphStatusEl = status;
+        this.morphBlockEl = morphBlock;
 
         const percent = document.createElement("div");
         percent.className = "preset-morph-percent";
         percent.innerText = `${Math.round(this.morphAmount * 100)}%`;
         percent.style.cssText = "text-align:center;font-size:12px;color:var(--accent-color);font-weight:700;margin:8px 0 2px;";
         morphBlock.appendChild(percent);
+        this.morphPercentEl = percent;
 
         const sliderRow = document.createElement("div");
         sliderRow.className = "preset-morph-slider-row";
@@ -439,14 +495,12 @@ export class DeviceLibraryUI {
         slider.value = String(this.morphAmount);
         slider.style.flex = "1";
         slider.style.accentColor = "var(--accent-color)";
+        this.morphSliderEl = slider;
         slider.oninput = () => {
             const raw = parseFloat(slider.value);
-            const clamped = Math.min(1, Math.max(0, Number.isFinite(raw) ? raw : 0.5));
-            this.morphAmount = clamped;
-            slider.value = String(clamped);
-            percent.innerText = `${Math.round(clamped * 100)}%`;
-            applyMorph();
-            morphBlock.title = `Transient Morph state (not saved) — amount: ${clamped.toFixed(2)} — applied to controls when A and B are set`;
+            this.morphAmount = Math.min(1, Math.max(0, Number.isFinite(raw) ? raw : 0.5));
+            this.syncMorphAmountUI();
+            this.applyMorphToCurrentDevice();
         };
         sliderRow.appendChild(aLabel);
         sliderRow.appendChild(slider);

@@ -136,14 +136,29 @@ export class AppUI {
             this.surfaceUI.applyNexusValue(controlId, newValue);
         };
 
-        // MIDI → UI: incoming CC drives bound controls (§28-32)
-        const midiHandler = (_channel: number, _cc: number, _value: number) => {
-            const controlId = this.midiMapping.getControlIdForMessage(_channel, _cc);
-            if (!controlId) return;
-            const control = this.deviceLibrary.currentDevice?.getControl(controlId);
-            if (!control) return;
-            const normalized = applyMidiScaling(_value, control.midiBindingDefinition);
-            this.applyValueToDevice(controlId, normalized);
+        // MIDI → UI: incoming CC drives bound controls (§28-32) or the
+        // preset-morph regulator. A bound control ALWAYS wins over morph so
+        // existing CC mappings keep priority on a collision. Morph is NOT a
+        // control: matched against the ACTIVE device's morphMidi config, then
+        // reused through the exact same normalization point (applyMidiScaling)
+        // and the existing morph entry (setMorphAmountFromMidi) — no virtual
+        // control, no morph automation track.
+        const midiHandler = (channel: number, cc: number, value: number) => {
+            const controlId = this.midiMapping.getControlIdForMessage(channel, cc);
+            if (controlId) {
+                const control = this.deviceLibrary.currentDevice?.getControl(controlId);
+                if (control) {
+                    const normalized = applyMidiScaling(value, control.midiBindingDefinition);
+                    this.applyValueToDevice(controlId, normalized);
+                }
+                return;
+            }
+            const morphMidi = this.deviceLibrary.currentDevice?.morphMidi;
+            if (morphMidi && morphMidi.channel === channel && morphMidi.cc === cc) {
+                const normalized = applyMidiScaling(value, morphMidi);
+                this.libraryUI.setMorphAmountFromMidi(normalized);
+                return;
+            }
         };
         this.midiAccess.setMessageHandler(midiHandler);
 
@@ -191,7 +206,17 @@ export class AppUI {
             // Morph (M14) updates live control widgets in place — the same
             // mechanism every normal local/Nexus value change uses. No full
             // AppUI.render() for each slider input.
-            (controlId, value) => this.surfaceUI.applyNexusValue(controlId, value)
+            (controlId, value) => this.surfaceUI.applyNexusValue(controlId, value),
+            // Morph recording: applyMorphToDevice applies interpolated values
+            // locally; every control that actually changed is captured through
+            // the SAME local recording semantics as applyValueToDevice. A
+            // modulated destination stays with the ModulationRunner (which owns
+            // its write-keyed capture) — never double-captured by Morph.
+            (controlId, value, controlType) => {
+                if (!(this.modRunner?.isModulated(controlId) ?? false)) {
+                    this.recorder.capture(controlId, value, controlType);
+                }
+            },
         );
 
         this.modMatrixUI = new ModMatrixUI({

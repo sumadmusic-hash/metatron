@@ -44,4 +44,23 @@ describe("C2 persistence roundtrip — real Storage save→load path (F-1)", () 
         expect(Object.keys(definition).sort()).toEqual(["cc", "channel"]);
         expect(applyMidiScaling(64, definition)).toBeCloseTo(64 / 127, 10);
     });
+
+    it("morphMidi (device-level morph regulator binding) survives the roundtrip", () => {
+        const device = new Device("MorphMidi");
+        device.morphMidi = { channel: 4, cc: 77, min: 0.2, max: 0.9 };
+
+        Storage.saveDevice(device);
+        const loaded = Storage.loadDevice(device.id);
+
+        expect(loaded?.morphMidi).toEqual({ channel: 4, cc: 77, min: 0.2, max: 0.9 });
+        // reapplied through the exact normalization the morph branch uses
+        expect(applyMidiScaling(0, loaded?.morphMidi)).toBeCloseTo(0.2, 10);
+        expect(applyMidiScaling(127, loaded?.morphMidi)).toBeCloseTo(0.9, 10);
+
+        // devices without a morphMidi config stay free of the key
+        const plain = new Device("NoMorph");
+        Storage.saveDevice(plain);
+        const plainLoaded = Storage.loadDevice(plain.id);
+        expect(plainLoaded?.morphMidi).toBeUndefined();
+    });
 });

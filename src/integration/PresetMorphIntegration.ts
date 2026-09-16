@@ -1,4 +1,5 @@
 import type { Device } from "../core/model/Device";
+import type { Control } from "../core/model/Control";
 import type { ControlType } from "../core/model/types";
 import type { Preset } from "../core/model/Preset";
 import { morphControlValues } from "../core/model/PresetMorph";
@@ -23,9 +24,17 @@ export interface MorphValueSink {
     updateBoundControl(controlId: string, value: number): Promise<boolean>;
 }
 
-const NOOP_SINK: MorphValueSink = {
+export const NOOP_SINK: MorphValueSink = {
     updateBoundControl: async () => true,
 };
+
+/** Observes every control whose local value actually CHANGED during a morph
+ *  application (strict `!==` comparison against its previous value — no new
+ *  epsilon threshold). Fired AFTER `control.value` was reassigned, in the
+ *  same order as the device's control iteration. Used to feed the existing
+ *  AutomationRecorder the same way normal local value changes are recorded:
+ *  recording the APPLIED local value, independent of any async Nexus write. */
+export type MorphControlChangedCallback = (control: Control, newValue: number) => void;
 
 export function applyMorphToDevice(
     device: Device,
@@ -33,6 +42,7 @@ export function applyMorphToDevice(
     presetB: Readonly<Pick<Preset, "controlValues">>,
     amount: number,
     sink: MorphValueSink = NOOP_SINK,
+    onControlChanged?: MorphControlChangedCallback,
 ): Record<string, number> {
     const controlTypes: Record<string, ControlType> = {};
     device.controls.forEach((control) => {
@@ -46,7 +56,11 @@ export function applyMorphToDevice(
         const morphed = result[control.id];
         if (morphed === undefined) return;
 
+        const oldValue = control.value;
         control.value = morphed;
+        if (oldValue !== morphed) {
+            onControlChanged?.(control, morphed);
+        }
         if (control.activeBindingState === "CONNECTED") {
             sink.updateBoundControl(control.id, morphed).then(
                 (ok) => {

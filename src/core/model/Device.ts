@@ -3,6 +3,7 @@ import { Group } from "./Group";
 import { Preset } from "./Preset";
 import { generateId } from "./types";
 import type { DeviceData } from "./types";
+import type { MidiBindingDefinition } from "./types";
 import {
     parseModulationMatrix,
     serializeModulationMatrix,
@@ -22,6 +23,12 @@ export class Device {
     /** Phase 1 modulation matrix. Always present (defaults on construct) and
      *  persisted through `serialize`/`deserialize`. */
     public modulation: ModulationMatrixConfig = createDefaultMatrix();
+
+    /** Optional per-device MIDI CC binding for the preset-morph regulator. NOT
+     *  a control — the morph is neither a nexus parameter nor an automation
+     *  track. Persisted with the device; consumed only by the AppUI midi
+     *  handler (morph branch) via applyMidiScaling. */
+    public morphMidi?: MidiBindingDefinition;
 
     public readonly MAX_ACTIVE_CONTROLS = 32; // I1
 
@@ -220,7 +227,8 @@ export class Device {
             controls: serializedControls,
             groups: serializedGroups,
             presets: serializedPresets,
-            modulation: serializeModulationMatrix(this.modulation)
+            modulation: serializeModulationMatrix(this.modulation),
+            morphMidi: this.morphMidi
         };
     }
 
@@ -270,6 +278,8 @@ export class Device {
             console.warn("[METATRON MODULATION] invalid persisted matrix — falling back to defaults.", e);
             d.modulation = createDefaultMatrix();
         }
+
+        d.morphMidi = data.morphMidi;
 
         return d;
     }
