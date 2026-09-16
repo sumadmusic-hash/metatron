@@ -260,6 +260,7 @@ private container!: HTMLElement;
             // ring band. Toggled by applyModDisplay; `.idle` hides it.
             const modRing = document.createElement("div");
             modRing.className = "knob-mod-ring idle";
+            modRing.dataset.baseValue = String(control.value);
             body.appendChild(modRing);
 
             const cap = document.createElement("div");

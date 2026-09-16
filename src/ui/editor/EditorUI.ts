@@ -392,6 +392,7 @@ export class EditorUI {
             // only drives the USE surface). `.idle` keeps it hidden by default.
             const modRing = document.createElement("div");
             modRing.className = "knob-mod-ring idle";
+            modRing.dataset.baseValue = String(control.value);
             body.appendChild(modRing);
 
             const cap = document.createElement("div");
