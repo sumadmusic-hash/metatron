@@ -1168,7 +1168,6 @@ body {
 
 .mod-matrix-drawer.open {
     max-height: 45vh;
-    overflow-y: auto;
     display: grid;
     grid-template-columns: 46fr 54fr;
 }
@@ -1182,6 +1181,15 @@ body {
 .mod-matrix-drawer.open .mod-source-rack {
     border-bottom: none;
     border-right: 1px solid var(--border-color);
+}
+
+/* Each column scrolls independently to its own content height instead of
+ * sharing one scroll area with differently-sized neighbors. */
+.mod-matrix-drawer.open .mod-source-rack,
+.mod-matrix-drawer.open .mod-slot-matrix {
+    min-height: 0;
+    overflow-y: auto;
+    max-height: calc(45vh - 44px);
 }
 
 /* Narrow viewports: stack SOURCES above ROUTING instead of overflowing. */

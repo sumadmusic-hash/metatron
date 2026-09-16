@@ -109,7 +109,12 @@ export class ModMatrixUI {
         }
     }
 
-    private renderBakeDialog(): HTMLElement {
+    private renderBakeDialog(): DocumentFragment {
+        const backdrop = document.createElement("div");
+        backdrop.className = "mod-bake-backdrop";
+        backdrop.title = "Click outside to close";
+        backdrop.onclick = () => this.toggleBakeDialog();
+
         const dialog = document.createElement("div");
         dialog.className = "mod-bake-dialog";
 
@@ -170,7 +175,11 @@ export class ModMatrixUI {
         actions.appendChild(renderBtn);
 
         dialog.appendChild(actions);
-        return dialog;
+
+        const frag = document.createDocumentFragment();
+        frag.appendChild(backdrop);
+        frag.appendChild(dialog);
+        return frag;
     }
 
     /** Bake the current matrix into automation and surface an outcome toast.
@@ -217,6 +226,26 @@ export class ModMatrixUI {
 
         this.bakeDialogOpen = false;
         this.render();
+    }
+
+    /** Control-option labels for the macro-source and slot-dest dropdowns. Only
+     *  when several controls share the same display name (the default right
+     *  after creation) the duplicates get a stable "name (n)" suffix in
+     *  creation order; unique names stay untouched. */
+    private buildOptionLabels(controls: Map<string, Control>): (control: Control) => string {
+        const occurrences = new Map<string, number>();
+        for (const [, control] of controls) {
+            const key = control.name || control.id;
+            occurrences.set(key, (occurrences.get(key) ?? 0) + 1);
+        }
+        const position = new Map<string, number>();
+        return (control: Control) => {
+            const key = control.name || control.id;
+            if ((occurrences.get(key) ?? 0) <= 1) return key;
+            const n = (position.get(key) ?? 0) + 1;
+            position.set(key, n);
+            return `${key} (${n})`;
+        };
     }
 
     private renderSourceRow(src: ModSource, index: number): HTMLElement {
@@ -270,10 +299,11 @@ export class ModMatrixUI {
             const hasRef = src.sourceId !== "" && options.has(src.sourceId);
             noneOpt.selected = !hasRef;
             select.appendChild(noneOpt);
+            const labelFor = this.buildOptionLabels(options);
             for (const [, control] of options) {
                 const opt = document.createElement("option");
                 opt.value = control.id;
-                opt.innerText = control.name || control.id;
+                opt.innerText = labelFor(control);
                 opt.selected = src.sourceId === control.id;
                 select.appendChild(opt);
             }
@@ -364,10 +394,11 @@ export class ModMatrixUI {
         const hasDest = slot.destControlId !== "" && device.controls.has(slot.destControlId);
         noneOpt.selected = !hasDest;
         destSelect.appendChild(noneOpt);
+        const destLabel = this.buildOptionLabels(device.controls);
         for (const [, control] of device.controls) {
             const opt = document.createElement("option");
             opt.value = control.id;
-            opt.innerText = control.name || control.id;
+            opt.innerText = destLabel(control);
             opt.selected = slot.destControlId === control.id;
             destSelect.appendChild(opt);
         }
