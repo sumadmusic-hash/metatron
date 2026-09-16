@@ -40,7 +40,7 @@ describe("M20.12 — Metatron logo left of the title", () => {
         expect(titleWrap).not.toBeNull();
         const logo = titleWrap.querySelector<HTMLImageElement>(".app-logo")!;
         expect(logo).not.toBeNull();
-        expect(logo.getAttribute("src")).toBe("/metatron-logo-small.svg");
+        expect(logo.getAttribute("src")).toBe("/metatron-logo-mark.svg");
         expect(logo.getAttribute("alt")).toBe("Metatron");
     });
 
@@ -65,9 +65,11 @@ describe("M20.12 — Metatron logo left of the title", () => {
         expect(rule?.[0]).toMatch(/width:\s*28px/);
         expect(rule?.[0]).toMatch(/height:\s*28px/);
         expect(rule?.[0]).toMatch(/object-fit:\s*contain/);
-        // Ungestörte Skalierung: die kleine, optimierte SVG ist ein perfektes Quadrat.
-        const svg = readFileSync(resolve("public/metatron-logo-small.svg"), "utf8");
-        expect(svg).toMatch(/viewBox="0 0 1600 1600"/);
+        // Ungestörte Skalierung: das Logo-Mark ist ein perfektes Quadrat.
+        const svg = readFileSync(resolve("public/metatron-logo-mark.svg"), "utf8");
+        expect(svg).toMatch(/viewBox="-2 -2 28 28"/);
+        expect(svg).toMatch(/polygon/);
+        expect(svg).toMatch(/#00e5ff/);
         // Die große Original-SVG bleibt erhalten (nicht gelöscht).
         expect(readFileSync(resolve("public/metatron-logo.svg"), "utf8")).toMatch(/viewBox="0 0 1600 1600"/);
     });
