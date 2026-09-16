@@ -27,6 +27,14 @@ function rowHeight(el: HTMLElement): number {
     return el.offsetHeight || parseFloat(el.style.height) || parseFloat(el.style.minHeight) || 0;
 }
 
+/** Visually propagate a slider's cyan fill range through CSS custom
+ *  properties. Presentation only — never touches the slider's value,
+ *  its bounds, or its event logic. */
+function setSliderFill(el: HTMLElement, startPct: number, endPct: number): void {
+    el.style.setProperty("--mod-fill-start", `${startPct}%`);
+    el.style.setProperty("--mod-fill-end", `${endPct}%`);
+}
+
 export class ModMatrixUI {
     private readonly deviceLibrary: { currentDevice?: Device; saveCurrentDevice(): void };
     private readonly history: DeviceHistory;
@@ -542,12 +550,20 @@ export class ModMatrixUI {
         slider.max = "100";
         slider.step = "1";
         slider.value = String(Math.round(slot.amount * 100));
+        const updateAmountFill = (): void => {
+            const v = Number(slider.value);
+            const pos = ((v - Number(slider.min)) / (Number(slider.max) - Number(slider.min))) * 100;
+            setSliderFill(slider, Math.min(50, pos), Math.max(50, pos));
+        };
+        updateAmountFill();
         slider.addEventListener("input", () => {
             num.value = String(Number(slider.value));
+            updateAmountFill();
         });
         slider.addEventListener("change", () => {
             const v = Number(slider.value);
             num.value = String(v);
+            updateAmountFill();
             this.editSlot(slot, () => { slot.amount = v / 100; });
         });
         wrap.appendChild(slider);
@@ -565,6 +581,7 @@ export class ModMatrixUI {
             const clamped = Number.isFinite(raw) ? Math.max(-100, Math.min(100, raw)) : 0;
             num.value = String(clamped);
             slider.value = String(clamped);
+            updateAmountFill();
             this.editSlot(slot, () => { slot.amount = clamped / 100; });
         };
         wrap.appendChild(num);
@@ -672,6 +689,7 @@ export class ModMatrixUI {
             const clamped = Number.isFinite(raw) ? Math.min(20, Math.max(0.01, raw)) : 0.01;
             rate.value = String(clamped);
             slider.value = String(clamped);
+            updateFreqFill();
             this.editSource(src, () => { src.rateHz = clamped; });
         };
 
@@ -684,12 +702,19 @@ export class ModMatrixUI {
         slider.max = "20";
         slider.step = "0.01";
         slider.value = String(src.rateHz);
+        const updateFreqFill = (): void => {
+            const pct = ((Number(slider.value) - 0.01) / (20 - 0.01)) * 100;
+            setSliderFill(slider, 0, pct);
+        };
+        updateFreqFill();
         slider.addEventListener("input", () => {
             rate.value = String(Number(slider.value));
+            updateFreqFill();
         });
         slider.addEventListener("change", () => {
             const v = Number(slider.value);
             rate.value = String(v);
+            updateFreqFill();
             this.editSource(src, () => { src.rateHz = v; });
         });
 

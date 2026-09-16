@@ -1302,12 +1302,12 @@ body {
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-/* Caption + control column. */
+/* Caption + control column; single-line rows put the caption to the left. */
 .mod-field {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 3px;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
     flex: 0 0 auto;
 }
 
@@ -1316,12 +1316,13 @@ body {
 }
 
 .mod-field-caption {
-    font-size: 11px;
+    font-size: 9px;
     line-height: 1;
     font-weight: 500;
     color: var(--text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     cursor: pointer;
     user-select: none;
@@ -1330,22 +1331,14 @@ body {
 .mod-source-row,
 .mod-slot-row {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 8px;
-    padding: 5px 0;
+    height: 38px;
+    box-sizing: border-box;
+    padding: 0;
     font-size: 12px;
     color: var(--text-primary);
     transition: opacity 0.15s ease;
-}
-
-/* Routing rows are single-line; the min-height matches the SOURCES rhythm
- * (caption 11 + gap 3 + control 25 + row padding 10 = 49) so both columns
- * share the same vertical band while controls stay centered. min-height,
- * not height — content can never be clipped. */
-.mod-slot-row {
-    align-items: center;
-    padding: 4px 0;
-    min-height: 49px;
 }
 
 /* Extra compact controls inside routing rows. */
@@ -1373,9 +1366,9 @@ body {
 }
 
 .mod-source-label {
-    flex: 0 0 96px;
-    width: 96px;
-    min-width: 96px;
+    flex: 0 0 88px;
+    width: 88px;
+    min-width: 88px;
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1410,30 +1403,39 @@ body {
     cursor: pointer;
 }
 
-/* Modulation ENABLE / ON — tiny Metatron indicator LED instead of the native
- * checkbox box. The real <input type="checkbox"> stays in the DOM, clickable
- * and keyboard-operable; only its drawing is replaced. */
+/* Modulation ENABLE / ON — pill toggle instead of the native checkbox box.
+ * The real <input type="checkbox"> stays in the DOM, clickable and
+ * keyboard-operable; only its drawing is replaced. Pseudo-elements do not
+ * render on inputs, so the sliding nub is a background radial-gradient whose
+ * background-position shifts between the two states. */
 .mod-source-row .mod-source-enable,
 .mod-slot-row .mod-slot-enable {
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
-    width: 14px;
-    height: 14px;
+    position: relative;
+    width: 34px;
+    height: 18px;
     margin: 0;
     padding: 0;
     border: 1px solid var(--border-color);
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.45);
+    border-radius: 999px;
+    background-color: rgba(0, 0, 0, 0.45);
+    background-image: radial-gradient(circle, #8a93a3 0 9%, rgba(40, 44, 52, 0.9) 100%);
+    background-size: 12px 12px;
+    background-repeat: no-repeat;
+    background-position: 2px center;
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
     cursor: pointer;
-    transition: background 0.12s ease, box-shadow 0.12s ease;
+    transition: background-color 0.12s ease, background-position 0.12s ease, box-shadow 0.12s ease;
 }
 
 .mod-source-row .mod-source-enable:checked,
 .mod-slot-row .mod-slot-enable:checked {
-    background: var(--accent-color);
+    background-color: rgba(0, 229, 255, 0.85);
     border-color: var(--accent-hover);
+    background-image: radial-gradient(circle, #eafcff 0 9%, #a8f2ff 100%);
+    background-position: 20px center;
     box-shadow: 0 0 6px rgba(0, 229, 255, 0.4);
 }
 
@@ -1445,7 +1447,7 @@ body {
 
 .mod-source-waveform,
 .mod-source-macro {
-    width: 118px;
+    width: 100px;
 }
 
 /* FREE | SYNC segment toggle (compact, Metatron active-accent look). */
@@ -1469,7 +1471,7 @@ body {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    padding: 0 9px;
+    padding: 0 6px;
     cursor: pointer;
     transition: background 0.12s ease, color 0.12s ease;
 }
@@ -1508,7 +1510,7 @@ body {
 }
 
 .mod-source-row .mod-source-rate-slider {
-    width: 96px;
+    width: 72px;
 }
 
 .mod-source-rate {
@@ -1631,7 +1633,17 @@ body {
 .mod-slot-row .mod-slot-amount-slider::-webkit-slider-runnable-track {
     height: 6px;
     border-radius: 3px;
-    background: rgba(0, 0, 0, 0.45);
+    background-color: rgba(0, 0, 0, 0.45);
+    /* Three-stop fill: transparent on BOTH flanks, cyan exactly from
+     * --mod-fill-start to --mod-fill-end. Without the leading transparent
+     * stop the gradient would paint the fill all the way back to 0%, which
+     * breaks the bipolar amount fill (negative values and value 0). */
+    background-image: linear-gradient(
+        to right,
+        transparent var(--mod-fill-start, 0%),
+        rgba(0, 229, 255, 0.45) var(--mod-fill-start, 0%) var(--mod-fill-end, 0%),
+        transparent var(--mod-fill-end, 0%)
+    );
 }
 
 .mod-source-row .mod-source-rate-slider::-webkit-slider-thumb,
@@ -1655,7 +1667,15 @@ body {
 .mod-slot-row .mod-slot-amount-slider::-moz-range-track {
     height: 6px;
     border-radius: 3px;
-    background: rgba(0, 0, 0, 0.45);
+    background-color: rgba(0, 0, 0, 0.45);
+    /* Three-stop fill: transparent on BOTH flanks, cyan exactly from
+     * --mod-fill-start to --mod-fill-end (see webkit rule above). */
+    background-image: linear-gradient(
+        to right,
+        transparent var(--mod-fill-start, 0%),
+        rgba(0, 229, 255, 0.45) var(--mod-fill-start, 0%) var(--mod-fill-end, 0%),
+        transparent var(--mod-fill-end, 0%)
+    );
     border: none;
 }
 
