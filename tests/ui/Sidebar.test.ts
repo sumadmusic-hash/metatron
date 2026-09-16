@@ -53,6 +53,10 @@ function switchToUse(root: HTMLElement) {
     )!;
     b.click();
 }
+function toggleMod(root: HTMLElement) {
+    const b = root.querySelector<HTMLButtonElement>("#mod-matrix-toggle")!;
+    b.click();
+}
 
 beforeEach(() => {
     document.body.innerHTML = "";
@@ -112,5 +116,28 @@ describe("Collapsible left sidebar", () => {
         // The default (open) library column has an explicit non-zero width.
         const openRule = css.match(/\.sidebar-pane \.device-sidebar-wrap\s*\{[^}]*\}/);
         expect(openRule?.[0]).toMatch(/width:\s*250px/);
+    });
+
+    it("collapses sidebar when opening MOD matrix if open, and restores it when closing", () => {
+        const { root } = mountApp(buildDevice());
+        expect(pane(root).classList.contains("collapsed")).toBe(false);
+
+        toggleMod(root); // open MOD
+        expect(pane(root).classList.contains("collapsed")).toBe(true);
+
+        toggleMod(root); // close MOD
+        expect(pane(root).classList.contains("collapsed")).toBe(false);
+    });
+
+    it("keeps sidebar collapsed when opening MOD matrix if already collapsed, and leaves it collapsed when closing", () => {
+        const { root } = mountApp(buildDevice());
+        click(toggle(root)); // collapse sidebar
+        expect(pane(root).classList.contains("collapsed")).toBe(true);
+
+        toggleMod(root); // open MOD
+        expect(pane(root).classList.contains("collapsed")).toBe(true);
+
+        toggleMod(root); // close MOD
+        expect(pane(root).classList.contains("collapsed")).toBe(true);
     });
 });

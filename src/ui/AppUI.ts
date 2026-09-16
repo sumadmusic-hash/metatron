@@ -69,6 +69,7 @@ export class AppUI {
     private libraryUI: DeviceLibraryUI;
     private modMatrixUI: ModMatrixUI;
     private modMatrixOpen = false;
+    private sidebarCollapsedBeforeMod: boolean | null = null;
     private midiMapping: MidiMapping;
     private connectionUnsub?: () => void;
     private connectionStatusEl?: HTMLSpanElement;
@@ -433,12 +434,12 @@ export class AppUI {
             this.recordingStartPerf = performance.now();
             this.recorder.record();
             this.render();
-        });
+        }, '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2z"/></svg>')
         mk("STOP", "Stop and finalize the take", state === "RECORDING" || state === "ARMED", "", () => {
             this.stopElapsedTimer();
             this.recorder.stop();
             this.render();
-        });
+        }, '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>')
         mk(
             "APPLY TO AUDIOTOOL",
             "Apply this take to Audiotool (creates real automation)",
@@ -672,6 +673,9 @@ libraryBtn.innerHTML =
 libraryBtn.title = this.sidebarCollapsed ? "Show library" : "Hide library";
 libraryBtn.onclick = () => {
     this.sidebarCollapsed = !this.sidebarCollapsed;
+    if (this.modMatrixOpen) {
+        this.sidebarCollapsedBeforeMod = this.sidebarCollapsed;
+    }
     this.render();
 };
 toolbarLeft.appendChild(libraryBtn);
@@ -786,6 +790,13 @@ toolbarLeft.appendChild(libraryBtn);
             "</svg>";
         modBtn.onclick = () => {
             this.modMatrixOpen = !this.modMatrixOpen;
+            if (this.modMatrixOpen) {
+                this.sidebarCollapsedBeforeMod = this.sidebarCollapsed;
+                this.sidebarCollapsed = true;
+            } else if (this.sidebarCollapsedBeforeMod !== null) {
+                this.sidebarCollapsed = this.sidebarCollapsedBeforeMod;
+                this.sidebarCollapsedBeforeMod = null;
+            }
             this.modMatrixUI.toggleDrawer();
             this.render();
         };
@@ -855,6 +866,9 @@ toolbarLeft.appendChild(libraryBtn);
         sidebarToggle.setAttribute("aria-label", sidebarToggle.title);
         sidebarToggle.onclick = () => {
             this.sidebarCollapsed = !this.sidebarCollapsed;
+            if (this.modMatrixOpen) {
+                this.sidebarCollapsedBeforeMod = this.sidebarCollapsed;
+            }
             this.render();
         };
         sidebarPane.appendChild(sidebarToggle);
