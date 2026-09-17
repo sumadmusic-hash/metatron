@@ -1172,16 +1172,17 @@ export class AppUI {
         if (this.currentMode === "USE") {
             const modBtn = document.createElement("button");
             modBtn.id = "mod-matrix-toggle";
-            modBtn.className = "hdr-icon-btn square" + (this.modMatrixOpen ? " active" : "");
+            modBtn.className = "hdr-icon-btn square mod-toggle" + (this.modMatrixOpen ? " active" : "");
             modBtn.setAttribute("aria-label", "Toggle modulation matrix");
             modBtn.title = "Toggle modulation matrix";
-            // 2×2 grid icon — the modulation matrix's map symbol.
+            // 2×2 grid icon — the modulation matrix's map symbol. The squares
+            // are teal on the accent-dark chassis (mockup), visible always.
             modBtn.innerHTML =
                 '<svg class="mod-grid-icon" viewBox="0 0 14 14" aria-hidden="true" focusable="false">' +
-                '<rect x="0" y="0" width="5.5" height="5.5" rx="1"/>' +
-                '<rect x="8.5" y="0" width="5.5" height="5.5" rx="1"/>' +
-                '<rect x="0" y="8.5" width="5.5" height="5.5" rx="1"/>' +
-                '<rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1"/>' +
+                '<rect x="0" y="0" width="5.5" height="5.5" rx="1" fill="currentColor"/>' +
+                '<rect x="8.5" y="0" width="5.5" height="5.5" rx="1" fill="currentColor"/>' +
+                '<rect x="0" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/>' +
+                '<rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/>' +
                 "</svg>";
             modBtn.onclick = () => {
                 this.modMatrixOpen = !this.modMatrixOpen;
