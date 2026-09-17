@@ -5,6 +5,9 @@ import {
     registerParameterUICurve,
     getParameterUICurve,
     unregisterParameterUICurve,
+    PULVERISATEUR_CUTOFF_UI_CURVE,
+    BUILTIN_UI_CURVES,
+    installBuiltinUICurves,
 } from "../../src/nexus/ParameterUICurve";
 import type { ParameterUICurve, UICurvePoint } from "../../src/nexus/ParameterUICurve";
 import {
@@ -14,34 +17,14 @@ import {
 } from "../../src/nexus/NexusValueMapping";
 
 // ── Pulverisateur cutoff 18..15500 (REAL measured UI curve, B73) ────────
-// Gemischt aus drei pacedSweep-Sitzungen (2026-09-17):
+// KANONISCHE Quelle: PULVERISATEUR_CUTOFF_UI_CURVE in src/nexus/ParameterUICurve.ts
+// (= Built-in, installBuiltinUICurves). Der Test nutzt DIESELBE Konstante,
+// damit Doku-Fixture und Produktion nie auseinanderlaufen können.
 //   unten dicht (custom targets): 0–0.12 mit 6 Punkten
 //   mitte neu (custom targets):   0.12–0.6  mit 8 Punkten  → m75 = (0.75, 0.25)
 //   oben (Initial-Sweep):         0.7–1.0
 // Formel: {ui: Knob, nexus: nexusNorm}. Streng monoton ↑, Endpunkte via Sanitize.
-const PULV_MEASURED_UI: ParameterUICurve = {
-    source: "measured",
-    measuredAt: "2026-09-17T00:00:00.000Z",
-    points: [
-        { ui: 0,     nexus: 0 },
-        { ui: 0.37,  nexus: 0.01 },
-        { ui: 0.45,  nexus: 0.025 },
-        { ui: 0.51,  nexus: 0.04 },
-        { ui: 0.59,  nexus: 0.06 },
-        { ui: 0.61,  nexus: 0.08 },
-        { ui: 0.625, nexus: 0.12 },
-        { ui: 0.68,  nexus: 0.16 },
-        { ui: 0.73,  nexus: 0.2 },
-        { ui: 0.75,  nexus: 0.25 },
-        { ui: 0.76,  nexus: 0.3 },
-        { ui: 0.85,  nexus: 0.4 },
-        { ui: 0.87,  nexus: 0.5 },
-        { ui: 0.88,  nexus: 0.6 },
-        { ui: 0.9,   nexus: 0.7 },
-        { ui: 0.999, nexus: 0.9 },
-        { ui: 1,     nexus: 1 },
-    ],
-};
+const PULV_MEASURED_UI: ParameterUICurve = PULVERISATEUR_CUTOFF_UI_CURVE;
 
 const CUTOFF_MAPPING = createNexusValueMapping({ location: {} });
 // Manually set linear 18..15500 mapping for the test (offline doc has different range).
@@ -189,6 +172,26 @@ describe("ParameterUICurve — registry", () => {
         expect(c.points[0]).toEqual({ ui: 0, nexus: 0 });
         expect(c.points[c.points.length - 1]).toEqual({ ui: 1, nexus: 1 });
         unregisterParameterUICurve(key);
+    });
+
+    it("BUILTIN_UI_CURVES enthält die Pulverisateur-Cutoff-Kurve", () => {
+        expect(BUILTIN_UI_CURVES.some((e) => e.key === "pulverisateur:filter.cutoffFrequencyHz")).toBe(true);
+        const e = BUILTIN_UI_CURVES.find((e) => e.key === "pulverisateur:filter.cutoffFrequencyHz")!;
+        expect(e.curve.points.length).toBe(17);
+        expect(e.curve).toEqual(PULV_MEASURED_UI);
+    });
+
+    it("installBuiltinUICurves registriert die Built-in-Kurve (idempotent)", () => {
+        const key = "pulverisateur:filter.cutoffFrequencyHz";
+        unregisterParameterUICurve(key);
+        // Ohne Install: keine Kurve (Session-Registry ist leer nach Konstruktion).
+        expect(getParameterUICurve(key)).toBeUndefined();
+        installBuiltinUICurves();
+        const c = getParameterUICurve(key);
+        expect(c?.points.length).toBe(17);
+        expect(uiToNexusNorm(c, 0.75)).toBeCloseTo(0.25, 6);
+        // Idempotent: erneuter Aufruf ändert nichts / wirft nicht.
+        expect(() => installBuiltinUICurves()).not.toThrow();
     });
 
     it("non-monotonic nexus values → rejected (identity fallback)", () => {

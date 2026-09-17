@@ -64,6 +64,58 @@ export function unregisterParameterUICurve(key: string): void {
     UI_REGISTRY.delete(key);
 }
 
+// ── Documented BUILT-IN curves (measured, no heuristics) ────────────────
+//
+// Wird beim App-Start via installBuiltinUICurves() (src/main.ts) installiert,
+// damit nach Page-Reload KEIN Konsolen-Einzeiler mehr nötig ist.
+//
+// Hinzufügungsregel (§ keinerlei Heuristik):
+//   - NUR echte Messdaten (source:"measured") aus der pacedSweep-Probe.
+//   - Jede Kurve ist hier dokumentiert UND in
+//     tests/nexus/ParameterUICurve.test.ts als Fixture gepinnt.
+//   - NIEMALS aus Parameternamen / globalen Taper-Annahmen abgeleitet.
+
+/** Pulverisateur Cutoff 18..15500 Hz — gemessen per pacedSweep (B73),
+ *  17 Punkte aus drei Sitzungen (2026-09-17):
+ *   unten dicht (custom targets) + Mitte re-gemessen + oberer Sweep.
+ *   {ui: Audiotool-Knob, nexus: Metatron/nexus-normalized}. */
+export const PULVERISATEUR_CUTOFF_UI_CURVE: ParameterUICurve = {
+    source: "measured",
+    measuredAt: "2026-09-17T00:00:00.000Z",
+    points: [
+        { ui: 0,     nexus: 0 },
+        { ui: 0.37,  nexus: 0.01 },
+        { ui: 0.45,  nexus: 0.025 },
+        { ui: 0.51,  nexus: 0.04 },
+        { ui: 0.59,  nexus: 0.06 },
+        { ui: 0.61,  nexus: 0.08 },
+        { ui: 0.625, nexus: 0.12 },
+        { ui: 0.68,  nexus: 0.16 },
+        { ui: 0.73,  nexus: 0.2 },
+        { ui: 0.75,  nexus: 0.25 },
+        { ui: 0.76,  nexus: 0.3 },
+        { ui: 0.85,  nexus: 0.4 },
+        { ui: 0.87,  nexus: 0.5 },
+        { ui: 0.88,  nexus: 0.6 },
+        { ui: 0.9,   nexus: 0.7 },
+        { ui: 0.999, nexus: 0.9 },
+        { ui: 1,     nexus: 1 },
+    ],
+};
+
+/** Kanonische Liste der beim Start zu installierenden Kurven. */
+export const BUILTIN_UI_CURVES: ReadonlyArray<{ key: string; curve: ParameterUICurve }> = [
+    { key: "pulverisateur:filter.cutoffFrequencyHz", curve: PULVERISATEUR_CUTOFF_UI_CURVE },
+];
+
+/** Installiert alle dokumentierten Built-in-Kurven (idempotent).
+ *  Aufgerufen aus src/main.ts beim Bootstrap. */
+export function installBuiltinUICurves(): void {
+    for (const { key, curve } of BUILTIN_UI_CURVES) {
+        registerParameterUICurve(key, curve);
+    }
+}
+
 // ── Conversion (piecewise-linear) ───────────────────────────────────────
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));

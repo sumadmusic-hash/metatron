@@ -5,9 +5,19 @@ import { MidiAccess } from "./midi/MidiAccess";
 import { BindingManager } from "./core/BindingManager";
 import { AppUI } from "./ui/AppUI";
 import { Toast } from "./ui/Toast";
+import { installBuiltinUICurves, getParameterUICurve, BUILTIN_UI_CURVES } from "./nexus/ParameterUICurve";
 
 async function bootstrap() {
     console.log("Starting Metatron...");
+
+    // 0. Install documented BUILT-IN UI curves (B73). Runs on every boot, so
+    //    a page reload no longer wipes the measured knob↔nexus mapping.
+    installBuiltinUICurves();
+    console.log("[METATRON CURVE] Built-in UI curves installed:",
+        BUILTIN_UI_CURVES.map(({ key }) => {
+            const c = getParameterUICurve(key);
+            return `${key} (${c?.points.length ?? 0}pts)`;
+        }));
 
     // 1. Initialize Core Models
     const deviceLibrary = new DeviceLibrary();
