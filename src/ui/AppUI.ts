@@ -195,7 +195,10 @@ export class AppUI {
             this.midiMapping,
             midiHandler,
             this.history,
-            (controlId) => this.isWriteRefused(controlId)
+            (controlId) => this.isWriteRefused(controlId),
+            // B37 — control create/delete/rename keeps the open mod-matrix
+            // drawer's option lists current (archived labels, vanished rows).
+            () => this.modMatrixUI.refresh(),
         );
         this.libraryUI = new DeviceLibraryUI(
             this.deviceLibrary,

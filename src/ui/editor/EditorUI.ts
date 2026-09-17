@@ -101,7 +101,11 @@ export class EditorUI {
     private colorGestureKey: string | null = null;
     private colorGestureBefore: DeviceStatePatch | null = null;
 
-    constructor(deviceLibrary: DeviceLibrary, nexusAdapter?: NexusAdapter, bindingManager?: BindingManager, midiAccess?: MidiAccess, midiMapping?: MidiMapping, midiHandler?: (channel: number, cc: number, value: number) => void, history?: DeviceHistory, isWriteRefused?: (controlId: string) => boolean) {
+    /** B37 — structural device changes (control create/delete/rename) notify
+     *  the mod-matrix drawer so its option lists stay current while open. */
+    private onStructureChange?: () => void;
+
+    constructor(deviceLibrary: DeviceLibrary, nexusAdapter?: NexusAdapter, bindingManager?: BindingManager, midiAccess?: MidiAccess, midiMapping?: MidiMapping, midiHandler?: (channel: number, cc: number, value: number) => void, history?: DeviceHistory, isWriteRefused?: (controlId: string) => boolean, onStructureChange?: () => void) {
         this.deviceLibrary = deviceLibrary;
         this.nexusAdapter = nexusAdapter;
         this.bindingManager = bindingManager;
@@ -110,6 +114,7 @@ export class EditorUI {
         this.midiHandler = midiHandler;
         this.history = history;
         this.isWriteRefused = isWriteRefused;
+        this.onStructureChange = onStructureChange;
         this.midiLearn = midiAccess ? new MidiLearn(midiAccess) : null;
         // Editor-side Nexus Learn delegates to the shared flow (P3.2) — one
         // copy of the learn steps instead of the duplicated EditorUI/SurfaceUI
@@ -287,6 +292,7 @@ export class EditorUI {
         this.selectedControlId = c.id;
         this.selectedGroupId = null;
         this.render(this.container.parentElement!);
+        this.onStructureChange?.();
     }
 
     private addGroup() {
@@ -329,6 +335,7 @@ export class EditorUI {
             this.selectedControlId = null;
             this.deviceLibrary.saveCurrentDevice();
             this.render(this.container.parentElement!);
+            this.onStructureChange?.();
         } else if (this.selectedGroupId) {
             const id = this.selectedGroupId;
             const memberCount = device.getGroupControls(id).length;
@@ -1197,6 +1204,7 @@ export class EditorUI {
                     });
                 }
                 this.deviceLibrary.saveCurrentDevice();
+                this.onStructureChange?.();
             }
             label.innerText = target.name;
         };

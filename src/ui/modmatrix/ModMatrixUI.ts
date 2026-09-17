@@ -70,6 +70,14 @@ export class ModMatrixUI {
         }
     }
 
+    /** Structural device changes (create/delete/rename/archive) must refresh
+     *  the option lists even while the drawer stays open. */
+    public refresh(): void {
+        if (this.container && this.deviceLibrary.currentDevice) {
+            this.render();
+        }
+    }
+
     public render(): void {
         const device = this.deviceLibrary.currentDevice;
         if (!device || !this.container) {
@@ -393,7 +401,13 @@ export class ModMatrixUI {
             const select = document.createElement("select");
             select.className = "mod-source-macro";
             select.id = `mod-src-macro-${src.id}`;
-            const options = (device?.controls ?? new Map<string, Control>());
+            const all = device?.controls ?? new Map<string, Control>();
+            // FIX B36: archived controls are not selectable as macro sources; a
+            // source still referencing one keeps the disabled, labelled option.
+            const options = new Map<string, Control>();
+            for (const [id, control] of all) {
+                if (!control.archived || id === src.sourceId) options.set(id, control);
+            }
             const noneOpt = document.createElement("option");
             noneOpt.value = "";
             noneOpt.innerText = "— none —";
@@ -404,8 +418,9 @@ export class ModMatrixUI {
             for (const [, control] of options) {
                 const opt = document.createElement("option");
                 opt.value = control.id;
-                opt.innerText = labelFor(control);
+                opt.innerText = control.archived ? `${labelFor(control)} (deleted)` : labelFor(control);
                 opt.selected = src.sourceId === control.id;
+                if (control.archived) opt.disabled = true;
                 select.appendChild(opt);
             }
             select.value = hasRef ? src.sourceId : "";
@@ -483,12 +498,21 @@ export class ModMatrixUI {
         const hasDest = slot.destControlId !== "" && device.controls.has(slot.destControlId);
         noneOpt.selected = !hasDest;
         destSelect.appendChild(noneOpt);
-        const destLabel = this.buildOptionLabels(device.controls);
-        for (const [, control] of device.controls) {
+        // FIX B36: deleted (archived) controls are no longer selectable
+        // destinations. A slot that still points at one keeps its option
+        // (disabled + labelled) so the stale reference stays visible instead of
+        // silently collapsing to "— none —".
+        const destOptions = new Map<string, Control>();
+        for (const [id, control] of device.controls) {
+            if (!control.archived || id === slot.destControlId) destOptions.set(id, control);
+        }
+        const destLabel = this.buildOptionLabels(destOptions);
+        for (const [, control] of destOptions) {
             const opt = document.createElement("option");
             opt.value = control.id;
-            opt.innerText = destLabel(control);
+            opt.innerText = control.archived ? `${destLabel(control)} (deleted)` : destLabel(control);
             opt.selected = slot.destControlId === control.id;
+            if (control.archived) opt.disabled = true;
             destSelect.appendChild(opt);
         }
         destSelect.value = hasDest ? slot.destControlId : "";

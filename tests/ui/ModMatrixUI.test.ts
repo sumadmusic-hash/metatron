@@ -279,6 +279,109 @@ describe("ModMatrixUI — dead-reference selects and rate clamping", () => {
         expect(select?.value).toBe(control.id);
     });
 
+    it("B36 - archived destination keeps a disabled, labelled '(deleted)' option that stays selected", () => {
+        const device = makeDevice();
+        const control = new Control("knob", "Cutoff");
+        device.addControl(control);
+        device.modulation.slots[0].destControlId = control.id;
+        device.modulation.slots[0].enabled = true; // slot row stays ON
+        device.removeControl(control.id); // soft delete / archive
+        expect(control.archived).toBe(true);
+
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+
+        const row = container.querySelector<HTMLElement>('.mod-slot-row[data-slot-id="slot1"]')!;
+        expect(row.classList.contains("on")).toBe(true);
+        const dest = container.querySelector<HTMLSelectElement>(".mod-slot-row .mod-slot-dest")!;
+        const archivedOpt = Array.from(dest.options).find((o) => o.value === control.id)!;
+        expect(archivedOpt).toBeTruthy();
+        expect(archivedOpt.disabled).toBe(true);
+        expect(archivedOpt.text).toContain("(deleted)");
+        expect(archivedOpt.selected).toBe(true);
+        // archived controls are hidden from fresh destinations: option list =
+        // — none — + archived stale ref only (no duplicates/phantoms).
+        expect(dest.options.length).toBe(2);
+    });
+
+    it("B36 - archived controls are absent from the destination list for a fresh slot", () => {
+        const device = makeDevice();
+        const dead = new Control("knob", "Dead");
+        device.addControl(dead);
+        device.removeControl(dead.id); // archive
+        const live = new Control("knob", "Live");
+        device.addControl(live);
+
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+
+        const dest = container.querySelector<HTMLSelectElement>(".mod-slot-row .mod-slot-dest")!;
+        const values = Array.from(dest.options).map((o) => o.value);
+        expect(values).toContain(live.id);
+        expect(values).not.toContain(dead.id);
+        expect(values).toContain(""); // — none —
+    });
+
+    it("B36 - archived macro source keeps a disabled '(deleted)' option that stays selected", () => {
+        const device = makeDevice();
+        const control = new Control("knob", "Follow");
+        device.addControl(control);
+        device.modulation.sources[0].type = "macro";
+        device.modulation.sources[0].sourceId = control.id;
+        device.removeControl(control.id); // archive
+
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+
+        const select = container.querySelector<HTMLSelectElement>(".mod-source-row .mod-source-macro")!;
+        const archivedOpt = Array.from(select.options).find((o) => o.value === control.id)!;
+        expect(archivedOpt).toBeTruthy();
+        expect(archivedOpt.disabled).toBe(true);
+        expect(archivedOpt.text).toContain("(deleted)");
+        expect(archivedOpt.selected).toBe(true);
+    });
+
+    it("B36 - hard delete removes the option entirely and the slot reads — none —", () => {
+        const device = makeDevice();
+        const control = new Control("knob", "Cutoff");
+        device.addControl(control);
+        device.modulation.slots[0].destControlId = control.id;
+        device.removeControl(control.id, true); // hard delete
+        expect(device.controls.has(control.id)).toBe(false);
+        expect(device.modulation.slots[0].destControlId).toBe(""); // clearModulationReferences
+
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+
+        const dest = container.querySelector<HTMLSelectElement>(".mod-slot-row .mod-slot-dest")!;
+        expect(dest.value).toBe("");
+        expect(dest.selectedIndex).toBe(0);
+        const values = Array.from(dest.options).map((o) => o.value);
+        expect(values).not.toContain(control.id);
+    });
+
+    it("B37 - refresh() re-renders the drawer while it stays open", () => {
+        const device = makeDevice();
+        const control = new Control("knob", "Gone");
+        device.addControl(control);
+        device.modulation.slots[0].destControlId = control.id;
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+        ui.toggleDrawer(); // drawer stays open across the structural change
+        const before = Array.from(container.querySelectorAll(".mod-slot-dest")).length;
+
+        // structural change after render (archive + save), drawer untouched
+        device.removeControl(control.id);
+        expect(container.querySelectorAll(".mod-slot-dest").length).toBe(before);
+
+        ui.refresh(); // AppUI calls this on control create/delete/rename
+        const after = container.querySelectorAll(".mod-slot-dest");
+        expect(after.length).toBe(before);
+        const opt = Array.from(after[0].options).find((o) => o.value === control.id)!;
+        expect(opt.disabled).toBe(true);
+        expect(opt.text).toContain("(deleted)");
+    });
+
     function rateState(device: Device) {
         const { ui } = makeDeps(device);
         const container = mount(ui);
