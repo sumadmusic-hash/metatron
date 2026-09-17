@@ -15,10 +15,13 @@
  * Identity (das bisherige Verhalten) — es wird NIEMALS eine Name-/Heuristik-
  * basierte Kennlinie erfunden (§6).
  *
- * B69 (kosmetisch/UX, KEIN Funktionsfehler): Metatron-Knob-Position (linear)
- * und Audiotool-Knob-Position (getapert) stimmen prinzipiell nie überein —
- * der Positions-Versatz ist erwartet und gehört in Schicht C. NUR der
- * Automation-Fehler (B68) wird hier behoben; die Knob-Anzeige bleibt linear.
+ * B69 (Doc): Die Abweichung der Metatron-Knob-Position von der Audiotool-
+ * Knob-Position ist ein FUNKTIONSBEDÜRFNIS, kein erwarteter Fehler. Ohne
+ * gemessene UI-Kurve (ParameterUICurve) zeigt Metatron die Nexus-normierte
+ * lineare Skala, die visuell NICHT mit dem getaperten Audiotool-Knob
+ * übereinstimmt. Sobald eine UI-Kurve registriert ist, spiegelt Metatron
+ * exakt die Audiotool-Knob-Position. Die Automation-Taper (hier) bleiben
+ * davon unberührt.
  */
 
 /** Only registered entries are applied. `measured` entries come from the

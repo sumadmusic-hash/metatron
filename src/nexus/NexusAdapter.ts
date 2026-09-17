@@ -3,6 +3,8 @@ import type { SyncedDocument } from "@audiotool/nexus";
 import { BindingManager } from "../core/BindingManager";
 import { createNexusValueMapping, mapNormalizedToNexus, mapNexusToNormalized } from "./NexusValueMapping";
 import { resolveFieldByPath } from "./ChainPath";
+import { taperKey } from "./CurveRegistry";
+import { getParameterUICurve, uiToNexusNorm, nexusNormToUi } from "./ParameterUICurve";
 
 /**
  * Resolve the OAuth redirect URL from the browser's current origin.
@@ -162,9 +164,19 @@ export class NexusAdapter {
         }
 
         const mapping = binding.valueMapping ?? createNexusValueMapping(field);
-        const mapped = mapNormalizedToNexus(mapping, value);
-        if (mapped === undefined) {
+        if (mapping.kind === "unsupported") {
             console.warn(`[METATRON NEXUS WRITE] refused control=${controlId} field=${binding.fieldPath ?? binding.fieldName} reason=no-numeric-mapping (${mapping.typeLabel ?? mapping.kind})`);
+            return false;
+        }
+        // UI-Kurve: Metatron UI 0..1 → Nexus-normalized 0..1 über der gemessenen
+        // Audiotool-Knob-Transferfunktion. Ohne gemessenen Eintrag = Identity.
+        const path = binding.fieldPath ?? binding.fieldName ?? "";
+        const targetName = this.bindingManager.deviceRef.controls.get(controlId)?.audiotoolBindingDefinition?.targetName;
+        const uiCurve = getParameterUICurve(taperKey(targetName, path));
+        const nexusNorm = uiToNexusNorm(uiCurve, value);
+        const mapped = mapNormalizedToNexus(mapping, nexusNorm);
+        if (mapped === undefined) {
+            console.warn(`[METATRON NEXUS WRITE] refused control=${controlId} field=${binding.fieldPath ?? binding.fieldName} reason=mapNormalizedToNexus returned undefined`);
             return false;
         }
 
@@ -172,7 +184,15 @@ export class NexusAdapter {
             await this.document.modify(t => {
                 t.update(field, mapped);
             });
-            console.log(`[METATRON NEXUS WRITE] control=${controlId} field=${binding.fieldPath ?? binding.fieldName} normalized=${Number(value).toFixed(4)} -> nexus=${mapped}`);
+            if (uiCurve) {
+                console.log(
+                    `[METATRON CURVE] control=${controlId} field=${path} ` +
+                        `ui=${Number(value).toFixed(4)} → nexusNorm=${nexusNorm.toFixed(4)} → raw=${mapped} ` +
+                        `curve=${uiCurve.points.length}pts (source:${uiCurve.source})`
+                );
+            } else {
+                console.log(`[METATRON NEXUS WRITE] control=${controlId} field=${path} normalized=${Number(value).toFixed(4)} -> nexus=${mapped}`);
+            }
             return true;
         } catch (e) {
             console.error(`NexusAdapter: Failed to update bound control ${controlId}:`, e);
@@ -188,16 +208,25 @@ export class NexusAdapter {
      *  writes (B12): at 30 Hz writes a late echo of write N may arrive after
      *  the guard-set of write N+1. */
     public beginSuppressEcho(controlId: string, writtenNormalized: number, windowMs = 200): void {
-        const binding = this.bindingManager?.getActiveBinding(controlId);
+        if (!this.bindingManager) return;
+        const binding = this.bindingManager.getActiveBinding(controlId);
         if (!binding) return;
         const field = this.resolveField(binding);
         const mapping = binding.valueMapping ?? (field ? createNexusValueMapping(field) : undefined);
         if (!mapping) return;
-        const mapped = mapNormalizedToNexus(mapping, writtenNormalized);
+        // UI-Kurve: writtenNormalized = Metatron UI 0..1; der Echo-Kreislauf
+        // muss denselben Wert zurückvergleichen wie subscribeBoundControl
+        // produziert (uiNorm), nicht den Nexus-normalisierten.
+        const path = binding.fieldPath ?? binding.fieldName ?? "";
+        const targetName = this.bindingManager.deviceRef.controls.get(controlId)?.audiotoolBindingDefinition?.targetName;
+        const uiCurve = getParameterUICurve(taperKey(targetName, path));
+        const nexusNorm = uiToNexusNorm(uiCurve, writtenNormalized);
+        const mapped = mapNormalizedToNexus(mapping, nexusNorm);
         if (mapped === undefined) return;
-        const expectedEcho = mapNexusToNormalized(mapping, mapped);
+        const expectedNexusNorm = mapNexusToNormalized(mapping, mapped);
+        const expectedUi = nexusNormToUi(uiCurve, expectedNexusNorm);
         const list = this.echoGuard.get(controlId) ?? [];
-        list.push({ value: expectedEcho, expiresAt: Date.now() + windowMs });
+        list.push({ value: expectedUi, expiresAt: Date.now() + windowMs });
         while (list.length > 8) list.shift();
         this.echoGuard.set(controlId, list);
     }
@@ -268,15 +297,30 @@ export class NexusAdapter {
 
         const mapping = binding.valueMapping ?? createNexusValueMapping(field);
 
+        // UI-Kurve für den Read-Pfad auflösen (einmalig, Closure-captured).
+        const path = binding.fieldPath ?? binding.fieldName ?? "";
+        const targetName = this.bindingManager.deviceRef.controls.get(controlId)?.audiotoolBindingDefinition?.targetName;
+        const uiCurve = getParameterUICurve(taperKey(targetName, path));
+
         const cleanup = this.document!.events.onUpdate(field, (newValue: any) => {
-            const normalized = mapNexusToNormalized(mapping, newValue);
-            console.log(`[METATRON NEXUS EVENT] control=${controlId} field=${binding.fieldPath ?? binding.fieldName} nexus=${String(newValue)} normalized=${normalized.toFixed(4)}`);
+            const nexusNorm = mapNexusToNormalized(mapping, newValue);
+            // Nexus-normalized → Metatron UI 0..1 (gemessene Audiotool-Knob-Position).
+            const uiNorm = nexusNormToUi(uiCurve, nexusNorm);
+            if (uiCurve) {
+                console.log(
+                    `[METATRON CURVE] control=${controlId} field=${path} ` +
+                        `raw=${String(newValue)} → nexusNorm=${nexusNorm.toFixed(4)} → ui=${uiNorm.toFixed(4)} ` +
+                        `curve=${uiCurve.points.length}pts (source:${uiCurve.source})`
+                );
+            } else {
+                console.log(`[METATRON NEXUS EVENT] control=${controlId} field=${path} nexus=${String(newValue)} normalized=${nexusNorm.toFixed(4)}`);
+            }
             // FIX 1 (Phase 2) — absorb our own write's echo BEFORE it is
             // re-applied to the UI: the round-trip value matches the guard,
             // so the event is ours, not a remote change.
-            if (this.consumeEcho(controlId, normalized)) return;
+            if (this.consumeEcho(controlId, uiNorm)) return;
             if (this.onNexusValueChanged) {
-                this.onNexusValueChanged(controlId, normalized);
+                this.onNexusValueChanged(controlId, uiNorm);
             }
         });
 

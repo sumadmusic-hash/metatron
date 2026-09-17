@@ -19,6 +19,8 @@ import { WRITE_REFUSED_CLASS, WRITE_REFUSED_TITLE } from "./writeRefusal";
 import { probeField, fitTransfer } from "../nexus/ValueCurveProbe";
 import { resolveFieldByPath } from "../nexus/ChainPath";
 import { taperKey, registerTaper } from "../nexus/CurveRegistry";
+import { registerParameterUICurve } from "../nexus/ParameterUICurve";
+import type { UICurvePoint } from "../nexus/ParameterUICurve";
 import "./styles.css";
 
 /** P4 — trailing debounce window for VALUE-path persistence (MIDI stream,
@@ -318,6 +320,67 @@ export class AppUI {
                 }
                 registerTaper(key, { kind: "log", min, max, source: "measured", measuredAt: new Date().toISOString() });
                 console.log(`[METATRON PROBE] taper registered: ${key} (log ${min}..${max})`);
+                return key;
+            },
+            // UI-Kurve: Knob-PositionMessung — gleicher Sweep wie `run`,
+            // aber readKnobPos liefert die PHYSISCHE Audiotool-Knob-Position
+            // (0..1) statt den Hz-Readout. Gibt {ui, nexus} Paare zurück.
+            measureKnobPosition: async (
+                controlId: string,
+                readKnobPos: () => number | null,
+            ) => {
+                const binding = this.bindingManager.getActiveBinding(controlId);
+                if (!binding) throw new Error(`[METATRON UI-CURVE] no active binding for ${controlId}`);
+                if (!this.nexusAdapter.document) throw new Error("[METATRON UI-CURBE] no connected document");
+                const field =
+                    binding.field ??
+                    (() => {
+                        const entity = this.nexusAdapter.document!.queryEntities.getEntity(binding.entityId);
+                        return entity ? resolveFieldByPath(entity.fields, binding.fieldPath ?? binding.fieldName) : undefined;
+                    })();
+                if (!field) throw new Error("[METATRON UI-CURVE] field not resolvable for " + (binding.fieldPath ?? binding.fieldName));
+                const control = this.bindingManager.deviceRef.controls.get(controlId);
+                const fieldPath = binding.fieldPath ?? binding.fieldName ?? "unknown";
+                const targetName = control?.audiotoolBindingDefinition?.targetName;
+                const { createNexusValueMapping, mapNormalizedToNexus, mapNexusToNormalized } = await import("../nexus/NexusValueMapping");
+                const mapping = createNexusValueMapping(field);
+                const restoreMin = mapping.min ?? 0;
+                const steps = 10;
+                const points: UICurvePoint[] = [];
+                console.log(`[METATRON UI-CURVE] measuring knob position for ${taperKey(targetName, fieldPath)} (${steps + 1} points)...`);
+                for (let i = 0; i <= steps; i++) {
+                    const uiNorm = i / steps;
+                    const raw = mapNormalizedToNexus(mapping, uiNorm);
+                    if (raw === undefined || typeof raw === "boolean") {
+                        console.warn(`[METATRON UI-CURVE] skipping non-numeric step ${i}`);
+                        continue;
+                    }
+                    await this.nexusAdapter.document.modify(t => { t.update(field!, raw as any); });
+                    await new Promise(r => setTimeout(r, 600)); // settle
+                    const knobPos = readKnobPos();
+                    if (knobPos !== null) {
+                        const nexusNorm = mapNexusToNormalized(mapping, raw);
+                        points.push({ ui: knobPos, nexus: nexusNorm });
+                        console.log(`[METATRON UI-CURVE] ${i}/${steps}: ui=${uiNorm.toFixed(2)} raw=${raw} knobPos=${knobPos.toFixed(4)} nexusNorm=${nexusNorm.toFixed(4)}`);
+                    }
+                }
+                // Restore zero.
+                await this.nexusAdapter.document.modify(t => { t.update(field!, restoreMin as any); });
+                const key = taperKey(targetName, fieldPath);
+                if (points.length >= 2) {
+                    registerParameterUICurve(key, { source: "measured", measuredAt: new Date().toISOString(), points });
+                    console.log(`[METATRON UI-CURVE] registered: ${key} (${points.length} points)`, points);
+                } else {
+                    console.warn(`[METATRON UI-CURVE] not enough valid knob readings (${points.length}), no curve registered`);
+                }
+                return { key, points };
+            },
+            // Direkte Registry-Registrierung aus manuell gemessenen (ui, nexus) Paaren.
+            // Gegenwert zu registerTaper für die UI-Kurve.
+            registerUICurve: (key: string, points: UICurvePoint[]) => {
+                if (!key || points.length < 2) throw new Error("[METATRON PROBE] registerUICurve braucht key + ≥2 Punkte");
+                registerParameterUICurve(key, { source: "measured", measuredAt: new Date().toISOString(), points });
+                console.log(`[METATRON PROBE] UI curve registered: ${key} (${points.length} points)`, points);
                 return key;
             },
         };

@@ -4,6 +4,8 @@ import { createNexusValueMapping, mapNexusToNormalized } from "./NexusValueMappi
 import { Toast } from "../ui/Toast";
 import type { LearnResult } from "./NexusLearn";
 import type { Control } from "../core/model/Control";
+import { taperKey } from "./CurveRegistry";
+import { getParameterUICurve, nexusNormToUi } from "./ParameterUICurve";
 
 /**
  * Dependencies the shared Nexus-Learn flow needs from its host UI (P3.2:
@@ -96,9 +98,13 @@ export class NexusLearnFlow {
             this.deps.subscribeBoundControl(control.id);
             this.deps.saveCurrentDevice();
             console.log(`[METATRON LEARN SUCCESS] controlId=${control.id} entityId=${result.entityId} fieldName=${result.fieldPath} value=${result.value}`);
-            // Reflect the learned value immediately (normalized 0..1).
+            // Reflect the learned value immediately (normalized 0..1 → UI-normalized).
             const mapping = result.valueMapping ?? createNexusValueMapping(result.field);
-            this.deps.reflectValue(control.id, mapNexusToNormalized(mapping, result.value));
+            const nexusNorm = mapNexusToNormalized(mapping, result.value);
+            // UI-Kurve: nexus-normalized → Metatron UI 0..1 (Audiotool-Knob-Position).
+            const targetName = control.audiotoolBindingDefinition?.targetName;
+            const uiCurve = getParameterUICurve(taperKey(targetName, result.fieldPath));
+            this.deps.reflectValue(control.id, nexusNormToUi(uiCurve, nexusNorm));
             Toast.show(`Learned → ${result.targetName}`, "success");
         } catch (e) {
             this.activeLearn = null;
