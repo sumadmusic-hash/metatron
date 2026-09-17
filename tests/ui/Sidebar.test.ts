@@ -64,7 +64,7 @@ beforeEach(() => {
     sessionStorage.clear();
 });
 
-describe("Collapsible left sidebar", () => {
+describe("Collapsible right sidebar", () => {
 
     it("renders an edge toggle plus the library, with the controller surface as a flex:1 sibling", () => {
         const { root } = mountApp(buildDevice());
@@ -120,6 +120,9 @@ describe("Collapsible left sidebar", () => {
 
     it("collapses sidebar when opening MOD matrix if open, and restores it when closing", () => {
         const { root } = mountApp(buildDevice());
+        // The MOD toggle is USE-mode chrome; USE starts the sidebar collapsed.
+        switchToUse(root);
+        click(toggle(root)); // reopen the sidebar
         expect(pane(root).classList.contains("collapsed")).toBe(false);
 
         toggleMod(root); // open MOD
@@ -131,7 +134,7 @@ describe("Collapsible left sidebar", () => {
 
     it("keeps sidebar collapsed when opening MOD matrix if already collapsed, and leaves it collapsed when closing", () => {
         const { root } = mountApp(buildDevice());
-        click(toggle(root)); // collapse sidebar
+        switchToUse(root); // USE starts collapsed
         expect(pane(root).classList.contains("collapsed")).toBe(true);
 
         toggleMod(root); // open MOD
@@ -143,6 +146,7 @@ describe("Collapsible left sidebar", () => {
 
     it("clicking sidebar toggle while MOD is open closes MOD and opens sidebar", () => {
         const { root } = mountApp(buildDevice());
+        switchToUse(root);
         toggleMod(root); // open MOD -> collapses sidebar
         expect(pane(root).classList.contains("collapsed")).toBe(true);
 

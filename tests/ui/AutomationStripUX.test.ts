@@ -218,12 +218,17 @@ describe("M21.8 — automation strip UX", () => {
         const device = buildDevice();
         const { root, midi } = mount(device, new PassingAdapter(), new BindingManager(device));
         await recordTwoControls(root, midi);
-        expect(status(root)).not.toBe("IDLE");
+        // STOPPED state: the take overview is present (status text is blank).
+        expect(root.querySelector(".automation-take")).toBeTruthy();
         button(root, "CLEAR")!.click();
-        expect(status(root)).toBe("IDLE");
+        // At IDLE the automation bar is absent entirely; only the USE
+        // transport (engine chip) keeps the engine state visible.
+        expect(status(root)).toBe("");
+        expect(root.querySelector(".automation-bar")).toBeNull();
         expect(root.querySelector(".automation-take")).toBeNull();
         expect(root.querySelector(".automation-elapsed")).toBeNull();
-        expect(button(root, "CLEAR")!.disabled).toBe(true);
+        expect(button(root, "CLEAR")).toBeUndefined();
+        expect(root.querySelector(".engine-chip-label")!.textContent).toBe("IDLE");
         expect(button(root, "ARM")!.disabled).toBe(false);
         expect(button(root, "APPLY TO AUDIOTOOL")!.disabled).toBe(true);
     });

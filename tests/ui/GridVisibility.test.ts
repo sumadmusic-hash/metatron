@@ -46,9 +46,7 @@ async function mount(): Promise<HTMLElement> {
 }
 
 function snapToggle(root: HTMLElement): HTMLButtonElement {
-    return [...root.querySelectorAll<HTMLElement>(".editor-toolbar button")].find((b) =>
-        b.textContent?.startsWith("Snap"),
-    )!;
+    return root.querySelector<HTMLButtonElement>(".builder-bar .snap-toggle")!;
 }
 
 function modeToggle(root: HTMLElement): HTMLButtonElement {
@@ -74,7 +72,7 @@ describe("Snap grid visibility: EDIT-only and tied to Snap state", () => {
     it("1. EDIT + Snap ON shows the grid", async () => {
         const root = await mount();
         // Snap defaults to ON.
-        expect(snapToggle(root).textContent).toBe("Snap: ON");
+        expect(snapToggle(root).textContent).toBe("SNAP: ON");
         expect(canvas(root).classList.contains("editor-canvas")).toBe(true);
         expect(isGridVisible(root)).toBe(true);
     });
@@ -82,7 +80,7 @@ describe("Snap grid visibility: EDIT-only and tied to Snap state", () => {
     it("2. EDIT + Snap OFF hides the grid", async () => {
         const root = await mount();
         snapToggle(root).click();
-        expect(snapToggle(root).textContent).toBe("Snap: OFF");
+        expect(snapToggle(root).textContent).toBe("SNAP: OFF");
         expect(isGridVisible(root)).toBe(false);
         expect(canvas(root).classList.contains("editor-canvas--nogrid")).toBe(true);
     });
@@ -91,7 +89,7 @@ describe("Snap grid visibility: EDIT-only and tied to Snap state", () => {
         const root = await mount();
         // Default Snap state is ON, yet USE must not show the grid (the bug).
         modeToggle(root).click();
-        expect(modeToggle(root).querySelector("svg.mode-toggle-icon")).toBeTruthy();
+        expect(modeToggle(root).classList.contains("mode-pill")).toBe(true);
         expect(isGridVisible(root)).toBe(false);
         expect(canvas(root).classList.contains("editor-canvas--nogrid")).toBe(true);
     });
@@ -122,7 +120,7 @@ describe("Snap grid visibility: EDIT-only and tied to Snap state", () => {
         expect(isGridVisible(root)).toBe(false);
 
         modeToggle(root).click(); // USE -> EDIT (Snap still OFF)
-        expect(snapToggle(root).textContent).toBe("Snap: OFF");
+        expect(snapToggle(root).textContent).toBe("SNAP: OFF");
         expect(isGridVisible(root)).toBe(false);
     });
 

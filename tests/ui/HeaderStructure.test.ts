@@ -10,11 +10,12 @@ import { BindingManager } from "../../src/core/BindingManager";
 import { AppUI } from "../../src/ui/AppUI";
 
 /**
- * Header Restructure B — the main toolbar is split into a left and a right
- * flex group; the mode toggle lives alone in the right group as the final
- * header control. The automation strip is in a separate .automation-bar
- * below the main toolbar. All existing elements, labels and wiring are
- * preserved.
+ * Header Restructure — the toolbar is one card split into .header-left /
+ * .header-center / .header-right clusters. Left holds logo + title + mode pill
+ * + undo/redo; center is the USE-mode transport; right holds the connection
+ * cluster, MOD toggle (USE), library toggle and user badge. EDIT renders the
+ * BUILDER bar below the card, USE renders the automation bar only while a
+ * take is live. The sidebar is docked on the right.
  */
 
 class OfflineAdapter extends NexusAdapter {
@@ -57,11 +58,19 @@ function toolbar(root: HTMLElement): HTMLElement {
 }
 
 function leftGroup(root: HTMLElement): HTMLElement {
-    return toolbar(root).querySelector<HTMLElement>(".toolbar-left")!;
+    return toolbar(root).querySelector<HTMLElement>(".header-left")!;
+}
+
+function centerGroup(root: HTMLElement): HTMLElement {
+    return toolbar(root).querySelector<HTMLElement>(".header-center")!;
 }
 
 function rightGroup(root: HTMLElement): HTMLElement {
-    return toolbar(root).querySelector<HTMLElement>(".toolbar-right")!;
+    return toolbar(root).querySelector<HTMLElement>(".header-right")!;
+}
+
+function builderBar(root: HTMLElement): HTMLElement | null {
+    return root.querySelector<HTMLElement>(".builder-bar");
 }
 
 function automationBar(root: HTMLElement): HTMLElement {
@@ -76,100 +85,121 @@ function modeToggle(root: HTMLElement): HTMLButtonElement {
     return buttonsIn(root).find((b) => b.id === "mode-toggle-btn")!;
 }
 
-describe("Header Restructure B: two-group layout with EDIT/USE as final control, automation in secondary bar", () => {
+/** Switch the currently EDIT-mounted app into USE mode (the header-center
+ *  transport and live automation chrome are USE-only). */
+function toUseMode(root: HTMLElement) {
+    modeToggle(root).click();
+}
+
+describe("Header Restructure: three-cluster card, USE transport center, BUILDER bar, right-docked sidebar", () => {
     beforeEach(() => {
         document.body.innerHTML = "";
     });
 
-    it("groups the header into .toolbar-left and .toolbar-right, with EDIT/USE as the last control", async () => {
+    it("groups the standalone toolbar card into left/center/right, mode pill + undo/redo in the left cluster", async () => {
         const { root } = await mount();
 
         const left = leftGroup(root);
+        const center = centerGroup(root);
         const right = rightGroup(root);
         expect(left).toBeTruthy();
+        expect(center).toBeTruthy();
         expect(right).toBeTruthy();
+        expect(document.documentElement.getAttribute("data-mode")).toBe("edit");
 
-        // Left group: title, Library, connection UI (URL + Connect + status), Undo, Redo.
+        // Left cluster: logo + title, mode pill (USE/EDIT) and undo/redo.
         expect(left.querySelector(".app-title")).toBeTruthy();
-        expect(buttonsIn(left).map((b) => b.innerText)).toEqual(
-            expect.arrayContaining(["Library", "Connect"]),
+        expect(left.querySelector(".app-title .app-logo-wrap svg.app-logo-svg")).toBeTruthy();
+        expect(left.querySelector(".app-title h1")!.textContent!.startsWith("Metatron")).toBe(true);
+
+        const pill = left.querySelector<HTMLButtonElement>("#mode-toggle-btn")!;
+        expect(pill.classList.contains("mode-pill")).toBe(true);
+        expect((pill.querySelectorAll(".mode-pill-half")[0] as HTMLElement).textContent).toBe("USE");
+        expect((pill.querySelectorAll(".mode-pill-half")[1] as HTMLElement).textContent).toBe("EDIT");
+        expect((pill.querySelectorAll(".mode-pill-half")[0] as HTMLElement).classList.contains("active")).toBe(false);
+        expect((pill.querySelectorAll(".mode-pill-half")[1] as HTMLElement).classList.contains("active")).toBe(true);
+
+        const seg = left.querySelector(".toolbar-seg")!;
+        expect(seg.querySelector("#history-undo")).toBeTruthy();
+        expect(seg.querySelector("#history-redo")).toBeTruthy();
+
+        // Center cluster is empty in EDIT (transport is USE-only).
+        expect(center.querySelector(".transport")).toBeNull();
+
+        // Right cluster: connection field + Connect + library toggle (+ badge when session user).
+        expect(right.querySelector<HTMLInputElement>("input.conn-input[placeholder='Audiotool Project URL...']")).toBeTruthy();
+        expect(right.querySelector(".conn-chip")).toBeTruthy();
+        expect(buttonsIn(right).map((b) => b.innerText)).toEqual(expect.arrayContaining(["Connect", "Library"]));
+        // MOD matrix toggle is USE-only chrome.
+        expect(right.querySelector("#mod-matrix-toggle")).toBeNull();
+
+        // BUILDER bar is EDIT-only; automation bar is only present with a live take.
+        const builder = builderBar(root);
+        expect(builder).toBeTruthy();
+        expect(builder!.querySelector(".builder-label")!.textContent).toBe("Builder");
+        expect(buttonsIn(builder!).map((b) => b.innerText)).toEqual(
+            expect.arrayContaining(["+ Knob", "+ Switch", "+ Group", "SNAP: ON", "Delete Selected"]),
         );
-        expect(left.querySelector<HTMLInputElement>("input[placeholder='Audiotool Project URL...']")).toBeTruthy();
+        expect(automationBar(root)).toBeFalsy();
+    });
 
-        // Mode badge always names the ACTIVE mode (edit here).
-        const badge = left.querySelector(".mode-badge");
-        expect(badge?.classList.contains("mode-badge--edit")).toBe(true);
-        expect(badge?.innerText).toBe("EDIT");
+    it("USE mode moves the transport into the center cluster and leaves BUILDER/automation chrome in sync", async () => {
+        const { root } = await mount();
+        toUseMode(root);
 
-        // Right group: the mode toggle is the sole rightmost header control.
-        expect(right.querySelector(".automation-strip")).toBeNull();
-        const rightButtons = buttonsIn(right);
-        expect(rightButtons).toHaveLength(1);
-        expect(rightButtons[0].innerText).toBe("");
-        expect(rightButtons[0].querySelector("svg.mode-toggle-icon")).toBeTruthy();
-        expect(right.lastElementChild).toBe(modeToggle(root));
+        expect(document.documentElement.getAttribute("data-mode")).toBe("use");
+        expect(root.querySelector(".editor-canvas")).toBeTruthy();
+        expect(root.querySelector(".builder-bar")).toBeNull();
 
-        // The mode toggle is also the final control of the whole toolbar.
-        const all = buttonsIn(toolbar(root));
-        expect(all[all.length - 1]).toBe(modeToggle(root));
+        // Transport (ARM/REC/STOP + engine chip + APPLY) sits in header-center.
+        const transport = centerGroup(root).querySelector<HTMLElement>(".transport")!;
+        expect(transport).toBeTruthy();
+        const labels = buttonsIn(transport).map((b) => b.innerText);
+        expect(labels).toEqual(expect.arrayContaining(["ARM", "REC", "STOP", "APPLY TO AUDIOTOOL"]));
+        const engineChip = transport.querySelector<HTMLElement>(".engine-chip")!;
+        expect(engineChip).toBeTruthy();
+        expect(engineChip.querySelector(".engine-chip-label")!.textContent).toBe("IDLE");
 
-        // Automation strip is in its own secondary bar.
+        // MOD matrix toggle appears in the right cluster.
+        expect(rightGroup(root).querySelector("#mod-matrix-toggle")).toBeTruthy();
+
+        // At IDLE the automation bar is absent entirely; ARM summons it.
+        expect(automationBar(root)).toBeFalsy();
+        buttonsIn(transport).find((b) => b.innerText === "ARM")!.click();
         const aBar = automationBar(root);
         expect(aBar).toBeTruthy();
         expect(aBar.querySelector(".automation-strip")).toBeTruthy();
-    });
-
-    it("still toggles from EDIT to USE and keeps EDIT/USE rightmost in USE mode", async () => {
-        const { root } = await mount();
-
-        modeToggle(root).click(); // EDIT -> USE
-
-        // In USE mode the editor toolbar is gone; surface renders instead.
-        expect(root.querySelector(".editor-toolbar")).toBeNull();
-        expect(root.querySelector(".editor-canvas")).toBeTruthy();
-
-        // Right group survived the rebuild; the mode toggle remains final.
-        const right = rightGroup(root);
-        expect(right).toBeTruthy();
-        expect(right.querySelector(".automation-strip")).toBeNull();
-        const rightButtons = buttonsIn(right);
-        expect(rightButtons[rightButtons.length - 1].innerText).toBe("");
-        expect(rightButtons[rightButtons.length - 1].querySelector("svg.mode-toggle-icon")).toBeTruthy();
-        expect(right.lastElementChild).toBe(modeToggle(root));
-
-        // Mode badge flips to USE.
-        const badge = leftGroup(root).querySelector(".mode-badge");
-        expect(badge?.classList.contains("mode-badge--use")).toBe(true);
-        expect(badge?.innerText).toBe("USE");
-
-        // Automation strip is still in its own bar after mode switch.
-        expect(automationBar(root).querySelector(".automation-strip")).toBeTruthy();
+        expect(aBar.querySelector(".automation-status")!.innerText).toBe("Armed — press REC to record");
     });
 
     it("toggles from USE back to EDIT", async () => {
         const { root } = await mount();
 
-        modeToggle(root).click(); // EDIT -> USE
-        modeToggle(root).click(); // USE -> EDIT
+        toUseMode(root);
+        toUseMode(root);
 
+        expect(document.documentElement.getAttribute("data-mode")).toBe("edit");
         expect(root.querySelector(".editor-canvas")).toBeTruthy();
-        const rightButtons = buttonsIn(rightGroup(root));
-        expect(rightButtons[rightButtons.length - 1].innerText).toBe("");
-        expect(rightGroup(root).lastElementChild).toBe(modeToggle(root));
+        const builder = builderBar(root);
+        expect(builder).toBeTruthy();
+        expect(buttonsIn(builder!).map((b) => b.innerText)).toEqual(
+            expect.arrayContaining(["+ Knob", "+ Switch", "+ Group", "Delete Selected"]),
+        );
+        expect(rightGroup(root).querySelector("#mod-matrix-toggle")).toBeNull();
     });
 
-    it("keeps the Library button working in the left group", async () => {
+    it("keeps the Library button working in the right cluster", async () => {
         const { root } = await mount();
 
-        const libBtn = buttonsIn(leftGroup(root)).find((b) => b.innerText === "Library")!;
+        const libBtn = buttonsIn(rightGroup(root)).find((b) => b.innerText === "Library")!;
         expect(libBtn).toBeTruthy();
         expect(libBtn.className).toContain("active");
 
         libBtn.click();
-        expect(buttonsIn(leftGroup(root)).find((b) => b.innerText === "Library")!.className).not.toContain("active");
+        expect(buttonsIn(rightGroup(root)).find((b) => b.innerText === "Library")!.className).not.toContain("active");
 
-        buttonsIn(leftGroup(root)).find((b) => b.innerText === "Library")!.click();
-        expect(buttonsIn(leftGroup(root)).find((b) => b.innerText === "Library")!.className).toContain("active");
+        buttonsIn(rightGroup(root)).find((b) => b.innerText === "Library")!.click();
+        expect(buttonsIn(rightGroup(root)).find((b) => b.innerText === "Library")!.className).toContain("active");
     });
 
     it("keeps Undo/Redo working: + Knob records history, Undo removes it, Redo restores it", async () => {
@@ -178,7 +208,7 @@ describe("Header Restructure B: two-group layout with EDIT/USE as final control,
         const wrappers = () => root.querySelectorAll(".control-wrapper").length;
         expect(wrappers()).toBe(1); // the seeded "Gain" knob
 
-        buttonsIn(root).find((b) => b.innerText === "+ Knob")!.click();
+        buttonsIn(builderBar(root)!).find((b) => b.innerText === "+ Knob")!.click();
         expect(wrappers()).toBe(2);
         expect(document.getElementById("history-undo")).toBeTruthy();
 
@@ -189,30 +219,40 @@ describe("Header Restructure B: two-group layout with EDIT/USE as final control,
         expect(wrappers()).toBe(2);
     });
 
-    it("keeps the automation strip wired in the automation bar (ARM -> REC -> STOP -> take -> CLEAR)", async () => {
+    it("keeps the automation wiring: USE transport ARM -> REC -> STOP -> take -> CLEAR", async () => {
         const { root } = await mount();
+        toUseMode(root);
+
+        const transport = () => centerGroup(root).querySelector<HTMLElement>(".transport")!;
+        const tBtn = (label: string) => buttonsIn(transport()).find((b) => b.innerText === label)!;
         const strip = () => automationBar(root).querySelector<HTMLElement>(".automation-strip")!;
         const status = () => strip().querySelector<HTMLElement>(".automation-status")!;
-        const btn = (label: string) => buttonsIn(strip()).find((b) => b.innerText === label)!;
 
-        ["ARM", "REC", "STOP", "APPLY TO AUDIOTOOL", "CLEAR"].forEach((label) => {
-            expect(btn(label), `missing automation button ${label}`).toBeTruthy();
-        });
+        // IDLE: only ARM is enabled.
+        expect(tBtn("ARM").disabled).toBe(false);
+        expect(tBtn("REC").disabled).toBe(true);
+        expect(tBtn("STOP").disabled).toBe(true);
 
-        btn("ARM").click();
+        tBtn("ARM").click();
         expect(status().innerText).toBe("Armed — press REC to record");
-        expect(btn("REC").disabled).toBe(false);
+        expect(tBtn("REC").disabled).toBe(false);
 
-        btn("REC").click();
+        tBtn("REC").click();
         expect(status().innerText).toBe("RECORDING");
-        expect(btn("STOP").disabled).toBe(false);
+        expect(tBtn("STOP").disabled).toBe(false);
 
-        btn("STOP").click();
+        tBtn("STOP").click();
         expect(strip().querySelector(".automation-take")).toBeTruthy();
+        // CLEAR lives in the take-local chrome of the automation bar.
+        const clearBtn = buttonsIn(strip()).find((b) => b.innerText === "CLEAR")!;
+        expect(clearBtn).toBeTruthy();
 
-        btn("CLEAR").click();
-        expect(strip().querySelector(".automation-take")).toBeFalsy();
-        expect(status().innerText).toBe("IDLE");
+        clearBtn.click();
+        // Back at IDLE the automation bar disappears entirely (USE design).
+        expect(automationBar(root)).toBeFalsy();
+        const freshTransport = centerGroup(root).querySelector<HTMLElement>(".transport")!;
+        expect(buttonsIn(freshTransport).find((b) => b.innerText === "ARM")!.disabled).toBe(false);
+        expect(freshTransport.querySelector(".engine-chip-label")!.textContent).toBe("IDLE");
     });
 
     it("removes no existing header functionality", async () => {
@@ -223,7 +263,7 @@ describe("Header Restructure B: two-group layout with EDIT/USE as final control,
             expect.arrayContaining(["Library", "Connect"]),
         );
         expect(root.querySelector<HTMLInputElement>("input[placeholder='Audiotool Project URL...']")).toBeTruthy();
-        expect(root.querySelector(".automation-strip")).toBeTruthy();
+        expect(root.querySelector(".builder-bar")).toBeTruthy();
         expect(modeToggle(root)).toBeTruthy();
     });
 });

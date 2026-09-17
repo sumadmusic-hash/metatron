@@ -195,9 +195,6 @@ export class EditorUI {
                 if (!control.archived) this.renderControl(control, inner);
             });
 
-            // Toolbar (floating, non-blocking)
-            inner.appendChild(this.buildToolbar());
-
             // Empty state hint
             if (device.getActiveControlCount() === 0 && device.groups.size === 0) {
                 const hint = document.createElement("div");
@@ -235,28 +232,31 @@ export class EditorUI {
         return bar;
     }
 
-    private buildToolbar(): HTMLElement {
-        const bar = document.createElement("div");
-        bar.className = "editor-toolbar";
+    // ---------- builder actions (public; AppUI BUILDER bar) ----------
 
-        bar.appendChild(this.button("+ Knob", () => this.addControl("knob")));
-        bar.appendChild(this.button("+ Switch", () => this.addControl("switch")));
-        bar.appendChild(this.button("+ Group", () => this.addGroup()));
-        bar.appendChild(this.button(`Snap: ${this.snapEnabled ? "ON" : "OFF"}`, () => {
-            this.snapEnabled = !this.snapEnabled;
-            this.render(this.container.parentElement!);
-        }, this.snapEnabled ? "active" : undefined));
-        bar.appendChild(this.button("Delete Selected", () => this.deleteSelected()));
+    /** Snapshot-style public commands for the header BUILDER bar. Ownership
+     *  stays with the EditorUI (model mutation + history are unchanged); the
+     *  render target is the container the editor was mounted into. */
 
-        return bar;
+    public getSnapEnabled(): boolean {
+        return this.snapEnabled;
     }
 
-    private button(label: string, onClick: () => void, className?: string): HTMLButtonElement {
-        const btn = document.createElement("button");
-        btn.className = className ? `btn small ${className}` : "btn small";
-        btn.innerText = label;
-        btn.onclick = () => onClick();
-        return btn;
+    public setSnapEnabled(enabled: boolean) {
+        this.snapEnabled = enabled;
+        this.render(this.container.parentElement!);
+    }
+
+    public requestAddControl(type: "knob" | "switch") {
+        this.addControl(type);
+    }
+
+    public requestAddGroup() {
+        this.addGroup();
+    }
+
+    public requestDeleteSelected() {
+        this.deleteSelected();
     }
 
     // ---------- creation ----------

@@ -36,6 +36,10 @@ function mount(): { root: HTMLElement } {
     document.body.appendChild(root);
     const app = new AppUI(root, lib, new PassingAdapter(), new NoopMidi(), new BindingManager(device));
     app.render();
+    // The strip buttons (ARM/REC/STOP/APPLY) live in the USE-mode header
+    // transport; the hint is part of the automation bar scoped to USE.
+    const modePill = [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.id === "mode-toggle-btn")!;
+    modePill.click();
     return { root };
 }
 

@@ -57,6 +57,22 @@ export function summarizeTakeTracks(
     });
 }
 
+// ── Mockup header chrome (static markup — no interpolation, XSS-safe) ──────
+// Inline 28×28 logo mark; the original img asset stays untouched under
+// public/metatron-logo-mark.svg.
+const LOGO_SVG =
+    '<svg class="app-logo-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<rect x="1" y="1" width="18" height="22" rx="6" fill="none" stroke="var(--accent-color)" stroke-width="1.5"/>' +
+    '<polyline points="6 18 10 9 14 17 18 11 22 18" fill="none" stroke="var(--accent-color)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '</svg>';
+
+// Person icon for the authenticated-session user badge (B72, display-only).
+const USER_AVATAR_SVG =
+    '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">' +
+    '<circle cx="12" cy="8" r="4"/>' +
+    '<path d="M4 20c0-4 3.6-6 8-6s8 2 8 6v1H4v-1z"/>' +
+    '</svg>';
+
 export class AppUI {
     private root: HTMLElement;
     private deviceLibrary: DeviceLibrary;
@@ -675,39 +691,8 @@ export class AppUI {
             strip.appendChild(btn);
         };
 
-        const takeReady =
-            state === "STOPPED" &&
-            this.recorder.recording.tracks.length > 0 &&
-            this.nexusAdapter.document !== null;
-
-        mk(
-            "ARM",
-            "Arm a new automation take",
-            state === "IDLE" || state === "STOPPED",
-            state === "ARMED" || state === "RECORDING" ? "armed" : "",
-            () => {
-                this.hasApplied = false;
-                this.recorder.arm();
-                this.render();
-            }
-        );
-mk("REC", "Start recording (requires ARM) — Recording startet bei Tick 0 (kein Playhead-Zugriff via Nexus)", state === "ARMED", state === "RECORDING" ? "recording" : "", () => {
-            this.recordingStartPerf = performance.now();
-            this.recorder.record();
-            this.render();
-        });
-        mk("STOP", "Stop and finalize the take", state === "RECORDING" || state === "ARMED", "", () => {
-            this.stopElapsedTimer();
-            this.recorder.stop();
-            this.render();
-        });
-        mk(
-            "APPLY TO AUDIOTOOL",
-            "Apply this take to Audiotool (creates real automation)",
-            takeReady && !this.hasApplied,
-            "",
-            () => void this.writeAutomation()
-        );
+        // Relative to the header transport (ARM/REC/STOP/APPLY), the strip
+        // keeps only take-local chrome: CLEAR, status, elapsed, hint, take.
         mk("CLEAR", "Discard this take locally — nothing is removed from Audiotool", state === "STOPPED", "clear", () => {
             this.stopElapsedTimer();
             this.recorder.reset();
@@ -768,6 +753,122 @@ mk("REC", "Start recording (requires ARM) — Recording startet bei Tick 0 (kein
 
         this.syncElapsedTimer();
         return strip;
+    }
+
+    /** M21.8 §11 — USE-mode header transport (header center): ARM / REC / STOP
+     *  keep the exact state wiring the strip used to have; the engine chip
+     *  keeps the current state visible and APPLY guards the double-write. */
+    private buildTransport(): HTMLElement {
+        const transport = document.createElement("div");
+        transport.className = "transport";
+
+        const state = this.recorder.currentState;
+        const mk = (label: string, title: string, enabled: boolean, cls: string, action: () => void) => {
+            const btn = document.createElement("button");
+            btn.className = "transport-btn" + (cls ? ` ${cls}` : "");
+            btn.innerText = label;
+            btn.title = title;
+            btn.disabled = !enabled;
+            btn.onclick = () => action();
+            transport.appendChild(btn);
+        };
+
+        const takeReady =
+            state === "STOPPED" &&
+            this.recorder.recording.tracks.length > 0 &&
+            this.nexusAdapter.document !== null;
+
+        mk(
+            "ARM",
+            "Arm a new automation take",
+            state === "IDLE" || state === "STOPPED",
+            state === "ARMED" || state === "RECORDING" ? "armed" : "",
+            () => {
+                this.hasApplied = false;
+                this.recorder.arm();
+                this.render();
+            }
+        );
+        mk("REC", "Start recording (requires ARM) — Recording startet bei Tick 0 (kein Playhead-Zugriff via Nexus)", state === "ARMED", state === "RECORDING" ? "recording" : "", () => {
+            this.recordingStartPerf = performance.now();
+            this.recorder.record();
+            this.render();
+        });
+        mk("STOP", "Stop and finalize the take", state === "RECORDING" || state === "ARMED", "", () => {
+            this.stopElapsedTimer();
+            this.recorder.stop();
+            this.render();
+        });
+
+        // Engine chip: state-colored indicator (IDLE teal / ARMED amber /
+        // RECORDING red) always visible in USE, independent of the strip.
+        const engineChip = document.createElement("span");
+        engineChip.className =
+            "engine-chip" +
+            (state === "ARMED" ? " state-armed" : state === "RECORDING" ? " state-recording" : "");
+        engineChip.title = `Engine state: ${state}`;
+        const dot = document.createElement("span");
+        dot.className = "transport-dot";
+        const chipLabel = document.createElement("span");
+        chipLabel.className = "engine-chip-label";
+        chipLabel.innerText = state;
+        engineChip.appendChild(dot);
+        engineChip.appendChild(chipLabel);
+        transport.appendChild(engineChip);
+
+        mk(
+            "APPLY TO AUDIOTOOL",
+            "Apply this take to Audiotool (creates real automation)",
+            takeReady && !this.hasApplied,
+            "",
+            () => void this.writeAutomation()
+        );
+        return transport;
+    }
+
+    /** EDIT-only action bar below the toolbar card (replaces the floating
+     *  in-canvas .editor-toolbar). The buttons delegate to the EditorUI's
+     *  public wrappers so the canvas owns the model mutations + history. */
+    private buildBuilderBar(): HTMLElement {
+        const bar = document.createElement("div");
+        bar.className = "builder-bar";
+
+        const label = document.createElement("span");
+        label.className = "builder-label";
+        label.innerText = "Builder";
+        bar.appendChild(label);
+
+        const sep = document.createElement("span");
+        sep.className = "builder-sep";
+        bar.appendChild(sep);
+
+        const mk = (labelText: string, cls: string, action: () => void) => {
+            const btn = document.createElement("button");
+            btn.className = cls;
+            btn.innerText = labelText;
+            btn.onclick = () => action();
+            bar.appendChild(btn);
+        };
+
+        mk("+ Knob", "btn", () => this.editorUI.requestAddControl("knob"));
+        mk("+ Switch", "btn", () => this.editorUI.requestAddControl("switch"));
+        mk("+ Group", "btn", () => this.editorUI.requestAddGroup());
+
+        const snap = document.createElement("button");
+        snap.className = "btn snap-toggle" + (this.editorUI.getSnapEnabled() ? " active" : "");
+        snap.innerText = `SNAP: ${this.editorUI.getSnapEnabled() ? "ON" : "OFF"}`;
+        snap.title = "Toggle grid snapping for control/group drags";
+        snap.onclick = () => {
+            this.editorUI.setSnapEnabled(!this.editorUI.getSnapEnabled());
+            // The canvas re-renders through the EditorUI; the header label is
+            // part of this bar, so rebuild the app chrome to match.
+            this.render();
+        };
+        bar.appendChild(snap);
+
+        mk("Delete Selected", "btn delete-selected", () => this.editorUI.requestDeleteSelected());
+
+        return bar;
     }
 
     private async writeAutomation() {
@@ -901,24 +1002,24 @@ mk("REC", "Start recording (requires ARM) — Recording startet bei Tick 0 (kein
         // down before every rebuild. buildAutomationStrip restarts it only
         // while RECORDING.
         this.stopElapsedTimer();
+        // Mode-scoped accent tokens (USE teal / EDIT sky): the attribute on
+        // <html> drives every var(--accent-*) consumer in styles.css.
+        document.documentElement.setAttribute("data-mode", this.currentMode.toLowerCase());
         this.root.innerHTML = "";
 
-        // Toolbar
+        // ── Toolbar (mockup: left / center / right clusters in one card) ────
         const toolbar = document.createElement("div");
         toolbar.className = "toolbar";
 
-        const toolbarLeft = document.createElement("div");
-        toolbarLeft.className = "toolbar-left";
-
-        const toolbarRight = document.createElement("div");
-        toolbarRight.className = "toolbar-right";
+        // Header-Left: logo + title + mode pill + session undo/redo.
+        const headerLeft = document.createElement("div");
+        headerLeft.className = "header-left";
 
         const titleWrap = document.createElement("div");
         titleWrap.className = "app-title";
-        const logo = document.createElement("img");
-        logo.src = "/metatron-logo-mark.svg";
-        logo.alt = "Metatron";
-        logo.className = "app-logo";
+        const logoWrap = document.createElement("span");
+        logoWrap.className = "app-logo-wrap";
+        logoWrap.innerHTML = LOGO_SVG;
         const title = document.createElement("h1");
         const deviceName = this.deviceLibrary.currentDevice?.name;
         title.innerText = `Metatron${deviceName ? ` | ${deviceName}` : ""}`;
@@ -927,104 +1028,41 @@ mk("REC", "Start recording (requires ARM) — Recording startet bei Tick 0 (kein
             title.title = deviceName;
             titleWrap.title = deviceName;
         }
-        titleWrap.appendChild(logo);
+        titleWrap.appendChild(logoWrap);
         titleWrap.appendChild(title);
-        toolbarLeft.appendChild(titleWrap);
+        headerLeft.appendChild(titleWrap);
 
-        const modeBadge = document.createElement("span");
-        modeBadge.className = "mode-badge mode-badge--" + this.currentMode.toLowerCase();
-        modeBadge.innerText = this.currentMode === "EDIT" ? "EDIT" : "USE";
-        modeBadge.title = this.currentMode === "EDIT"
-            ? "Currently editing: add and parameterize knobs, buttons, faders in the editor."
-            : "Currently using: live interaction on the control surface.";
-        toolbarLeft.appendChild(modeBadge);
-
-const libraryBtn = document.createElement("button");
-libraryBtn.className = "btn" + (this.sidebarCollapsed ? "" : " active");
-libraryBtn.innerHTML =
-    '<svg class="library-icon" viewBox="0 0 14 14" aria-hidden="true" focusable="false">' +
-    '<rect x="1" y="1" width="8" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/>' +
-    '<line x1="6" y1="1" x2="6" y2="13" stroke="currentColor" stroke-width="1.2"/>' +
-    '</svg>' +
-    '<span>Library</span>';
-libraryBtn.title = this.sidebarCollapsed ? "Show library" : "Hide library";
-libraryBtn.onclick = () => {
-    if (this.modMatrixOpen) {
-        this.modMatrixOpen = false;
-        this.modMatrixUI.toggleDrawer();
-        this.sidebarCollapsedBeforeMod = null;
-        this.sidebarCollapsed = false;
-    } else {
-        this.sidebarCollapsed = !this.sidebarCollapsed;
-    }
-    this.render();
-};
-toolbarLeft.appendChild(libraryBtn);
-
-// Project Connection UI
-        const connectionContainer = document.createElement("div");
-        connectionContainer.style.display = "flex";
-        connectionContainer.style.alignItems = "center";
-        connectionContainer.style.gap = "10px";
-        connectionContainer.style.flex = "1";
-
-        const urlInput = document.createElement("input");
-        urlInput.type = "text";
-        urlInput.id = "project-url-input";
-        urlInput.name = "projectUrl";
-        urlInput.placeholder = "Audiotool Project URL...";
-        // Compact by CSS: fills available space up to 260px, never below 140px.
-        urlInput.className = "url-input";
-        // Mirror edits into runtime state so the value survives `render()`.
-        urlInput.value = this.connectionUrl;
-        urlInput.addEventListener("input", () => {
-            this.connectionUrl = urlInput.value;
-        });
-        
-        const connectBtn = document.createElement("button");
-        connectBtn.className = "btn";
-        connectBtn.innerText = "Connect";
-        
-        const connectionStatus = document.createElement("span");
-        connectionStatus.className = "connection-status";
-        const statusColor = this.currentConnectionStatus?.color ?? "#ff3366";
-        connectionStatus.style.setProperty("--conn-color", statusColor);
-        connectionStatus.innerText = this.currentConnectionStatus?.text ?? this.connectionLabel();
-        connectionStatus.title = connectionStatus.innerText;
-        this.connectionStatusEl = connectionStatus;
-
-        connectBtn.onclick = async () => {
-            if (!urlInput.value) {
-                Toast.show("Enter an Audiotool project URL first.", "error");
-                return;
-            }
-            try {
-                this.applyStatusText("Connecting...", "#ffeb3b");
-                this.connectionUnsub?.();
-                this.connectionUnsub = undefined;
-                await this.nexusAdapter.openProject(urlInput.value, this.bindingManager);
-                this.connectionUnsub = this.nexusAdapter.onDocumentConnectedChanged((connected) => {
-                    if (!connected) {
-                        this.applyStatusText("Sync lost — reconnect project", "#f44336");
-                        console.warn("[METATRON LEARN] document.connected=false — Nexus events will NOT arrive (learn would time out)");
-                    } else {
-                        this.applyStatusText("Connected", "#4CAF50");
-                    }
-                });
-                Toast.show("Project connected.", "success");
-                this.render(); // Chip erscheint sofort, ohne Mode-/Device-Wechsel
-            } catch (e) {
-                console.error("Connection error", e);
-                this.applyStatusText("Error", "#f44336");
-                Toast.show(`Connection failed: ${e instanceof Error ? e.message : String(e)}`, "error");
-            }
+        // Mode pill — two visible halves (USE/EDIT), active half highlighted.
+        // Keeps #mode-toggle-btn for all existing wiring and tests.
+        const modePill = document.createElement("button");
+        modePill.className = "mode-pill";
+        modePill.id = "mode-toggle-btn";
+        modePill.title = this.currentMode === "EDIT"
+            ? "Switch to Use Mode — live interaction on the control surface"
+            : "Switch to Edit Mode — add and parameterize controls";
+        const makeHalf = (label: string, active: boolean, hint: string) => {
+            const half = document.createElement("span");
+            half.className = "mode-pill-half" + (active ? " active" : "");
+            half.innerText = label;
+            half.title = hint;
+            modePill.appendChild(half);
         };
-
-        connectionContainer.appendChild(urlInput);
-        connectionContainer.appendChild(connectBtn);
-        connectionContainer.appendChild(connectionStatus);
-        
-        toolbarLeft.appendChild(connectionContainer);
+        makeHalf("USE", this.currentMode === "USE", "Use mode: live interaction on the control surface");
+        makeHalf("EDIT", this.currentMode === "EDIT", "Edit mode: add and parameterize controls");
+        modePill.onclick = () => {
+            this.currentMode = this.currentMode === "EDIT" ? "USE" : "EDIT";
+            // USE mode favors maximum controller width, so start the library
+            // collapsed there; EDIT restores normal library access.
+            this.sidebarCollapsed = this.currentMode === "USE";
+            // Leaving USE closes the mod-matrix drawer (EDIT exposes no MOD).
+            if (this.currentMode === "EDIT" && this.modMatrixOpen) {
+                this.modMatrixOpen = false;
+                this.modMatrixUI.toggleDrawer();
+                this.sidebarCollapsedBeforeMod = null;
+            }
+            this.render();
+        };
+        headerLeft.appendChild(modePill);
 
         const undoBtn = document.createElement("button");
         undoBtn.id = "history-undo";
@@ -1055,97 +1093,183 @@ toolbarLeft.appendChild(libraryBtn);
         historyGroup.className = "toolbar-seg";
         historyGroup.appendChild(undoBtn);
         historyGroup.appendChild(redoBtn);
-        toolbarLeft.appendChild(historyGroup);
+        headerLeft.appendChild(historyGroup);
 
-        const modBtn = document.createElement("button");
-        modBtn.id = "mod-matrix-toggle";
-        modBtn.className = "btn" + (this.modMatrixOpen ? " active" : "");
-        modBtn.setAttribute("aria-label", "Toggle modulation matrix");
-        modBtn.title = "Toggle modulation matrix";
-        // 2×2 grid icon — the modulation matrix's map symbol.
-        modBtn.innerHTML =
-            '<svg class="mod-grid-icon" viewBox="0 0 14 14" aria-hidden="true" focusable="false">' +
-            '<rect x="0" y="0" width="5.5" height="5.5" rx="1"/>' +
-            '<rect x="8.5" y="0" width="5.5" height="5.5" rx="1"/>' +
-            '<rect x="0" y="8.5" width="5.5" height="5.5" rx="1"/>' +
-            '<rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1"/>' +
-            "</svg>";
-        modBtn.onclick = () => {
-            this.modMatrixOpen = !this.modMatrixOpen;
-            if (this.modMatrixOpen) {
-                this.sidebarCollapsedBeforeMod = this.sidebarCollapsed;
-                this.sidebarCollapsed = true;
-            } else if (this.sidebarCollapsedBeforeMod !== null) {
-                this.sidebarCollapsed = this.sidebarCollapsedBeforeMod;
-                this.sidebarCollapsedBeforeMod = null;
+        toolbar.appendChild(headerLeft);
+
+        // Header-Center: USE-mode transport (ARM/REC/STOP + engine chip + APPLY).
+        const headerCenter = document.createElement("div");
+        headerCenter.className = "header-center";
+        if (this.currentMode === "USE") {
+            headerCenter.appendChild(this.buildTransport());
+        }
+        toolbar.appendChild(headerCenter);
+
+        // Header-Right: connection cluster, mod toggle (USE), library, user badge.
+        const headerRight = document.createElement("div");
+        headerRight.className = "header-right";
+
+        // Project Connection UI — field (input + status chip) + Connect button.
+        const connField = document.createElement("div");
+        connField.className = "conn-field";
+        const urlInput = document.createElement("input");
+        urlInput.type = "text";
+        urlInput.id = "project-url-input";
+        urlInput.name = "projectUrl";
+        urlInput.placeholder = "Audiotool Project URL...";
+        // Compact by CSS: the field flexes up to 260px, the input never below 80px.
+        urlInput.className = "conn-input";
+        // Mirror edits into runtime state so the value survives `render()`.
+        urlInput.value = this.connectionUrl;
+        urlInput.addEventListener("input", () => {
+            this.connectionUrl = urlInput.value;
+        });
+
+        const connectionStatus = document.createElement("span");
+        connectionStatus.className = "conn-chip";
+        const statusColor = this.currentConnectionStatus?.color ?? "#ff3366";
+        connectionStatus.style.setProperty("--conn-color", statusColor);
+        connectionStatus.innerText = this.currentConnectionStatus?.text ?? this.connectionLabel();
+        connectionStatus.title = connectionStatus.innerText;
+        this.connectionStatusEl = connectionStatus;
+        connField.appendChild(urlInput);
+        connField.appendChild(connectionStatus);
+
+        const connectBtn = document.createElement("button");
+        connectBtn.className = "conn-btn";
+        connectBtn.innerText = "Connect";
+        connectBtn.onclick = async () => {
+            if (!urlInput.value) {
+                Toast.show("Enter an Audiotool project URL first.", "error");
+                return;
             }
-            this.modMatrixUI.toggleDrawer();
-            this.render();
-        };
-        const modGroup = document.createElement("div");
-        modGroup.className = "toolbar-seg toolbar-seg--mod";
-        modGroup.appendChild(modBtn);
-        toolbarLeft.appendChild(modGroup);
-
-        const modeToggle = document.createElement("button");
-        modeToggle.className = "btn primary mode-toggle";
-        modeToggle.id = "mode-toggle-btn";
-        // Icon-only: eye for switching INTO USE, pencil for switching INTO EDIT.
-        const targetMode = this.currentMode === "EDIT" ? "USE" : "EDIT";
-        const modeIcon =
-            targetMode === "USE"
-                ? '<svg class="mode-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
-                  '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>' +
-                  '<circle cx="12" cy="12" r="3"/>' +
-                  "</svg>"
-                : '<svg class="mode-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
-                  '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>' +
-                  '<path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>' +
-                  "</svg>";
-        modeToggle.innerHTML = modeIcon;
-        modeToggle.title = this.currentMode === "EDIT"
-            ? "Switch to Use Mode — live interaction on the control surface"
-            : "Switch to Edit Mode — add and parameterize controls";
-        modeToggle.setAttribute("aria-label", modeToggle.title);
-        modeToggle.onclick = () => {
-            this.currentMode = this.currentMode === "EDIT" ? "USE" : "EDIT";
-            // USE mode favors maximum controller width, so start the library
-            // collapsed there; EDIT restores normal library access.
-            this.sidebarCollapsed = this.currentMode === "USE";
-            this.render();
+            try {
+                this.applyStatusText("Connecting...", "#ffeb3b");
+                this.connectionUnsub?.();
+                this.connectionUnsub = undefined;
+                await this.nexusAdapter.openProject(urlInput.value, this.bindingManager);
+                this.connectionUnsub = this.nexusAdapter.onDocumentConnectedChanged((connected) => {
+                    if (!connected) {
+                        this.applyStatusText("Sync lost — reconnect project", "#f44336");
+                        console.warn("[METATRON LEARN] document.connected=false — Nexus events will NOT arrive (learn would time out)");
+                    } else {
+                        this.applyStatusText("Connected", "#4CAF50");
+                    }
+                });
+                Toast.show("Project connected.", "success");
+                this.render(); // Chip erscheint sofort, ohne Mode-/Device-Wechsel
+            } catch (e) {
+                console.error("Connection error", e);
+                this.applyStatusText("Error", "#f44336");
+                Toast.show(`Connection failed: ${e instanceof Error ? e.message : String(e)}`, "error");
+            }
         };
 
-        // Session user chip (display-only, B72): sits LEFT of the mode toggle in the
-        // right cluster; omitted entirely when no display name could be resolved.
-        const sessionUser = this.nexusAdapter.getCurrentUser();
-        if (sessionUser) {
-            const chip = document.createElement("span");
-            chip.className = "user-chip";
-            chip.textContent = sessionUser.username; // textContent ONLY — never innerHTML (XSS)
-            chip.title = `Authenticated Audiotool session: ${sessionUser.username}`;
-            toolbarRight.appendChild(chip);
+        headerRight.appendChild(connField);
+        headerRight.appendChild(connectBtn);
+
+        // MOD-matrix toggle: USE-mode chrome only (EDIT hides the drawer).
+        if (this.currentMode === "USE") {
+            const modBtn = document.createElement("button");
+            modBtn.id = "mod-matrix-toggle";
+            modBtn.className = "hdr-icon-btn square" + (this.modMatrixOpen ? " active" : "");
+            modBtn.setAttribute("aria-label", "Toggle modulation matrix");
+            modBtn.title = "Toggle modulation matrix";
+            // 2×2 grid icon — the modulation matrix's map symbol.
+            modBtn.innerHTML =
+                '<svg class="mod-grid-icon" viewBox="0 0 14 14" aria-hidden="true" focusable="false">' +
+                '<rect x="0" y="0" width="5.5" height="5.5" rx="1"/>' +
+                '<rect x="8.5" y="0" width="5.5" height="5.5" rx="1"/>' +
+                '<rect x="0" y="8.5" width="5.5" height="5.5" rx="1"/>' +
+                '<rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1"/>' +
+                "</svg>";
+            modBtn.onclick = () => {
+                this.modMatrixOpen = !this.modMatrixOpen;
+                if (this.modMatrixOpen) {
+                    this.sidebarCollapsedBeforeMod = this.sidebarCollapsed;
+                    this.sidebarCollapsed = true;
+                } else if (this.sidebarCollapsedBeforeMod !== null) {
+                    this.sidebarCollapsed = this.sidebarCollapsedBeforeMod;
+                    this.sidebarCollapsedBeforeMod = null;
+                }
+                this.modMatrixUI.toggleDrawer();
+                this.render();
+            };
+            headerRight.appendChild(modBtn);
         }
 
-        // Right cluster: the mode toggle is the sole rightmost header control.
-        toolbarRight.appendChild(modeToggle);
+        // Library toggle — the shared "Library" button in the right cluster.
+        const libraryBtn = document.createElement("button");
+        libraryBtn.className = "hdr-icon-btn" + (this.sidebarCollapsed ? "" : " active");
+        libraryBtn.innerHTML =
+            '<svg class="library-icon" viewBox="0 0 14 14" aria-hidden="true" focusable="false">' +
+            '<rect x="1" y="1" width="8" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/>' +
+            '<line x1="6" y1="1" x2="6" y2="13" stroke="currentColor" stroke-width="1.2"/>' +
+            '</svg>' +
+            '<span>Library</span>';
+        libraryBtn.title = this.sidebarCollapsed ? "Show library" : "Hide library";
+        libraryBtn.onclick = () => {
+            if (this.modMatrixOpen) {
+                this.modMatrixOpen = false;
+                this.modMatrixUI.toggleDrawer();
+                this.sidebarCollapsedBeforeMod = null;
+                this.sidebarCollapsed = false;
+            } else {
+                this.sidebarCollapsed = !this.sidebarCollapsed;
+            }
+            this.render();
+        };
+        headerRight.appendChild(libraryBtn);
 
-        toolbar.appendChild(toolbarLeft);
-        toolbar.appendChild(toolbarRight);
+        // Session user badge (display-only, B72): avatar + name; omitted when no
+        // display name could be resolved. textContent ONLY — never innerHTML.
+        const sessionUser = this.nexusAdapter.getCurrentUser();
+        if (sessionUser) {
+            const badge = document.createElement("span");
+            badge.className = "user-badge";
+            const avatar = document.createElement("span");
+            avatar.className = "user-avatar";
+            avatar.innerHTML = USER_AVATAR_SVG;
+            const name = document.createElement("span");
+            name.className = "user-badge-name";
+            name.textContent = sessionUser.username;
+            name.title = `Authenticated Audiotool session: ${sessionUser.username}`;
+            badge.appendChild(avatar);
+            badge.appendChild(name);
+            headerRight.appendChild(badge);
+        }
+
+        toolbar.appendChild(headerRight);
 
         this.root.appendChild(toolbar);
 
-        // Secondary bar: automation strip lives in its own row below the main
-        // header, freeing horizontal space in the 56px toolbar.
-        const automationBar = document.createElement("div");
-        automationBar.className = "automation-bar";
-        automationBar.appendChild(this.buildAutomationStrip());
-        this.root.appendChild(automationBar);
+        // BUILDER bar: EDIT-only action bar below the toolbar card.
+        if (this.currentMode === "EDIT") {
+            this.root.appendChild(this.buildBuilderBar());
+        }
 
-        // Main Content Area
+        // Automation bar: USE-only and only while a take state is live
+        // (ARMED/RECORDING/STOPPED). At IDLE the strip is absent entirely.
+        if (this.currentMode === "USE" && this.recorder.currentState !== "IDLE") {
+            const automationBar = document.createElement("div");
+            automationBar.className = "automation-bar";
+            automationBar.appendChild(this.buildAutomationStrip());
+            this.root.appendChild(automationBar);
+        }
+
+        // Main Content Area — controller surface first, library pane on the right.
         const contentRow = document.createElement("div");
         contentRow.className = "content-row";
 
-        // Left sidebar pane: an always-present edge toggle plus the collapsible
+        const contentArea = document.createElement("div");
+        contentArea.className = "content-area";
+        if (this.currentMode === "EDIT") {
+            this.editorUI.render(contentArea);
+        } else {
+            this.surfaceUI.render(contentArea);
+        }
+
+        // Right sidebar pane: an always-present edge toggle plus the collapsible
         // Device Library column. Collapsing only changes the library column's
         // width (content stays mounted), so the controller surface reclaims the
         // freed horizontal space via flex:1.
@@ -1154,7 +1278,9 @@ toolbarLeft.appendChild(libraryBtn);
 
         const sidebarToggle = document.createElement("button");
         sidebarToggle.className = "sidebar-toggle";
-        sidebarToggle.textContent = this.sidebarCollapsed ? "›" : "‹";
+        // Right-docked pane: collapsed points left (›, reopen leftward is the
+        // "further right" state, so ‹ means open fully).
+        sidebarToggle.textContent = this.sidebarCollapsed ? "‹" : "›";
         sidebarToggle.title = this.sidebarCollapsed ? "Show library" : "Hide library";
         sidebarToggle.setAttribute("aria-label", sidebarToggle.title);
         sidebarToggle.onclick = () => {
@@ -1172,20 +1298,12 @@ toolbarLeft.appendChild(libraryBtn);
 
         const sidebar = document.createElement("aside");
         sidebar.className = "device-sidebar-wrap";
-        this.libraryUI.render(sidebar);
+        // Instrument presets only make sense while EDITING a device surface.
+        this.libraryUI.render(sidebar, { showInstrumentPresets: this.currentMode === "EDIT" });
         sidebarPane.appendChild(sidebar);
-        contentRow.appendChild(sidebarPane);
-
-        const contentArea = document.createElement("div");
-        contentArea.className = "content-area";
-        
-        if (this.currentMode === "EDIT") {
-            this.editorUI.render(contentArea);
-        } else {
-            this.surfaceUI.render(contentArea);
-        }
 
         contentRow.appendChild(contentArea);
+        contentRow.appendChild(sidebarPane);
         this.root.appendChild(this.modMatrixUI.getContainer());
         this.root.appendChild(contentRow);
 

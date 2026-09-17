@@ -57,11 +57,11 @@ function mount(adapter: TestNexusAdapter): { root: HTMLElement; adapter: TestNex
 }
 
 function getUrlInput(root: HTMLElement): HTMLInputElement {
-    return root.querySelector<HTMLInputElement>("input.url-input")!;
+    return root.querySelector<HTMLInputElement>("input.conn-input")!;
 }
 
 function getStatusEl(root: HTMLElement): HTMLElement {
-    return root.querySelector<HTMLElement>(".connection-status")!;
+    return root.querySelector<HTMLElement>(".conn-chip")!;
 }
 
 function getButton(root: HTMLElement, labelPrefix: string): HTMLButtonElement {
@@ -216,18 +216,18 @@ describe("Project URL survives AppUI re-renders without auto-connecting", () => 
 
     it("13. URL input carries the compact-width class and CSS rules", () => {
         const { root } = mount(new TestNexusAdapter());
-        expect(getUrlInput(root).className).toContain("url-input");
+        expect(getUrlInput(root).className).toContain("conn-input");
 
         const css = readFileSync(resolve("src/ui/styles.css"), "utf8");
-        expect(css).toMatch(/\.url-input\s*{[^}]*max-width:\s*260px[^}]*}/);
-        expect(css).toMatch(/\.url-input\s*{[^}]*min-width:\s*140px[^}]*}/);
-        expect(css).toMatch(/\.url-input\s*{[^}]*flex:\s*1[^}]*}/);
+        expect(css).toMatch(/\.conn-field\s*{[^}]*flex:\s*0\s+1\s+260px[^}]*}/);
+        expect(css).toMatch(/\.conn-input\s*{[^}]*min-width:\s*80px[^}]*}/);
+        expect(css).toMatch(/\.conn-input\s*{[^}]*flex:\s*1[^}]*}/);
     });
 
     it("14. Connection status cannot expand the header indefinitely (CSS)", () => {
         const css = readFileSync(resolve("src/ui/styles.css"), "utf8");
         expect(css).toMatch(
-            /\.connection-status\s*{[^}]*max-width:\s*220px[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap[^}]*}/,
+            /\.conn-chip\s*{[^}]*max-width:\s*220px[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap[^}]*}/,
         );
     });
 });

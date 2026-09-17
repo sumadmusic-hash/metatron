@@ -203,12 +203,11 @@ describe("Control drag & drop — drag lifecycle", () => {
     it("Test 9 — Snap OFF allows free positioning", () => {
         const device = new Device("T9");
         const a = addKnob(device, "A", 100, 100);
-        const host = mount(device, fullEditor(device));
+        const ui = fullEditor(device);
+        const host = mount(device, ui);
 
-        // Toggle the Snap button OFF (re-renders the canvas).
-        const snapBtn = [...host.querySelectorAll<HTMLElement>(".editor-toolbar button")]
-            .find((b) => b.textContent?.startsWith("Snap"))!;
-        snapBtn.click();
+        // Toggle Snap OFF through the editor's public API (re-renders the canvas).
+        ui.setSnapEnabled(false);
 
         const el = host.querySelector<HTMLElement>(`[data-ctl-id="${a.id}"]`)!;
         pd(el, 0, 0);

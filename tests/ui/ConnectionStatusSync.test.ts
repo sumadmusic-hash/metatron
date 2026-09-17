@@ -46,7 +46,7 @@ function mount(adapter: TestNexusAdapter): { root: HTMLElement; adapter: TestNex
 }
 
 function getStatusEl(root: HTMLElement): HTMLElement {
-    return root.querySelector<HTMLElement>(".connection-status")!;
+    return root.querySelector<HTMLElement>(".conn-chip")!;
 }
 
 function getButton(root: HTMLElement, labelPrefix: string): HTMLButtonElement {

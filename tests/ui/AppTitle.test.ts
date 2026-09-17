@@ -38,18 +38,20 @@ describe("M20.12 — Metatron logo left of the title", () => {
         const host = mount();
         const titleWrap = host.querySelector<HTMLElement>(".toolbar .app-title")!;
         expect(titleWrap).not.toBeNull();
-        const logo = titleWrap.querySelector<HTMLImageElement>(".app-logo")!;
+        // The logo is now an inline SVG (square mark) inside the title group —
+        // the img asset is unused at runtime but stays shipped under public/.
+        const logo = titleWrap.querySelector<SVGElement>(".app-logo-wrap .app-logo-svg")!;
         expect(logo).not.toBeNull();
-        expect(logo.getAttribute("src")).toBe("/metatron-logo-mark.svg");
-        expect(logo.getAttribute("alt")).toBe("Metatron");
+        expect(logo.tagName).toBe("svg");
     });
 
     it("places the logo LEFT of the 'Metatron' title in the same group", () => {
         const host = mount();
         const titleWrap = host.querySelector<HTMLElement>(".toolbar .app-title")!;
-        const logo = titleWrap.children[0] as HTMLElement;
+        const logoWrap = titleWrap.children[0] as HTMLElement;
         const title = titleWrap.children[1] as HTMLElement;
-        expect(logo.classList.contains("app-logo")).toBe(true);
+        expect(logoWrap.classList.contains("app-logo-wrap")).toBe(true);
+        expect(logoWrap.querySelector("svg.app-logo-svg")).toBeTruthy();
         expect(title.tagName).toBe("H1");
         expect(title.textContent!.startsWith("Metatron")).toBe(true);
         // The title keeps its coexisting device-name suffix.
@@ -58,14 +60,14 @@ describe("M20.12 — Metatron logo left of the title", () => {
 
     it("keeps a 1:1 aspect ratio at a 28×28 display size", () => {
         const host = mount();
-        expect(host.querySelector(".app-logo")).not.toBeNull();
+        expect(host.querySelector(".app-logo-svg")).not.toBeNull();
         const css = readFileSync(resolve("src/ui/styles.css"), "utf8");
-        const rule = css.match(/\.app-title \.app-logo\s*\{[^}]*\}/);
+        const rule = css.match(/\.app-logo-svg\s*\{[^}]*\}/);
         expect(rule).toBeTruthy();
         expect(rule?.[0]).toMatch(/width:\s*28px/);
         expect(rule?.[0]).toMatch(/height:\s*28px/);
-        expect(rule?.[0]).toMatch(/object-fit:\s*contain/);
         // Ungestörte Skalierung: das Logo-Mark ist ein perfektes Quadrat.
+        // The original img asset stays under public/ (untouched, still shipped).
         const svg = readFileSync(resolve("public/metatron-logo-mark.svg"), "utf8");
         expect(svg).toMatch(/viewBox="-2 -2 28 28"/);
         expect(svg).toMatch(/polygon/);
@@ -85,9 +87,9 @@ describe("M20.12 — Metatron logo left of the title", () => {
         const toolbar = host.querySelector(".toolbar")!;
         const libraryBtn = [...toolbar.querySelectorAll("button")].find((b) => b.innerText.includes("Library"));
         expect(libraryBtn).toBeDefined();
-        // Title block is inside .toolbar-left which is the first toolbar child.
-        expect(toolbar.querySelector(".toolbar-left")).toBeTruthy();
-        expect(toolbar.querySelector(".toolbar-left .app-title")).toBeTruthy();
+        // Title block is inside .header-left which is the first toolbar child.
+        expect(toolbar.querySelector(".header-left")).toBeTruthy();
+        expect(toolbar.querySelector(".header-left .app-title")).toBeTruthy();
         expect(toolbar.children.length).toBeGreaterThan(1);
     });
 });
@@ -148,15 +150,14 @@ describe("Device Title compactness and accessibility", () => {
         const longName = "Very Long Custom Synthesizer Performance Controller";
         const host = mountWithDevice(longName);
         const toolbar = host.querySelector<HTMLElement>(".toolbar")!;
-        expect(toolbar.querySelector(".toolbar-left .app-title")).toBeTruthy();
-        expect(toolbar.querySelector(".toolbar-left button")).toBeTruthy(); // Library
-        expect(toolbar.querySelector(".toolbar-right button")).toBeTruthy(); // Mode toggle
+        expect(toolbar.querySelector(".header-left .app-title")).toBeTruthy();
+        expect(toolbar.querySelector(".header-right button")).toBeTruthy(); // Library in the right cluster
 
-        const modeToggle = toolbar.querySelector<HTMLButtonElement>(".toolbar-right button")!;
-        expect(modeToggle.querySelector("svg.mode-toggle-icon")).toBeTruthy();
-        modeToggle.click();
-        const updatedModeToggle = host.querySelector<HTMLButtonElement>(".toolbar .toolbar-right button")!;
-        expect(updatedModeToggle.querySelector("svg.mode-toggle-icon")).toBeTruthy();
+        const modePill = toolbar.querySelector<HTMLButtonElement>("#mode-toggle-btn")!;
+        expect(modePill.classList.contains("mode-pill")).toBe(true);
+        modePill.click();
+        const updatedPill = host.querySelector<HTMLButtonElement>("#mode-toggle-btn")!;
+        expect(updatedPill.classList.contains("mode-pill")).toBe(true);
         const title = host.querySelector<HTMLElement>(".toolbar .app-title h1")!;
         expect(title.title).toBe(longName);
     });

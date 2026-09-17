@@ -9,6 +9,34 @@
     --text-warning: #fbbf24;
     --knob-bg: #1a1d24;
     --knob-border: #2d3342;
+
+    /* Mockup header/panel design tokens (AppUI sets --accent-* per mode). */
+    --hdr-bg-1: #1c2128;
+    --hdr-bg-2: #161b22;
+    --panel-solid: #0d1117;
+    --hdr-stroke: #30363d;
+    --text-hi: #f0f6fc;
+    --text-mut: #6e7681;
+    --danger: #f87171;
+    --rec-red: #ef4444;
+}
+
+/* Mode-scoped accent palette: USE = teal, EDIT = sky blue. AppUI.render()
+   sets `data-mode` on <html>; every --accent-* consumer follows the active
+   mode (chips, pills, transport, builder bar, hover states). Base :root
+   stays as the ungated fallback. */
+html[data-mode="use"] {
+    --accent-color: #2dd4bf;
+    --accent-hover: #14b8a6;
+    --mode-accent-2: #0d9488;
+    --mode-accent-dark: #042f2e;
+}
+
+html[data-mode="edit"] {
+    --accent-color: #38bdf8;
+    --accent-hover: #0284c7;
+    --mode-accent-2: #0284c7;
+    --mode-accent-dark: #0c4a6e;
 }
 
 body {
@@ -19,86 +47,421 @@ body {
     overflow: hidden;
 }
 
-/* Premium Toolbar */
+/* Premium Toolbar — floating card per mockup: left cluster (logo/title/mode
+   pill + undo/redo), center cluster (USE transport), right cluster
+   (connection, mod toggle, library, user badge). */
 .toolbar {
-    height: 52px;
-    background: linear-gradient(180deg, #161922 0%, #10121a 100%);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border-bottom: 1px solid #1e2230;
+    margin: 6px 10px 0;
+    height: 48px;
+    background: linear-gradient(180deg, var(--hdr-bg-1), var(--hdr-bg-2));
+    border: 1px solid var(--hdr-stroke);
+    border-radius: 8px;
     display: flex;
     align-items: center;
-    padding: 0 24px;
-    justify-content: space-between;
+    gap: 12px;
+    padding: 0 14px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.4);
     z-index: 100;
     position: relative;
 }
 
-.toolbar-left {
+.header-left {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     min-width: 0;
 }
 
-.toolbar-right {
+.header-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    min-width: 0;
+}
+
+/* Logo: inline SVG square (28×28) replacing the img asset usage. The SVG
+   asset itself stays untouched under public/. */
+.app-logo-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.app-logo-svg {
+    width: 28px;
+    height: 28px;
+    display: block;
+}
+
+/* Mode pill — two-segment USE/EDIT toggle (single #mode-toggle-btn). */
+.mode-pill {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--mode-accent-2);
+    border-radius: 999px;
+    overflow: hidden;
+    cursor: pointer;
+    height: 24px;
+    padding: 0;
+    background: var(--panel-solid);
+    color: var(--text-hi);
+    font-family: inherit;
+}
+
+.mode-pill-half {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 12px;
+    height: 100%;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text-mut);
+}
+
+.mode-pill-half.active {
+    background: var(--mode-accent-2);
+    color: var(--text-hi);
+}
+
+/* Project connection — field (monospace input + status chip) plus Connect. */
+.conn-field {
     display: flex;
     align-items: center;
     gap: 6px;
+    height: 28px;
+    padding: 0 8px;
+    background: var(--panel-solid);
+    border: 1px solid var(--mode-accent-2);
+    border-radius: 6px;
+    flex: 0 1 260px;
     min-width: 0;
-    margin-left: auto;
 }
 
-/* Project URL input — compact but still usable: fills available space up to
-   260px and never shrinks below 140px. Width control lives in CSS, not JS. */
-.url-input {
+.conn-input {
     flex: 1;
-    min-width: 140px;
-    max-width: 260px;
+    min-width: 80px;
+    border: 0;
+    background: transparent;
+    outline: none;
+    color: var(--text-hi);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10.5px;
+    padding: 0;
 }
 
-/* Connection status — pill with a colored dot indicating connection state.
-   The dot color is driven by the --conn-color CSS variable set by AppUI.applyStatusText.
-   The full text is exposed via the native title tooltip. */
-.connection-status {
+.conn-btn {
+    height: 28px;
+    padding: 0 12px;
+    border: 1px solid var(--mode-accent-2);
+    border-radius: 6px;
+    background: var(--panel-solid);
+    color: var(--text-hi);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.conn-btn:hover {
+    background: var(--mode-accent-dark);
+}
+
+/* Connection chip — compact status pill inside the conn-field. The dot color
+   is driven by the --conn-color CSS variable set by AppUI.applyStatusText;
+   the full text is exposed via the native title tooltip. */
+.conn-chip {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 3px 10px;
+    padding: 2px 10px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    font-size: 12px;
+    background: var(--mode-accent-dark);
+    color: var(--accent-color);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
     max-width: 220px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--text-secondary);
+    flex: 0 0 auto;
 }
 
-.connection-status::before {
+.conn-chip::before {
     content: "";
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--conn-color, #ff3366);
     flex: 0 0 auto;
 }
 
-.connection-status.tone-ok { color: #4CAF50; }
-.connection-status.tone-warn { color: #ffeb3b; }
-.connection-status.tone-err { color: #f44336; }
+.conn-chip.tone-ok { color: #4CAF50; }
+.conn-chip.tone-warn { color: #ffeb3b; background: rgba(59,47,0,0.9); }
+.conn-chip.tone-err { color: var(--danger); background: rgba(59,17,17,0.9); }
 
-/* Secondary bar housing the automation strip below the main header */
-.automation-bar {
-    background: var(--bg-panel);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border-bottom: 1px solid var(--border-color);
+/* Right-cluster icon buttons: Library keeps its label, Mod is icon-only. */
+.hdr-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 8px;
+    background: var(--panel-solid);
+    border: 1px solid var(--mode-accent-2);
+    border-radius: 6px;
+    color: var(--text-hi);
+    cursor: pointer;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.hdr-icon-btn.square {
+    width: 28px;
+    padding: 0;
+}
+
+.hdr-icon-btn:hover {
+    background: var(--mode-accent-dark);
+}
+
+.hdr-icon-btn.active {
+    background: var(--mode-accent-dark);
+    color: var(--accent-color);
+}
+
+.hdr-icon-btn .library-icon {
+    width: 12px;
+    height: 12px;
+    color: var(--accent-color);
+    flex: 0 0 auto;
+}
+
+/* User badge — avatar dot + display name; only rendered for an authenticated
+   Audiotool session (B72 display-only, in-memory). */
+.user-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px 2px 2px;
+    background: var(--panel-solid);
+    border: 1px solid var(--mode-accent-2);
+    border-radius: 999px;
+    cursor: help;
+}
+
+.user-avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--mode-accent-2);
+    color: var(--text-hi);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.user-avatar svg {
+    width: 12px;
+    height: 12px;
+}
+
+.user-badge-name {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--text-hi);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Transport (USE only, header center): ARM/REC/STOP + engine chip + APPLY. */
+.transport {
     display: flex;
     align-items: center;
-    padding: 0 24px;
+    gap: 8px;
+}
+
+.transport-btn {
+    height: 28px;
+    padding: 0 12px;
+    border-radius: 6px;
+    border: 1px solid var(--mode-accent-2);
+    background: var(--panel-solid);
+    color: var(--text-hi);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.transport-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.transport-btn.armed {
+    background: rgba(251, 191, 36, 0.15);
+    border-color: #fbbf24;
+    color: #fbbf24;
+}
+
+.transport-btn.recording {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: var(--rec-red);
+    color: #fca5a5;
+    font-weight: 800;
+}
+
+.engine-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--mode-accent-dark);
+    border: 1px solid var(--mode-accent-2);
+    color: var(--accent-color);
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+}
+
+.engine-chip.state-armed {
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.5);
+}
+
+.engine-chip.state-recording {
+    color: var(--rec-red);
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+.transport-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: 0 0 auto;
+}
+
+.apply-btn {
+    height: 28px;
+    padding: 0 14px;
+    border-radius: 6px;
+    border: 0;
+    background: linear-gradient(180deg, #14b8a6, #0d9488);
+    color: #042f2e;
+    font-weight: 800;
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+
+.apply-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+/* BUILDER bar (EDIT only, below the toolbar card). */
+.builder-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 10px 0;
+    height: 42px;
+    padding: 0 14px;
+    background: linear-gradient(180deg, var(--hdr-bg-1), var(--hdr-bg-2));
+    border: 1px solid var(--accent-color);
+    border-radius: 8px;
+}
+
+.builder-label {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: var(--accent-color);
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.builder-sep {
+    width: 1px;
+    height: 20px;
+    background: var(--hdr-stroke);
+    flex: 0 0 auto;
+}
+
+.builder-bar .btn {
+    height: 26px;
+    padding: 0 12px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    border-radius: 6px;
+    background: var(--panel-solid);
+    border: 1px solid var(--hdr-stroke);
+    color: var(--text-hi);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.builder-bar .btn:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.builder-bar .btn.active {
+    background: var(--mode-accent-dark);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.builder-bar .delete-selected {
+    color: var(--danger);
+    border-color: rgba(248, 113, 113, 0.4);
+}
+
+.builder-bar .btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* Secondary bar housing the automation strip below the main header — shown
+   only in USE mode while a take state is live (never at IDLE). */
+.automation-bar {
+    background: linear-gradient(180deg, var(--hdr-bg-1), var(--hdr-bg-2));
+    border: 1px solid var(--hdr-stroke);
+    border-radius: 8px;
+    margin: 6px 10px 0;
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
     height: 40px;
     position: relative;
     z-index: 99;
@@ -125,7 +488,6 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-right: 20px;
     white-space: nowrap;
     min-width: 0;
 }
@@ -745,22 +1107,6 @@ body {
 
 /* ---------- Phase A editor additions ---------- */
 
-/* Editor toolbar (left of the app toolbar) */
-.editor-toolbar {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-    align-self: flex-start;
-    margin: 12px;
-    padding: 10px;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
-    z-index: 50;
-}
-
 .editor-canvas.editor-canvas--nogrid {
     background-image: none;
 }
@@ -1265,7 +1611,8 @@ body {
     flex: 1;
 }
 
-/* Collapsible left sidebar pane (USE mode favors max controller width) */
+/* Collapsible right sidebar pane (USE mode favors max controller width). The
+   pane sits on the RIGHT edge of the content row: content first, pane last. */
 .sidebar-pane {
     display: flex;
     align-items: stretch;
@@ -1278,7 +1625,7 @@ body {
     width: 20px;
     padding: 0;
     border: none;
-    border-right: 1px solid var(--border-color);
+    border-left: 1px solid var(--border-color);
     background: var(--bg-panel);
     color: var(--text-secondary);
     font-size: 16px;
@@ -1295,7 +1642,7 @@ body {
     width: 250px;
     flex-shrink: 0;
     overflow: hidden;
-    border-right: 1px solid var(--border-color);
+    border-left: 1px solid var(--border-color);
     background: var(--bg-panel);
     backdrop-filter: blur(10px);
     transition: width 0.18s ease;
@@ -1306,7 +1653,7 @@ body {
    Content stays mounted — only clipped — so library state is never lost. */
 .sidebar-pane.collapsed .device-sidebar-wrap {
     width: 0;
-    border-right: none;
+    border-left: none;
 }
 
 .device-sidebar-wrap .device-sidebar {
@@ -1996,8 +2343,8 @@ body {
 
 /* Icon + label buttons in the header: inline-flex so the SVG and text sit on
    one baseline, matching the SVG mockup's compact controls. */
-.toolbar-left > .btn,
-.toolbar-right > .btn {
+.header-left > .btn,
+.header-right > .hdr-icon-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -2121,6 +2468,13 @@ body {
 
 /* Default focus ring for keyboard navigation (mouse clicks are unaffected). */
 .toolbar .btn:focus-visible,
+.hdr-icon-btn:focus-visible,
+.conn-btn:focus-visible,
+.conn-field:focus-within,
+.mode-pill:focus-visible,
+.transport-btn:focus-visible,
+.apply-btn:focus-visible,
+.builder-bar .btn:focus-visible,
 .mini-btn:focus-visible,
 .mod-matrix-drawer input:focus-visible,
 .mod-matrix-drawer select:focus-visible,
@@ -2252,22 +2606,6 @@ body {
     opacity: 0.45;
 }
 
-/* Edit-mode context toolbar: more padding, hover feedback tying it to the
-   app-wide button language. */
-.editor-toolbar {
-    padding: 12px 14px;
-}
-
-.editor-toolbar .btn {
-    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
-}
-
-.editor-toolbar .btn:hover {
-    background: rgba(0, 229, 255, 0.12);
-    border-color: rgba(0, 229, 255, 0.5);
-    transform: translateY(-1px);
-}
-
 /* Sidebar button rows get real breathing room. */
 .sidebar-actions {
     display: flex;
@@ -2385,65 +2723,4 @@ body {
 .mod-source-row.source-linked {
     background: rgba(0, 229, 255, 0.05);
     box-shadow: inset 2px 0 0 var(--accent-color);
-}
-
-/* Mode indicator: always-visible chip naming the ACTIVE mode. */
-.mode-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    border: 1px solid transparent;
-    white-space: nowrap;
-    cursor: help;
-}
-
-.mode-badge::before {
-    content: "";
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-}
-
-.mode-badge--edit {
-    color: var(--accent-color);
-    background: rgba(0, 229, 255, 0.1);
-    border-color: rgba(0, 229, 255, 0.35);
-}
-
-.mode-badge--use {
-    color: #00e676;
-    background: rgba(0, 230, 118, 0.1);
-    border-color: rgba(0, 230, 118, 0.35);
-}
-
-/* Session user chip — display-only identity pill in the right header cluster.
-   Mirrors the connection-status pill language; truncates like the URL input. */
-.user-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    font-size: 12px;
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-secondary);
-}
-.user-chip::before {
-    content: "";
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #4CAF50;
-    flex: 0 0 auto;
 }

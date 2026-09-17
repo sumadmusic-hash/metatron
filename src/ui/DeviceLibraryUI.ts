@@ -158,7 +158,15 @@ export class DeviceLibraryUI {
         this.applyMorphToCurrentDevice();
     }
 
-    public render(parent: HTMLElement) {
+    /** Guest snapshot of the last requested instrument-presets visibility.
+     *  Internal re-renders (preset save/delete, morph) go through the plain
+     *  render() overload and must keep the value AppUI last asked for. */
+    private showInstrumentPresets = true;
+
+    public render(parent: HTMLElement, opts?: { showInstrumentPresets?: boolean }) {
+        if (opts && typeof opts.showInstrumentPresets === "boolean") {
+            this.showInstrumentPresets = opts.showInstrumentPresets;
+        }
         this.container = parent;
 
         const panel = document.createElement("div");
@@ -219,8 +227,11 @@ export class DeviceLibraryUI {
         // Presets section for the active device (§6 Presets, §20 "Save Load/Delete")
         this.renderPresets(panel);
 
-        // Instrument presets — export/import of the full chain+device state (P1/P2/P3)
-        this.renderInstrumentPresets(panel);
+        // Instrument presets — export/import of the full chain+device state
+        // (P1/P2/P3). EDIT-mode chrome: hidden in USE (AppUI opts).
+        if (this.showInstrumentPresets) {
+            this.renderInstrumentPresets(panel);
+        }
 
         // Clear pending confirm bar when re-rendering
         this.clearConfirm();
