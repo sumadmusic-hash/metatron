@@ -380,7 +380,26 @@ export class AppUI {
             // Audiotool-Fenster die sichtbare Knob-Position ab, tippt er sie
             // ein und bestätigt — danach geht es weiter. KEIN Live-Callback mit
             // 600ms-Zwang, gleiche, echte Messung (kein Raten). TEMPORARY.
-            pacedSweep: async (controlId: string) => {
+            // `hint` darf die Control-ID ODER der taperKey
+            // ("pulverisateur:filter.cutoffFrequencyHz") sein — wird per
+            // activeBinding↔taperKey aufgelöst.
+            pacedSweep: async (hint: string) => {
+                const ids = this.bindingManager.getActiveBindingControlIds();
+                let controlId = this.bindingManager.getActiveBinding(hint) ? hint : undefined;
+                if (!controlId) {
+                    controlId = ids.find((cid) => {
+                        const b = this.bindingManager.getActiveBinding(cid);
+                        const c = this.bindingManager.deviceRef.controls.get(cid);
+                        const fp = (b?.fieldPath ?? b?.fieldName ?? "") as string;
+                        return taperKey(c?.audiotoolBindingDefinition?.targetName, fp) === hint;
+                    });
+                }
+                if (!controlId) {
+                    throw new Error(
+                        `[METATRON UI-CURVE] keine aktive Bindung für hint="${hint}". ` +
+                        `Aktive Bindungen: ${ids.length ? ids.join(", ") : "(keine)"}`
+                    );
+                }
                 const binding = this.bindingManager.getActiveBinding(controlId);
                 if (!binding) throw new Error(`[METATRON UI-CURVE] no active binding for ${controlId}`);
                 if (!this.nexusAdapter.document) throw new Error("[METATRON UI-CURBE] no connected document");
@@ -438,6 +457,23 @@ export class AppUI {
                     console.warn(`[METATRON UI-CURVE] zu wenige Readings (${points.length}), nichts registriert`);
                 }
                 return { key, points };
+            },
+            // B73 — aktive Bindungen anzeigen (Control-ID ↔ targetName/fieldPath ↔ taperKey).
+            // Hilfe beim Auffinden der Control-ID für Messung & Live-Test. TEMPORARY.
+            listBindings: () => {
+                const ids = this.bindingManager.getActiveBindingControlIds();
+                return ids.map((cid) => {
+                    const b = this.bindingManager.getActiveBinding(cid);
+                    const c = this.bindingManager.deviceRef.controls.get(cid);
+                    const fp = (b?.fieldPath ?? b?.fieldName ?? "") as string;
+                    return {
+                        controlId: cid,
+                        fieldPath: fp,
+                        targetName: c?.audiotoolBindingDefinition?.targetName,
+                        taperKey: taperKey(c?.audiotoolBindingDefinition?.targetName, fp),
+                        bound: Boolean(b),
+                    };
+                });
             },
             // B72 — direkte Registry-Registrierung aus manuell gemessenen
             // (ui, nexus) Paaren. Gegenwert zu registerTaper für die UI-Kurve.
