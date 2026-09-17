@@ -340,11 +340,13 @@ describe("SurfaceUI.applyModDisplay — idle-Toggle", () => {
         expect(modRing).toBeTruthy();
         expect(modRing!.classList.contains("idle")).toBe(true);
 
-        // applyModDisplay with a value → idle removed, amber arc end set
+        // applyModDisplay with a value → idle removed, amber arc set in the
+        // RELATIVE angle space (0..270, matching CSS `from -135deg`):
+        // start = base(0.5) * 270 = 135deg, end = modulated(0.7) * 270 = 189deg.
         surface.applyModDisplay("cutoff", 0.7);
         expect(modRing!.classList.contains("idle")).toBe(false);
-        expect(modRing!.style.getPropertyValue("--knob-mod-start")).toContain("deg");
-        expect(modRing!.style.getPropertyValue("--knob-mod-end")).toBe("54deg");
+        expect(modRing!.style.getPropertyValue("--knob-mod-start")).toBe("135deg");
+        expect(modRing!.style.getPropertyValue("--knob-mod-end")).toBe("189deg");
 
         // applyModDisplay with null → idle added
         surface.applyModDisplay("cutoff", null);

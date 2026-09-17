@@ -135,10 +135,11 @@ private container!: HTMLElement;
         }
         if (refs.modRing) {
             refs.modRing.dataset.baseValue = String(value);
-            const end = this.modLiveEnd.get(controlId);
-            if (end !== undefined && !refs.modRing.classList.contains("idle")) {
-                refs.modRing.style.setProperty("--knob-mod-start", `${-135 + (value * 270)}deg`);
-                refs.modRing.style.setProperty("--knob-mod-end", `${end}deg`);
+            const modRel = this.modLiveEnd.get(controlId);
+            if (modRel !== undefined && !refs.modRing.classList.contains("idle")) {
+                const baseRel = value * 270;
+                refs.modRing.style.setProperty("--knob-mod-start", `${Math.min(baseRel, modRel)}deg`);
+                refs.modRing.style.setProperty("--knob-mod-end", `${Math.max(baseRel, modRel)}deg`);
             }
         }
         if (refs.pos) {
@@ -149,26 +150,42 @@ private container!: HTMLElement;
         }
     }
 
-    /** Phase 2 — last live modulated end-angle per control (for base updates). */
+    /** Phase 2 — last live relative mod-angle (modulated * 270) per control
+     *  (for base updates). Kept in the same relative space as the CSS stops. */
     private modLiveEnd = new Map<string, number>();
 
     /** Phase 2 — Mod-Anzeige: zeichnet den Amber-Modulationsbogen auf dem
      *  Ring von der Basis (control.value) bis zum modulierten Wert. Ohne
-     *  control.value anzutasten (Base bleibt Base). null = Bogen aus. */
+     *  control.value anzutasten (Base bleibt Base). null = Bogen aus.
+     *  Die Stop-Winkel sind relativ zum CSS-Start `from -135deg` (Raum
+     *  0..270, identisch zu --knob-arc-end) — kein zweiter -135°-Offset. */
     public applyModDisplay(controlId: string, modulated: number | null): void {
         const refs = this.ctlElements.get(controlId);
         if (!refs?.modRing) return;
         if (modulated === null) {
             refs.modRing.classList.add("idle");
             this.modLiveEnd.delete(controlId);
+            this.setModulatedClasses(refs.modRing, false);
             return;
         }
         refs.modRing.classList.remove("idle");
         const base = Number(refs.modRing.dataset.baseValue ?? 0);
-        const end = -135 + (modulated * 270);
-        this.modLiveEnd.set(controlId, end);
-        refs.modRing.style.setProperty("--knob-mod-start", `${-135 + (base * 270)}deg`);
-        refs.modRing.style.setProperty("--knob-mod-end", `${end}deg`);
+        // RELATIVE Winkel (0..270): das CSS startet bereits via `from -135deg`
+        // am Ringanfang — derselbe Raum wie --knob-arc-end.
+        const baseRel = base * 270;
+        const modRel = modulated * 270;
+        this.modLiveEnd.set(controlId, modRel);
+        refs.modRing.style.setProperty("--knob-mod-start", `${Math.min(baseRel, modRel)}deg`);
+        refs.modRing.style.setProperty("--knob-mod-end", `${Math.max(baseRel, modRel)}deg`);
+        this.setModulatedClasses(refs.modRing, true);
+    }
+
+    /** Koppelt die Amber-Zustandsklassen (Wrapper + Knob-Body) an die live
+     *  Mod-Anzeige, statt sie nur beim Render zu setzen. */
+    private setModulatedClasses(modRing: HTMLElement, on: boolean): void {
+        const wrapper = modRing.closest(".control-wrapper");
+        if (wrapper) wrapper.classList.toggle("modulated", on);
+        if (modRing.parentElement) modRing.parentElement.classList.toggle("modulated", on);
     }
 
     /**

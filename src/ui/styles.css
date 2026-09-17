@@ -472,8 +472,8 @@ body {
    from the base value to the current modulated value. Width mirrors the SVG
    overlay (r34, stroke 2 → ~84.6–89.7% of the socket radius). */
 .knob-mod-ring {
-    --knob-mod-start: -135deg;
-    --knob-mod-end: -135deg;
+    --knob-mod-start: 0deg;
+    --knob-mod-end: 0deg;
     position: absolute;
     inset: 0;
     border-radius: 50%;
