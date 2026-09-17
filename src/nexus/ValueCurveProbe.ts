@@ -158,7 +158,16 @@ export function parseFrequencyText(text: string): number | null {
  *  liest raw zurück und optional den Display-Wert.
  *  Side-Effect-Guard (B56): der Ausgangswert wird gemerkt und IMMER wiederhergestellt
  *  (auch bei Abbruch mitten in der Schleife) — eine Messung darf kein Nutzerprojekt
- *  mit Cutoff/Volume am Anschlag hinterlassen. */
+ *  mit Cutoff/Volume am Anschlag hinterlassen.
+ *
+ *  Display-Pfad — Cross-Origin (B62) & Manual-Entry:
+ *  Das Audiotool-UI ist ein separater Cross-Origin-Kontext; synchrones DOM-Scraping
+ *  aus dem Metatron-Window ist architektonisch unmöglich. Deshalb: `readDisplayed`
+ *  hier WEGLASSEN (`null`), nach dem Run die manuell abgelesenen Werte in
+ *  `report.samples[i].displayed` injizieren und `fitTransfer` (bzw. den
+ *  Hook-`refit`-Helper) erneut laufen lassen. Die anker-gesperrte
+ *  `parseFrequencyText` bleibt als sicherer Konverter für wohlgeformte Readouts
+ *  (safe failure → null → kein Müll-Fit, B63-Doku). */
 export async function probeField(
     document: SyncedDocument,
     field: any,

@@ -16,7 +16,7 @@ import { DeviceLibraryUI } from "./DeviceLibraryUI";
 import { Toast } from "./Toast";
 import { WRITE_REFUSED_CLASS, WRITE_REFUSED_TITLE } from "./writeRefusal";
 // ── TEMPORARY PHASE 5 PROBE HOOK (nach erfolgreichem Messen wieder entfernen) ──
-import { probeField } from "../nexus/ValueCurveProbe";
+import { probeField, fitTransfer } from "../nexus/ValueCurveProbe";
 import { resolveFieldByPath } from "../nexus/ChainPath";
 import "./styles.css";
 
@@ -273,6 +273,31 @@ export class AppUI {
                         : {},
                 );
                 console.log("[METATRON PROBE] finished.", report);
+                return report;
+            },
+            // Manual-entry refit (B62): the Audiotool UI is a separate
+            // cross-origin context — the 11 displayed values are read by eye
+            // and injected here; identityTransfer + fits/winner are recomputed
+            // on the REAL report instead of hacking the stale object.
+            refit: (report: any, manualDisplayed: (number | null)[]) => {
+                if (!report?.samples || manualDisplayed.length !== report.samples.length) {
+                    throw new Error("[METATRON PROBE] refit needs 11 manual displayed values");
+                }
+                report.samples.forEach((s: any, i: number) => {
+                    s.displayed = manualDisplayed[i];
+                });
+                const ys = report.samples.map((s: any) => s.displayed);
+                const hasDisplay = ys.every((v: any) => typeof v === "number" && Number.isFinite(v));
+                const identityTransfer =
+                    hasDisplay && report.samples.every((s: any, i: number) => Math.abs(ys[i] - s.raw) < 1e-6);
+                const { fits, winner } =
+                    hasDisplay && !identityTransfer
+                        ? fitTransfer(report.samples, report.schemaMin, report.schemaMax)
+                        : { fits: [] as unknown[], winner: null };
+                report.identityTransfer = identityTransfer;
+                report.fits = fits;
+                report.winner = winner;
+                console.log("[METATRON PROBE] refit done. identityTransfer:", identityTransfer, "winner:", winner);
                 return report;
             },
         };
