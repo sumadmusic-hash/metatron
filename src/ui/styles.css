@@ -434,11 +434,9 @@ body {
     pointer-events: none;
 }
 
-/* Neon indicator ring. Cyan (normal) or switched to the amber family when the
-   knob is modulated (.modulated). Arc start -135°, end = --knob-arc-end. */
-/* Neon indicator ring. Width mirrors the SVG (r34, stroke 3.5 → 82.5–91.5%
-   of the socket radius, i.e. a wide 9% band). Cyan (normal) or amber when
-   the knob is modulated (.modulated). Arc start -135°, end = --knob-arc-end. */
+/* Neon indicator ring. Cyan (normal) or amber when the knob is modulated
+   (.modulated). Arc start -135°, end = --knob-arc-end. Width mirrors the SVG
+   (r34, stroke 3.5 → 82.5–91.5% of the socket radius, i.e. a wide 9% band). */
 .knob-led-ring {
     --knob-ring-track: #1c202c;
     --knob-arc-color: #00e5ff;
@@ -953,10 +951,6 @@ body {
 .group-hex-row .tool-btn:hover {
     background: var(--accent-color);
     color: #000;
-}
-
-.group-box.use-group .group-hex-row {
-    display: none;
 }
 
 /* USE-mode Group: the same container, but presented as a finished visual
@@ -1511,6 +1505,11 @@ body {
     align-items: center;
     gap: 10px;
 }
+.mod-bake-note {
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 0.3px;
+}
 .mod-bake-actions {
     display: flex;
     gap: 8px;
@@ -1597,12 +1596,6 @@ body {
     font-size: 12px;
     color: var(--text-primary);
     transition: opacity 0.15s ease, background-color 0.15s ease;
-}
-
-/* Extra compact controls inside routing rows. */
-.mod-slot-row input,
-.mod-slot-row select {
-    height: 24px;
 }
 
 /* Active rows carry a slim amber spine + wash; inactive rows are dimmed. */

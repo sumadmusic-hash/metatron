@@ -102,6 +102,23 @@ describe("ModulationRunner — Lifecycle", () => {
         expect(() => runner.stop()).not.toThrow();
     });
 
+    it("B38 - last slot disable idles the active mod displays on the next tick", () => {
+        const device = makeModDevice();
+        const { runner, surface } = makeRunner(device, "IDLE");
+
+        runner.start();
+        (runner as any).tick(performance.now());
+        expect(runner.isModulated("cutoff")).toBe(true);
+        expect(surface.applyModDisplay).toHaveBeenCalledWith("cutoff", expect.any(Number));
+
+        // Disable the (only) enabled slot; the next tick hits the early
+        // return, which must idle the previously active display.
+        device.modulation.slots[0].enabled = false;
+        (runner as any).tick(performance.now());
+        expect(runner.isModulated("cutoff")).toBe(false);
+        expect(surface.applyModDisplay).toHaveBeenCalledWith("cutoff", null);
+    });
+
     it("stop() clears activeDestinationIds and calls applyModDisplay(null) for each", () => {
         const { runner, surface } = makeRunner(makeModDevice());
         // Simulate: start + one tick sets the destination active
@@ -347,6 +364,12 @@ describe("SurfaceUI.applyModDisplay — idle-Toggle", () => {
         expect(modRing!.classList.contains("idle")).toBe(false);
         expect(modRing!.style.getPropertyValue("--knob-mod-start")).toBe("135deg");
         expect(modRing!.style.getPropertyValue("--knob-mod-end")).toBe("189deg");
+
+        // Downward modulation (mod < base): start/end are min/max-swapped so
+        // the amber band stays visible instead of collapsing (M2).
+        surface.applyModDisplay("cutoff", 0.2);
+        expect(modRing!.style.getPropertyValue("--knob-mod-start")).toBe("54deg");
+        expect(modRing!.style.getPropertyValue("--knob-mod-end")).toBe("135deg");
 
         // applyModDisplay with null → idle added
         surface.applyModDisplay("cutoff", null);

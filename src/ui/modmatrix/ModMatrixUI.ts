@@ -264,6 +264,11 @@ export class ModMatrixUI {
 
         dialog.appendChild(row);
 
+        const note = document.createElement("div");
+        note.className = "mod-bake-note";
+        note.innerText = "Start: Projektanfang (Tick 0) — Nexus expose-t keine Playhead-Position.";
+        dialog.appendChild(note);
+
         const actions = document.createElement("div");
         actions.className = "mod-bake-actions";
 
@@ -360,7 +365,11 @@ export class ModMatrixUI {
     private renderSourceRow(src: ModSource, index: number): HTMLElement {
         const device = this.deviceLibrary.currentDevice;
         const row = document.createElement("div");
-        row.className = "mod-source-row on";
+        // B30 — "on" only when an ENABLED slot routes THIS source; otherwise
+        // the row is "off" instead of carrying the on-state unconditionally.
+        const referenced = (device?.modulation.slots ?? [])
+            .some((s) => s.enabled && s.sourceId === src.id);
+        row.className = "mod-source-row" + (referenced ? " on" : " off");
         row.dataset.sourceId = src.id;
 
         const label = document.createElement("span");

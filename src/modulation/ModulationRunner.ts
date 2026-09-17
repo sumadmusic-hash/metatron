@@ -105,6 +105,10 @@ export class ModulationRunner {
 
         const slots = device.modulation.slots;
         if (!slots.some((s) => s.enabled)) {
+            // B38 — make sure the previously active mod displays go idle when
+            // the last enabled slot is disabled mid-run; otherwise stale amber
+            // arcs stay on the surface although the matrix is inactive.
+            this.activeDestinationIds.forEach((id) => this.surfaceUI.applyModDisplay(id, null));
             this.activeDestinationIds.clear();
             return;
         }

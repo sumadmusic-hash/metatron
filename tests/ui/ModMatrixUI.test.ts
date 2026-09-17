@@ -67,6 +67,23 @@ function lookupLabelFor(root: HTMLElement, input: Element): HTMLLabelElement | n
         expect(rows[0].textContent).toContain("LFO 1");
     });
 
+    it("B30 - source rows are OFF unless an enabled slot routes that source", () => {
+        const device = makeDevice();
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+        // Nothing enabled → every source row is off.
+        const rows = container.querySelectorAll<HTMLElement>(".mod-source-row");
+        rows.forEach((row) => expect(row.classList.contains("on")).toBe(false));
+
+        // Enable a slot whose source is mod1 → only that row goes ON.
+        device.modulation.slots[0].enabled = true; // slot1 → source mod1
+        ui.render();
+        const src1 = container.querySelector<HTMLElement>('.mod-source-row[data-source-id="mod1"]')!;
+        const src2 = container.querySelector<HTMLElement>('.mod-source-row[data-source-id="mod2"]')!;
+        expect(src1.classList.contains("on")).toBe(true);
+        expect(src2.classList.contains("on")).toBe(false);
+    });
+
     it("renders one slot row per slot", () => {
         const device = makeDevice();
         const { ui } = makeDeps(device);
@@ -90,6 +107,17 @@ function lookupLabelFor(root: HTMLElement, input: Element): HTMLLabelElement | n
         expect(container.querySelector(".mod-bake-dialog")).toBeTruthy();
         expect(container.querySelector<HTMLInputElement>(".mod-bake-bars")).toBeTruthy();
         expect(container.querySelector<HTMLSelectElement>(".mod-bake-grid")).toBeTruthy();
+    });
+
+    it("B29 - bake dialog states that the bake starts at project start (tick 0)", () => {
+        const { ui } = makeDeps(makeDevice());
+        const container = mount(ui);
+        const bake = container.querySelector<HTMLButtonElement>(".mod-matrix-bake");
+        bake?.click();
+        const note = container.querySelector<HTMLElement>(".mod-bake-note");
+        expect(note).toBeTruthy();
+        expect(note?.textContent).toContain("Tick 0");
+        expect(note?.textContent).toContain("Nexus");
     });
 
     it("FIX 11 - the bake dialog controls carry stable ids and their labels wrap the control (no htmlFor / for=)", () => {
