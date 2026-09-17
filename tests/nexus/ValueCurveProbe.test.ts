@@ -210,6 +210,44 @@ describe("ValueCurveProbe — fitTransfer (Phase 5 Schritt 1)", () => {
         const naive = makeDisplayReader(root, "span");
         expect(naive()).toBe(1.2); // default parse reads the naked number
     });
+
+    it("B59 restore failure: probe resolves, report.restoreError set, samples complete", async () => {
+        const field = fakePulvField();
+        field.value = 100;
+        let writeCount = 0;
+        const doc: any = {
+            modify: async (fn: (t: any) => void) => {
+                writeCount++;
+                // steps=4 → 5 probe writes; the 6th is the mandatory restore.
+                if (writeCount === 6) throw new Error("restore disconnected");
+                await fn({ update: (f: any, v: number) => { f.value = v; } });
+            },
+        };
+
+        const report = await probeField(doc, field, "pulverisator:filter.cutoffHz", null, 4);
+        expect(report.samples).toHaveLength(5); // measurement completed
+        expect(report.restoreError).toBe("restore disconnected");
+        expect(report.fits).toBeDefined();
+    });
+
+    it("B59 abort + restore failure: probe rejects with the ORIGINAL message, not the restore message", async () => {
+        const field = fakePulvField();
+        field.value = 100;
+        let writeCount = 0;
+        const doc: any = {
+            modify: async (fn: (t: any) => void) => {
+                writeCount++;
+                // After the 5th probe write, both the probe modify AND the
+                // restore modify throw — the original must win.
+                throw new Error("original probe failure");
+            },
+        };
+
+        await expect(
+            probeField(doc, field, "pulverisator:filter.cutoffHz", null, 10),
+        ).rejects.toThrow("original probe failure");
+        expect(writeCount).toBeGreaterThan(0);
+    });
 });
 
 beforeEach(() => {

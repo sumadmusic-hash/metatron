@@ -10,6 +10,11 @@
  *   - `NexusValueMapping` trägt KEIN fieldPath — der Curve-Key kommt als Parameter.
  *   - fitPower braucht den B53-Guard auf den ORIGINAL-Displaywerten (eine bipolar über 0
  *     kreuzende Achse ist keine Power-Law-Domäne), nicht erst auf der normalisierten d-Achse.
+ *
+ * EXKLUSIV-OPERATION (B60): Während einer Messung darf NIEMAND den geprobten Parameter
+ * anfassen (UI, MIDI, LFO, Autopilot-Flows): ein nebenläufiger Write geht durch den
+ * Pflicht-Restore in genau EINEM Store verloren (Nexus überschreibt initialRaw, Echo setzt
+ * lokal einen anderen Stand — oder umgekehrt). Probes laufen nur auf IDLE-Projekten.
  */
 import type { SyncedDocument } from "@audiotool/nexus";
 import { getSchemaLocationDetails } from "@audiotool/nexus/document";
@@ -37,6 +42,9 @@ export interface ProbeReport {
     identityTransfer: boolean;
     fits: CurveFit[];
     winner: CurveFit | null;
+    /** Set, wenn der Pflicht-Restore fehlgeschlagen ist — der Parameter steht
+     *  dann möglicherweise noch auf dem letzten Probewert (B59). */
+    restoreError?: string;
     note?: string;
 }
 
@@ -171,6 +179,7 @@ export async function probeField(
     }
     const initialRaw = field.value;
     const samples: CurveSample[] = [];
+    let restoreError: string | undefined;
     try {
         for (let i = 0; i <= steps; i++) {
             const n = i / steps;
@@ -183,8 +192,18 @@ export async function probeField(
         }
     } finally {
         // Restore auch bei Abbruch mitten in der Schleife (Throw, Timeout).
-        await document.modify((t: any) => t.update(field, initialRaw));
-        await wait(SETTLE_MS);
+        // B59: ein fehlschlagender Restore darf die Original-Exception NICHT
+        // maskieren — abfangen, im Report markieren, weiterwerfen lassen.
+        try {
+            await document.modify((t: any) => t.update(field, initialRaw));
+            await wait(SETTLE_MS);
+        } catch (e) {
+            restoreError = e instanceof Error ? e.message : String(e);
+            console.error(
+                `[METATRON CURVE-PROBE] restore failed for ${curveKey} — parameter may stay at last probe value; re-run probe or set it manually.`,
+                e,
+            );
+        }
     }
     const span = schemaMax - schemaMin || 1;
     const rawLinear = samples.every((s) => Math.abs(s.raw - (schemaMin + s.n * span)) <= 1e-6);
@@ -204,6 +223,7 @@ export async function probeField(
         identityTransfer,
         fits,
         winner,
+        restoreError,
         note: identityTransfer
             ? "identity transfer: raw IST Physik — jede Kurve wäre ein perzeptueller UX-Taper (Schicht C), keine gemessene Geräte-Transferfunktion"
             : undefined,
