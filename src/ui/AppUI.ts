@@ -375,8 +375,72 @@ export class AppUI {
                 }
                 return { key, points };
             },
-            // Direkte Registry-Registrierung aus manuell gemessenen (ui, nexus) Paaren.
-            // Gegenwert zu registerTaper für die UI-Kurve.
+            // B73 — Mensch-getaktete Messung: wie measureKnobPosition, aber pro
+            // Schritt `window.prompt()` mit Pause. Blickt der Nutzer im
+            // Audiotool-Fenster die sichtbare Knob-Position ab, tippt er sie
+            // ein und bestätigt — danach geht es weiter. KEIN Live-Callback mit
+            // 600ms-Zwang, gleiche, echte Messung (kein Raten). TEMPORARY.
+            pacedSweep: async (controlId: string) => {
+                const binding = this.bindingManager.getActiveBinding(controlId);
+                if (!binding) throw new Error(`[METATRON UI-CURVE] no active binding for ${controlId}`);
+                if (!this.nexusAdapter.document) throw new Error("[METATRON UI-CURBE] no connected document");
+                const field =
+                    binding.field ??
+                    (() => {
+                        const entity = this.nexusAdapter.document!.queryEntities.getEntity(binding.entityId);
+                        return entity ? resolveFieldByPath(entity.fields, binding.fieldPath ?? binding.fieldName) : undefined;
+                    })();
+                if (!field) throw new Error("[METATRON UI-CURVE] field not resolvable for " + (binding.fieldPath ?? binding.fieldName));
+                const control = this.bindingManager.deviceRef.controls.get(controlId);
+                const fieldPath = binding.fieldPath ?? binding.fieldName ?? "unknown";
+                const targetName = control?.audiotoolBindingDefinition?.targetName;
+                const key = taperKey(targetName, fieldPath);
+                const { createNexusValueMapping, mapNormalizedToNexus, mapNexusToNormalized } = await import("../nexus/NexusValueMapping");
+                const mapping = createNexusValueMapping(field);
+                const restoreMin = mapping.min ?? 0;
+                const steps = 10;
+                const points: UICurvePoint[] = [];
+                console.log(`[METATRON UI-CURVE] paced sweep für ${key}:`);
+                console.log("  Blick ins Audiotool-Fenster → Cutoff-Knob auf sichtbare 0..1 Position ablesen → eingeben → Enter.");
+                for (let i = 0; i <= steps; i++) {
+                    const uiNorm = i / steps;
+                    const raw = mapNormalizedToNexus(mapping, uiNorm);
+                    if (raw === undefined || typeof raw === "boolean") {
+                        console.warn(`[METATRON UI-CURVE] skipping non-numeric step ${i}`);
+                        continue;
+                    }
+                    await this.nexusAdapter.document.modify(t => { t.update(field!, raw as any); });
+                    if (typeof this.nexusAdapter.beginSuppressEcho === "function") {
+                        this.nexusAdapter.beginSuppressEcho(controlId, uiNorm);
+                    }
+                    await new Promise(r => setTimeout(r, 400)); // settle
+                    const rawText = typeof raw === "number" ? (Number.isInteger(raw) ? String(raw) : raw.toFixed(1)) : String(raw);
+                    const answer = window.prompt(
+                        `METATRON UI-CURVE Schritt ${i}/${steps}\n` +
+                        `Nexus raw: ${rawText} Hz\n` +
+                        `Wie steht der AUDIOTOOL-Cutoff-Knob sichtbar? 0..1 eingeben.`
+                    );
+                    if (answer === null) { console.warn(`[METATRON UI-CURVE] abgebrochen bei Schritt ${i}, ${points.length} Punkte gesammelt`); break; }
+                    const knobPos = parseFloat(answer.replace(",", "."));
+                    if (!Number.isFinite(knobPos) || knobPos < 0 || knobPos > 1) {
+                        console.warn(`[METATRON UI-CURVE] ungültig ("${answer}"), Schritt übersprungen`);
+                        continue;
+                    }
+                    const nexusNorm = mapNexusToNormalized(mapping, raw);
+                    points.push({ ui: knobPos, nexus: nexusNorm });
+                    console.log(`[METATRON UI-CURVE] ${i}/${steps}: raw=${rawText} → knobPos=${knobPos.toFixed(4)} nexusNorm=${nexusNorm.toFixed(4)}`);
+                }
+                await this.nexusAdapter.document.modify(t => { t.update(field!, restoreMin as any); });
+                if (points.length >= 2) {
+                    registerParameterUICurve(key, { source: "measured", measuredAt: new Date().toISOString(), points });
+                    console.log(`[METATRON UI-CURVE] REGISTRIERT: ${key} (${points.length} Punkte)`, points);
+                } else {
+                    console.warn(`[METATRON UI-CURVE] zu wenige Readings (${points.length}), nichts registriert`);
+                }
+                return { key, points };
+            },
+            // B72 — direkte Registry-Registrierung aus manuell gemessenen
+            // (ui, nexus) Paaren. Gegenwert zu registerTaper für die UI-Kurve.
             registerUICurve: (key: string, points: UICurvePoint[]) => {
                 if (!key || points.length < 2) throw new Error("[METATRON PROBE] registerUICurve braucht key + ≥2 Punkte");
                 registerParameterUICurve(key, { source: "measured", measuredAt: new Date().toISOString(), points });
