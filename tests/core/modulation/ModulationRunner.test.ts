@@ -284,9 +284,12 @@ describe("ModulationRunner — Takeover-Klemmfalle", () => {
         expect(adapter.updateBoundControl).not.toHaveBeenCalled();
         expect(adapter.beginSuppressEcho).not.toHaveBeenCalled();
 
-        // Simulate pointercancel → setGestureTakeover(false)
+        // Simulate pointercancel → setGestureTakeover(false). The resumed
+        // write needs a DIFFERENT modulated value than the takeover frame:
+        // tSec 0.25 clamps to 1.0 (sine peak); tSec 0.45 → mod ≈ 0.809, so
+        // B42's value-skip does not swallow the resume.
         runner.setGestureTakeover("cutoff", false);
-        (runner as any).tick(tWithDelta + 40);
+        (runner as any).tick(tWithDelta + 200);
 
         // Writes resume once the takeover is released.
         expect(adapter.updateBoundControl).toHaveBeenCalledWith("cutoff", expect.any(Number));
@@ -305,6 +308,39 @@ describe("ModulationRunner — Takeover-Klemmfalle", () => {
 
         expect(surface.applyModDisplay).toHaveBeenCalledWith("cutoff", expect.any(Number));
         expect(adapter.updateBoundControl).not.toHaveBeenCalled();
+    });
+
+    it("B46 - gesture takeover suspends Nexus writes while active and pins captures to the base (B11)", () => {
+        const device = makeModDevice();
+        const { runner, surface, recorder, adapter } = makeRunner(device, "RECORDING");
+
+        runner.start();
+        // Deterministic timeline as in the pointercancel test above.
+        (runner as any).startTimeSec = 0;
+        const tWithDelta = 250;
+
+        runner.setGestureTakeover("cutoff", true);
+        (runner as any).tick(tWithDelta);
+
+        // No Nexus write (and no echo suppression) while the user owns the knob.
+        expect(adapter.updateBoundControl).not.toHaveBeenCalled();
+        expect(adapter.beginSuppressEcho).not.toHaveBeenCalled();
+        // The needle stays live for the grabbed destination.
+        expect(surface.applyModDisplay).toHaveBeenCalledWith("cutoff", expect.any(Number));
+        // B11: a take captures the BASE value — the listener hears the gesture,
+        // not the (suppressed) modulated write.
+        expect(recorder.capture).toHaveBeenCalledTimes(1);
+        const [id, captured, type] = recorder.capture.mock.calls[0];
+        expect(id).toBe("cutoff");
+        expect(captured).toBe(0.5); // base value, NOT a modulated value
+        expect(type).toBe("knob");
+
+        runner.setGestureTakeover("cutoff", false);
+        (runner as any).tick(tWithDelta + 200);
+        // Writes resume after the takeover is released. tSec shifts 0.25 → 0.45
+        // so the modulated value differs (0.809 vs the clamped 1.0) and B42's
+        // redundant-write skip does not swallow the resumed write.
+        expect(adapter.updateBoundControl).toHaveBeenCalledWith("cutoff", expect.any(Number));
     });
 });
 

@@ -45,6 +45,9 @@ export class ModulationRunner {
     private readonly inFlight = new Set<string>();
     private readonly activeDestinationIds = new Set<string>();
     private readonly gestureTakeover = new Map<string, boolean>();
+    /** B42 — last displayed modulated value per control, so redundant
+     *  applyModDisplay DOM writes are skipped when the value did not change. */
+    private readonly lastModValue = new Map<string, number>();
 
     constructor(
         getDevice: () => Device | null,
@@ -90,6 +93,7 @@ export class ModulationRunner {
         this.gestureTakeover.clear();
         this.activeDestinationIds.forEach((id) => this.surfaceUI.applyModDisplay(id, null));
         this.activeDestinationIds.clear();
+        this.lastModValue.clear();
         this.inFlight.clear();
     }
 
@@ -110,6 +114,8 @@ export class ModulationRunner {
             // arcs stay on the surface although the matrix is inactive.
             this.activeDestinationIds.forEach((id) => this.surfaceUI.applyModDisplay(id, null));
             this.activeDestinationIds.clear();
+            this.lastModValue.clear(); // B42 — no stale deltas across re-activation
+            this.gestureTakeover.clear(); // B43 — stale takeovers never survive matrix deactivation
             return;
         }
 
@@ -140,10 +146,14 @@ export class ModulationRunner {
             if (!destinations.has(id)) {
                 this.surfaceUI.applyModDisplay(id, null);
                 this.activeDestinationIds.delete(id);
+                this.lastModValue.delete(id); // B42 — cleanup
             }
         }
 
         destinations.forEach((value, controlId) => {
+            const last = this.lastModValue.get(controlId);
+            if (last === value) return; // B42 — skip redundant DOM writes
+            this.lastModValue.set(controlId, value);
             this.activeDestinationIds.add(controlId);
             this.surfaceUI.applyModDisplay(controlId, value);
             if (this.gestureTakeover.get(controlId)) {
