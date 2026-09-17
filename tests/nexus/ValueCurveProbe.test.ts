@@ -119,6 +119,24 @@ describe("ValueCurveProbe — fitTransfer (Phase 5 Schritt 1)", () => {
         expect(winner).toBeNull();
     });
 
+    it("B64 f32-quantized raw is still rawLinear (report tolerance scales with magnitude)", async () => {
+        const schemaMin = 18;
+        const schemaMax = 15500;
+        const span = schemaMax - schemaMin;
+        const samples = Array.from({ length: 11 }, (_, i) => ({
+            n: i / 10,
+            // Nexus stores raw as float32 → values like 1566.199951171875 instead of 1566.2
+            raw: Math.fround(schemaMin + (i / 10) * span),
+            displayed: null as number | null,
+        }));
+        const check = (eps: (v: number) => number) =>
+            samples.every((s) => Math.abs(s.raw - (schemaMin + s.n * span)) <= eps(schemaMax));
+        // Skalen-relative Toleranz (B64): f32-Rauschen ist hier erlaubt.
+        expect(check((v) => Math.max(1e-5, v * 1.2e-7))).toBe(true);
+        // Absolute 1e-6 (alt): schlägt bei f32-Rohdaten an der 15-kHz-Skala fehl.
+        expect(check(() => 1e-6)).toBe(false);
+    });
+
     it("probeField with Fake-Document (modify writes field.value) + readDisplayed stub → 11 samples, rawLinear, identityTransfer true", async () => {
         const field = fakePulvField();
         const readRaw = () => field.value;

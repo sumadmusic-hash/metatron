@@ -288,8 +288,9 @@ export class AppUI {
                 });
                 const ys = report.samples.map((s: any) => s.displayed);
                 const hasDisplay = ys.every((v: any) => typeof v === "number" && Number.isFinite(v));
+                const epsRaw = (v: number) => Math.max(1e-5, Math.abs(v) * 1.2e-7);
                 const identityTransfer =
-                    hasDisplay && report.samples.every((s: any, i: number) => Math.abs(ys[i] - s.raw) < 1e-6);
+                    hasDisplay && report.samples.every((s: any, i: number) => Math.abs(ys[i] - s.raw) <= epsRaw(Math.max(Math.abs(ys[i]), Math.abs(s.raw))));
                 const { fits, winner } =
                     hasDisplay && !identityTransfer
                         ? fitTransfer(report.samples, report.schemaMin, report.schemaMax)
