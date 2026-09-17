@@ -433,7 +433,7 @@ export class AppUI {
                 this.render();
             }
         );
-mk("REC", "Start recording (requires ARM)", state === "ARMED", state === "RECORDING" ? "recording" : "", () => {
+mk("REC", "Start recording (requires ARM) — Recording startet bei Tick 0 (kein Playhead-Zugriff via Nexus)", state === "ARMED", state === "RECORDING" ? "recording" : "", () => {
             this.recordingStartPerf = performance.now();
             this.recorder.record();
             this.render();

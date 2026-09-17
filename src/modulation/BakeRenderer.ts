@@ -38,8 +38,6 @@ export function renderMatrixToRecording(
     const totalTicks = rawBars * barTicks;
     const stepTicks = options.grid === "1/16" ? barTicks / 16 : barTicks / 32;
     const steps = Math.ceil(totalTicks / stepTicks);
-    // TODO (phase 4): read the project tempo from the open document
-    // (Config.tempoBpm) instead of the client-supplied constant.
     const secondsPerWholeNote = 240 / options.projectBpm;
     const durationSeconds = (totalTicks / Ticks.SemiBreve) * secondsPerWholeNote;
 

@@ -2122,8 +2122,6 @@ body {
 /* Default focus ring for keyboard navigation (mouse clicks are unaffected). */
 .toolbar .btn:focus-visible,
 .mini-btn:focus-visible,
-.control-wrapper .knob-body:focus-visible,
-.control-wrapper .switch-body:focus-visible,
 .mod-matrix-drawer input:focus-visible,
 .mod-matrix-drawer select:focus-visible,
 .mod-matrix-drawer button:focus-visible,
