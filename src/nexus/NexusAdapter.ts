@@ -297,12 +297,16 @@ export class NexusAdapter {
 
         const mapping = binding.valueMapping ?? createNexusValueMapping(field);
 
-        // UI-Kurve für den Read-Pfad auflösen (einmalig, Closure-captured).
+        // UI-Kurve für den Read-Pfad: NICHT beim Subscribe fixieren, sondern
+        // pro Event frisch auflösen — die Kurve kann NACH dem Subscribe
+        // registriert worden sein (pacedSweep/registerUICurve); eine
+        // Closure-captured uiCurve wäre dann dauerhaft undefined und der
+        // Read-Pfad bliebe ewig linear (B73 B-Fix).
         const path = binding.fieldPath ?? binding.fieldName ?? "";
         const targetName = this.bindingManager.deviceRef.controls.get(controlId)?.audiotoolBindingDefinition?.targetName;
-        const uiCurve = getParameterUICurve(taperKey(targetName, path));
 
         const cleanup = this.document!.events.onUpdate(field, (newValue: any) => {
+            const uiCurve = getParameterUICurve(taperKey(targetName, path));
             const nexusNorm = mapNexusToNormalized(mapping, newValue);
             // Nexus-normalized → Metatron UI 0..1 (gemessene Audiotool-Knob-Position).
             const uiNorm = nexusNormToUi(uiCurve, nexusNorm);
