@@ -13,15 +13,12 @@ import {
     mapNexusToNormalized,
 } from "../../src/nexus/NexusValueMapping";
 
-// ── Pulverisateur cutoff 18..15500 (REAL measured UI curve, B73 dense) ──
-// 13 Punkte, gepacedSweep custom targets (2026-09-17). Untermessung des
-// unteren Segments: nexus 0→0.12 abgedeckt mit 6 Punkten (war nur 2).
-//   nexus 0.00->0.00  0.12->0.69  0.7->0.90
-//         0.01->0.37  0.2->0.74   0.9->0.999
-//         0.025->0.45 0.3->0.76   1.0->1.0
-//         0.04->0.51  0.5->0.87
-//         0.06->0.59  0.08->0.61
-// Formel: {ui: Knob, nexus: nexusNorm}.
+// ── Pulverisateur cutoff 18..15500 (REAL measured UI curve, B73) ────────
+// Gemischt aus drei pacedSweep-Sitzungen (2026-09-17):
+//   unten dicht (custom targets): 0–0.12 mit 6 Punkten
+//   mitte neu (custom targets):   0.12–0.6  mit 8 Punkten  → m75 = (0.75, 0.25)
+//   oben (Initial-Sweep):         0.7–1.0
+// Formel: {ui: Knob, nexus: nexusNorm}. Streng monoton ↑, Endpunkte via Sanitize.
 const PULV_MEASURED_UI: ParameterUICurve = {
     source: "measured",
     measuredAt: "2026-09-17T00:00:00.000Z",
@@ -32,10 +29,14 @@ const PULV_MEASURED_UI: ParameterUICurve = {
         { ui: 0.51,  nexus: 0.04 },
         { ui: 0.59,  nexus: 0.06 },
         { ui: 0.61,  nexus: 0.08 },
-        { ui: 0.69,  nexus: 0.12 },
-        { ui: 0.74,  nexus: 0.2 },
+        { ui: 0.625, nexus: 0.12 },
+        { ui: 0.68,  nexus: 0.16 },
+        { ui: 0.73,  nexus: 0.2 },
+        { ui: 0.75,  nexus: 0.25 },
         { ui: 0.76,  nexus: 0.3 },
+        { ui: 0.85,  nexus: 0.4 },
         { ui: 0.87,  nexus: 0.5 },
+        { ui: 0.88,  nexus: 0.6 },
         { ui: 0.9,   nexus: 0.7 },
         { ui: 0.999, nexus: 0.9 },
         { ui: 1,     nexus: 1 },
@@ -120,15 +121,15 @@ describe("ParameterUICurve — write pipeline (ui → raw)", () => {
 // ── Read pipeline: raw → nexusNorm → ui ─────────────────────────────────
 
 describe("ParameterUICurve — read pipeline (raw → ui)", () => {
-    it("reale Audiotool-Positionen: 1556Hz→0.65 Knob, 7759Hz→0.87 Knob, 10855Hz→0.90 Knob", () => {
+    it("reale Audiotool-Positionen: 1556Hz→0.62 Knob, 7759Hz→0.87 Knob, 10855Hz→0.90 Knob", () => {
         // raw→nexus→ui für die drei gemessenen Punkte (Read-Richtung)
         const knobAt = (raw: number) => nexusNormToUi(PULV_MEASURED_UI, mapNexusToNormalized(LINEAR_CUTOFF, raw));
-        expect(knobAt(1556)).toBeCloseTo(0.65, 2);  // nexus 0.099 (interp. dichte Kurve)
+        expect(knobAt(1556)).toBeCloseTo(0.62, 2);  // nexus 0.099 (interp. Mischkurve)
         expect(knobAt(7759)).toBeCloseTo(0.87, 2);  // nexus 0.5 (gemessen)
         expect(knobAt(10855)).toBeCloseTo(0.9, 2);  // nexus 0.7 (gemessen)
     });
 
-    it("read pipeline: raw=599 Hz → ui ≈ 0.5 (gemessene dichte Kurve)", () => {
+    it("read pipeline: raw=599 Hz → ui ≈ 0.5 (gemessene Mischkurve)", () => {
         const nexusNorm = mapNexusToNormalized(LINEAR_CUTOFF, 599);
         const ui = nexusNormToUi(PULV_MEASURED_UI, nexusNorm);
         expect(ui).toBeCloseTo(0.5, 3);
@@ -172,7 +173,7 @@ describe("ParameterUICurve — registry", () => {
     it("register, get, unregister roundtrip", () => {
         const key = "pulverisateur:filter.cutoffFrequencyHz";
         registerParameterUICurve(key, PULV_MEASURED_UI);
-        expect(getParameterUICurve(key)?.points.length).toBe(13);
+        expect(getParameterUICurve(key)?.points.length).toBe(17);
         unregisterParameterUICurve(key);
         expect(getParameterUICurve(key)).toBeUndefined();
     });
@@ -216,6 +217,15 @@ describe("ParameterUICurve — regression test for Pulverisateur Cutoff", () => 
         }
         expect(PULV_MEASURED_UI.points[0]).toEqual({ ui: 0, nexus: 0 });
         expect(PULV_MEASURED_UI.points[PULV_MEASURED_UI.points.length - 1]).toEqual({ ui: 1, nexus: 1 });
+    });
+    it("ui=0.75 → nexus 0.25 → raw ≈ 3889 Hz (Messpunkt (0.75, 0.25); m75-bug)", () => {
+        const nexusNorm = uiToNexusNorm(PULV_MEASURED_UI, 0.75);
+        expect(nexusNorm).toBeCloseTo(0.25, 6); // exakter Messpunkt
+        const raw = mapNormalizedToNexus(LINEAR_CUTOFF, nexusNorm);
+        expect(raw).toBeCloseTo(3888.5, 3);
+        // Rundreise: raw → nexus → ui ≈ 0.75
+        const uiRead = nexusNormToUi(PULV_MEASURED_UI, mapNexusToNormalized(LINEAR_CUTOFF, raw));
+        expect(uiRead).toBeCloseTo(0.75, 3);
     });
     it("Metatron UI 50% must NOT map to 7759 Hz; it must map to the raw value that makes Audiotool's knob show 50%", () => {
         const key = "pulverisateur:filter.cutoffFrequencyHz";
