@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fitTransfer, probeField } from "../../src/nexus/ValueCurveProbe";
+import { fitTransfer, probeField, makeDisplayReader, parseFrequencyText } from "../../src/nexus/ValueCurveProbe";
 
 /**
  * Phase 5 Schritt 1 — pure Fit-Mathematik + probeField gegen Fake-Document.
@@ -64,6 +64,18 @@ function fakeDoc() {
             fn({ update: (f: any, v: number) => { f.value = v; } });
         },
     } as any;
+}
+
+/** Fake-Doc, das jede update-Write protokolliert (für Restore- / Abbruch-Tests). */
+function loggingDoc() {
+    const writes: number[] = [];
+    const doc: any = {
+        writes,
+        modify: async (fn: (t: any) => void) => {
+            await fn({ update: (f: any, v: number) => { f.value = v; writes.push(v); } });
+        },
+    };
+    return doc;
 }
 
 describe("ValueCurveProbe — fitTransfer (Phase 5 Schritt 1)", () => {
@@ -130,6 +142,73 @@ describe("ValueCurveProbe — fitTransfer (Phase 5 Schritt 1)", () => {
         const report = await probeField(fakeDoc(), field, "pulverisator:filter.cutoffHz", readHalf, 10);
         expect(report.samples).toHaveLength(11);
         expect(report.identityTransfer).toBe(false);
+    });
+
+    it("B56 restore: fake-doc write log ends with the INITIAL value (probe does not leave the parameter at its last sample)", async () => {
+        const field = fakePulvField();
+        field.value = 4321; // initial raw value before the probe
+        const doc = loggingDoc();
+
+        await probeField(doc, field, "pulverisator:filter.cutoffHz", null, 10);
+
+        expect(doc.writes).toHaveLength(12); // 11 samples + 1 restore
+        expect(doc.writes[doc.writes.length - 1]).toBe(4321);
+        expect(field.value).toBe(4321);
+    });
+
+    it("B56 hooks: onBeforeWrite called exactly steps+1 times with the normalized probe value", async () => {
+        const field = fakePulvField();
+        const calls: number[] = [];
+
+        await probeField(fakeDoc(), field, "pulverisator:filter.cutoffHz", null, 4, {
+            onBeforeWrite: (n) => calls.push(n),
+        });
+
+        expect(calls).toHaveLength(5); // 4 + 1
+        expect(calls[0]).toBe(0);
+        expect(calls[4]).toBe(1);
+    });
+
+    it("B56 abort path: a throwing modify still restores the initial value", async () => {
+        const field = fakePulvField();
+        field.value = 777;
+        const writes: number[] = [];
+        const doc: any = {
+            writes,
+            modify: async (fn: (t: any) => void) => {
+                writes.push(field.value);
+                await fn({ update: (f: any, v: number) => { f.value = v; writes.push(v); } });
+                if (writes.filter((_w, i) => i % 2 === 1).length >= 5) {
+                    throw new Error("5th probe write failed");
+                }
+            },
+        };
+
+        await expect(
+            probeField(doc, field, "pulverisator:filter.cutoffHz", null, 10),
+        ).rejects.toThrow("5th probe write failed");
+        expect(field.value).toBe(777); // restored despite abort
+        const finalWrite = writes.length >= 2 ? writes[writes.length - 1] : null;
+        expect(finalWrite).toBe(777);
+    });
+
+    it("B57 parseFrequencyText: kHz scaling, Hz passthrough, non-numeric → null", () => {
+        expect(parseFrequencyText("1,2 kHz")).toBe(1200);
+        expect(parseFrequencyText("840 Hz")).toBe(840);
+        expect(parseFrequencyText("—")).toBeNull();
+        expect(parseFrequencyText("")).toBeNull();
+    });
+
+    it("B57 makeDisplayReader with transform returns the kHz-scaled value", () => {
+        const root = document.createElement("div");
+        const el = document.createElement("span");
+        el.textContent = "1,2 kHz";
+        root.appendChild(el);
+        const reader = makeDisplayReader(root, "span", parseFrequencyText);
+        expect(reader()).toBe(1200);
+
+        const naive = makeDisplayReader(root, "span");
+        expect(naive()).toBe(1.2); // default parse reads the naked number
     });
 });
 

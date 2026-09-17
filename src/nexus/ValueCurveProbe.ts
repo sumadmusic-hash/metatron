@@ -40,6 +40,13 @@ export interface ProbeReport {
     note?: string;
 }
 
+export interface ProbeHooks {
+    /** Vor jedem Probe-Write aufgerufen (normalisierter Probewert). Bei
+     *  gebundenem Feld hier `nexusAdapter.beginSuppressEcho(controlId, n)`
+     *  verdrahten, damit Probe-Echos die lokale Control-Basis nicht fressen. */
+    onBeforeWrite?: (normalized: number) => void;
+}
+
 const SETTLE_MS = 120;
 const ACCEPT_NEPER = 0.01; // ≈1 % auf der Display-Skala
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -105,26 +112,52 @@ export function fitTransfer(
     return { fits, winner };
 }
 
-/** DOM-Scrape-Helper: liest den UI-Readout eines Parameters als Zahl (Komma oder Punkt). */
-export function makeDisplayReader(root: ParentNode, selector: string): () => number | null {
+/** DOM-Scrape-Helper: liest den UI-Readout eines Parameters als Zahl (Komma oder Punkt).
+ *  Readouts MIT Einheit MÜSSEN einen Transform übergeben — der Default-Parse liest
+ *  nur die erste nackte Zahl, "1.2 kHz" würde sonst als 1.2 (statt 1200) gelesen (B57). */
+export function makeDisplayReader(
+    root: ParentNode,
+    selector: string,
+    transform?: (text: string) => number | null,
+): () => number | null {
+    const parse = transform ?? defaultParse;
     return () => {
         const el = root.querySelector(selector);
         const text = el?.textContent ?? "";
-        const m = /-?\d+(?:[.,]\d+)?/.exec(text);
-        if (!m) return null;
-        const v = Number(m[0].replace(",", "."));
-        return Number.isFinite(v) ? v : null;
+        return parse(text);
     };
 }
 
+/** Default: erste nackte Zahl. Keine Einheiten-Auflösung. */
+function defaultParse(text: string): number | null {
+    const m = /-?\d+(?:[.,]\d+)?/.exec(text);
+    if (!m) return null;
+    const v = Number(m[0].replace(",", "."));
+    return Number.isFinite(v) ? v : null;
+}
+
+/** Fertiger Transform für Frequenz-Readouts ("840 Hz", "1,2 kHz"). */
+export function parseFrequencyText(text: string): number | null {
+    const m = /^(-?\d+(?:[.,]\d+)?)\s*(hz|khz)?$/i.exec(text.trim());
+    if (!m) return null;
+    const v = Number(m[1].replace(",", "."));
+    if (!Number.isFinite(v)) return null;
+    const unit = (m[2] ?? "hz").toLowerCase();
+    return unit === "khz" ? v * 1000 : v;
+}
+
 /** Misst ein Feld über steps+1 Stützstellen: schreibt linear gemappte raw-Werte,
- *  liest raw zurück und optional den Display-Wert. */
+ *  liest raw zurück und optional den Display-Wert.
+ *  Side-Effect-Guard (B56): der Ausgangswert wird gemerkt und IMMER wiederhergestellt
+ *  (auch bei Abbruch mitten in der Schleife) — eine Messung darf kein Nutzerprojekt
+ *  mit Cutoff/Volume am Anschlag hinterlassen. */
 export async function probeField(
     document: SyncedDocument,
     field: any,
     curveKey: string,
     readDisplayed: (() => number | null) | null,
     steps = 10,
+    hooks: ProbeHooks = {},
 ): Promise<ProbeReport> {
     const mapping = createNexusValueMapping(field);
     if (mapping.kind !== "linear") throw new Error(`${curveKey}: not numeric-mappable`);
@@ -136,21 +169,31 @@ export async function probeField(
     } catch {
         schemaDump = "null";
     }
+    const initialRaw = field.value;
     const samples: CurveSample[] = [];
-    for (let i = 0; i <= steps; i++) {
-        const n = i / steps;
-        const target = mapNormalizedToNexus(mapping, n);
-        if (target === undefined) throw new Error(`${curveKey}: mapping refused write`);
-        await document.modify((t: any) => t.update(field, target));
+    try {
+        for (let i = 0; i <= steps; i++) {
+            const n = i / steps;
+            const target = mapNormalizedToNexus(mapping, n);
+            if (target === undefined) throw new Error(`${curveKey}: mapping refused write`);
+            hooks.onBeforeWrite?.(n);
+            await document.modify((t: any) => t.update(field, target));
+            await wait(SETTLE_MS);
+            samples.push({ n, raw: field.value, displayed: readDisplayed ? readDisplayed() : null });
+        }
+    } finally {
+        // Restore auch bei Abbruch mitten in der Schleife (Throw, Timeout).
+        await document.modify((t: any) => t.update(field, initialRaw));
         await wait(SETTLE_MS);
-        samples.push({ n, raw: field.value, displayed: readDisplayed ? readDisplayed() : null });
     }
     const span = schemaMax - schemaMin || 1;
     const rawLinear = samples.every((s) => Math.abs(s.raw - (schemaMin + s.n * span)) <= 1e-6);
+    const ys = samples.map((s) => s.displayed);
+    const hasDisplay = ys.every((v) => typeof v === "number" && Number.isFinite(v as number));
     const identityTransfer =
-        samples.every((s) => s.displayed !== null) &&
-        samples.every((s) => Math.abs((s.displayed as number) - s.raw) < 1e-6);
-    const { fits, winner } = identityTransfer ? { fits: [] as CurveFit[], winner: null } : fitTransfer(samples, schemaMin, schemaMax);
+        hasDisplay && samples.every((s, i) => Math.abs((ys[i] as number) - s.raw) < 1e-6);
+    const { fits, winner } =
+        hasDisplay && !identityTransfer ? fitTransfer(samples, schemaMin, schemaMax) : { fits: [] as CurveFit[], winner: null };
     return {
         curveKey,
         schemaMin,
