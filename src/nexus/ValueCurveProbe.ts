@@ -1,0 +1,168 @@
+/**
+ * METATRON VALUE-CURVE PROBE (Phase 5, Schritt 1) — misst die Geräte-Transferfunktion
+ * raw-normalized → displayed/physikalisch für EIN Nexus-Feld. Die pure Mathematik ist
+ * separat exportiert, damit Unit-Tests und Manual-Tabellen exakt dieselben Fits nutzen.
+ * Schreibt keine Registry-Einträge (Schritt 2 bleibt gate-basiert).
+ *
+ * IST-Anpassungen an der Schritt-1-Skizze (belegt aus dem SDK):
+ *   - `getSchemaLocationDetails` ist ein Modul-Export aus "@audiotool/nexus/document"
+ *     (NexusValueMapping.ts:1), kein Global — Import statt `globalThis`.
+ *   - `NexusValueMapping` trägt KEIN fieldPath — der Curve-Key kommt als Parameter.
+ *   - fitPower braucht den B53-Guard auf den ORIGINAL-Displaywerten (eine bipolar über 0
+ *     kreuzende Achse ist keine Power-Law-Domäne), nicht erst auf der normalisierten d-Achse.
+ */
+import type { SyncedDocument } from "@audiotool/nexus";
+import { getSchemaLocationDetails } from "@audiotool/nexus/document";
+import { createNexusValueMapping, mapNormalizedToNexus } from "./NexusValueMapping";
+
+export interface CurveSample {
+    n: number;
+    raw: number;
+    displayed: number | null;
+}
+
+export interface CurveFit {
+    kind: "exp" | "power" | "piecewise";
+    exponent?: number;
+    residualNeper: number;
+}
+
+export interface ProbeReport {
+    curveKey: string;
+    schemaMin: number;
+    schemaMax: number;
+    schemaDump: string;
+    samples: CurveSample[];
+    rawLinear: boolean;
+    identityTransfer: boolean;
+    fits: CurveFit[];
+    winner: CurveFit | null;
+    note?: string;
+}
+
+const SETTLE_MS = 120;
+const ACCEPT_NEPER = 0.01; // ≈1 % auf der Display-Skala
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** exp: y = y0 * (y1/y0)^r; Residuum in Neper auf y. */
+function fitExp(r: number[], y: number[], y0: number, y1: number): CurveFit | null {
+    if (!y.every((v) => v > 0) || y0 <= 0 || y1 <= 0) return null; // B53-Guard: bipolar → kein exp
+    const ratio = y1 / y0;
+    if (!Number.isFinite(ratio) || ratio === 1) return null;
+    let res = 0;
+    for (let i = 0; i < r.length; i++) {
+        const pred = y0 * Math.pow(ratio, r[i]);
+        res = Math.max(res, Math.abs(Math.log(pred / y[i])));
+    }
+    return { kind: "exp", residualNeper: res };
+}
+
+/** power: d = r^k (Least Squares in log-log); nur monotone gleichsignige Achsen (B53-Guard):
+ *  die ORIGINAL-Displaywerte dürfen die 0 nur EINSEITIG berühren (nur ≥0 oder nur ≤0) —
+ *  ein echter Vorzeichenwechsel (bipolar, beide Vorzeichen vorhanden) ist keine Power-Domäne. */
+function fitPower(r: number[], d: number[], y: number[]): CurveFit | null {
+    const hasPositive = y.some((v) => v > 0);
+    const hasNegative = y.some((v) => v < 0);
+    if (hasPositive && hasNegative) return null; // B53: bipolar → verworfen
+    const pts = r.map((rv, i) => ({ rv, di: d[i] })).filter((p) => p.rv > 0 && p.di > 0);
+    if (pts.length < 3) return null;
+    let num = 0;
+    let den = 0;
+    for (const p of pts) {
+        num += Math.log(p.rv) * Math.log(p.di);
+        den += Math.log(p.rv) ** 2;
+    }
+    if (den === 0) return null;
+    const k = num / den;
+    if (!(k > 0)) return null;
+    let res = 0;
+    for (const p of pts) res = Math.max(res, Math.abs(Math.log(Math.pow(p.rv, k) / p.di)));
+    return { kind: "power", exponent: k, residualNeper: res };
+}
+
+/** Pure Fits über bereits vorhandene Samples (Tests + Manual-Tabellen nutzen denselben Pfad). */
+export function fitTransfer(
+    samples: CurveSample[],
+    schemaMin: number,
+    schemaMax: number,
+): { fits: CurveFit[]; winner: CurveFit | null } {
+    const span = schemaMax - schemaMin || 1;
+    const r = samples.map((s) => (s.raw - schemaMin) / span);
+    const ys = samples.map((s) => s.displayed);
+    if (ys.some((v) => v === null)) return { fits: [], winner: null };
+    const y = ys as number[];
+    const y0 = y[0];
+    const y1 = y[y.length - 1];
+    const d = y.map((v) => (v - y0) / (y1 - y0 || 1));
+    const fits: CurveFit[] = [];
+    const exp = fitExp(r, y, y0, y1);
+    if (exp) fits.push(exp);
+    const pow = fitPower(r, d, y);
+    if (pow) fits.push(pow);
+    fits.push({ kind: "piecewise", residualNeper: 0 });
+    fits.sort((a, b) => a.residualNeper - b.residualNeper);
+    const winner = fits.find((f) => f.kind !== "piecewise" && f.residualNeper <= ACCEPT_NEPER) ?? null;
+    return { fits, winner };
+}
+
+/** DOM-Scrape-Helper: liest den UI-Readout eines Parameters als Zahl (Komma oder Punkt). */
+export function makeDisplayReader(root: ParentNode, selector: string): () => number | null {
+    return () => {
+        const el = root.querySelector(selector);
+        const text = el?.textContent ?? "";
+        const m = /-?\d+(?:[.,]\d+)?/.exec(text);
+        if (!m) return null;
+        const v = Number(m[0].replace(",", "."));
+        return Number.isFinite(v) ? v : null;
+    };
+}
+
+/** Misst ein Feld über steps+1 Stützstellen: schreibt linear gemappte raw-Werte,
+ *  liest raw zurück und optional den Display-Wert. */
+export async function probeField(
+    document: SyncedDocument,
+    field: any,
+    curveKey: string,
+    readDisplayed: (() => number | null) | null,
+    steps = 10,
+): Promise<ProbeReport> {
+    const mapping = createNexusValueMapping(field);
+    if (mapping.kind !== "linear") throw new Error(`${curveKey}: not numeric-mappable`);
+    const schemaMin = mapping.min as number;
+    const schemaMax = mapping.max as number;
+    let schemaDump = "null";
+    try {
+        schemaDump = JSON.stringify(getSchemaLocationDetails(field?.location) ?? null);
+    } catch {
+        schemaDump = "null";
+    }
+    const samples: CurveSample[] = [];
+    for (let i = 0; i <= steps; i++) {
+        const n = i / steps;
+        const target = mapNormalizedToNexus(mapping, n);
+        if (target === undefined) throw new Error(`${curveKey}: mapping refused write`);
+        await document.modify((t: any) => t.update(field, target));
+        await wait(SETTLE_MS);
+        samples.push({ n, raw: field.value, displayed: readDisplayed ? readDisplayed() : null });
+    }
+    const span = schemaMax - schemaMin || 1;
+    const rawLinear = samples.every((s) => Math.abs(s.raw - (schemaMin + s.n * span)) <= 1e-6);
+    const identityTransfer =
+        samples.every((s) => s.displayed !== null) &&
+        samples.every((s) => Math.abs((s.displayed as number) - s.raw) < 1e-6);
+    const { fits, winner } = identityTransfer ? { fits: [] as CurveFit[], winner: null } : fitTransfer(samples, schemaMin, schemaMax);
+    return {
+        curveKey,
+        schemaMin,
+        schemaMax,
+        schemaDump,
+        samples,
+        rawLinear,
+        identityTransfer,
+        fits,
+        winner,
+        note: identityTransfer
+            ? "identity transfer: raw IST Physik — jede Kurve wäre ein perzeptueller UX-Taper (Schicht C), keine gemessene Geräte-Transferfunktion"
+            : undefined,
+    };
+}
