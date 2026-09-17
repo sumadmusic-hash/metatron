@@ -15,6 +15,9 @@ import { ModMatrixUI } from "./modmatrix/ModMatrixUI";
 import { DeviceLibraryUI } from "./DeviceLibraryUI";
 import { Toast } from "./Toast";
 import { WRITE_REFUSED_CLASS, WRITE_REFUSED_TITLE } from "./writeRefusal";
+// ── TEMPORARY PHASE 5 PROBE HOOK (nach erfolgreichem Messen wieder entfernen) ──
+import { probeField } from "../nexus/ValueCurveProbe";
+import { resolveFieldByPath } from "../nexus/ChainPath";
 import "./styles.css";
 
 /** P4 — trailing debounce window for VALUE-path persistence (MIDI stream,
@@ -233,6 +236,46 @@ export class AppUI {
 
         window.addEventListener("keydown", this.handleKeydown);
         window.addEventListener("beforeunload", this.flushValueSave);
+        // ── TEMPORARY PHASE 5 PROBE HOOK (nach erfolgreichem Messen wieder entfernen) ──
+        // DevTools-only live measurement of a bound field's transfer function.
+        // Only while the app is connected and the Audiotool project is IDLE:
+        // the loop is EXCLUSIVE (B60) — no UI/MIDI/LFO writes during the probe.
+        (window as any).__METATRON_PROBE__ = {
+            run: async (controlId: string, readDisplayed: (() => number | null) | null) => {
+                const binding = this.bindingManager.getActiveBinding(controlId);
+                if (!binding) throw new Error(`[METATRON PROBE] no active binding for control ${controlId}`);
+                if (!this.nexusAdapter.document) throw new Error("[METATRON PROBE] no connected document");
+                // `binding.field` is the LIVE field reference (kept fresh by
+                // rehydrateActiveBindings); fall back to entity-path resolution.
+                const field =
+                    binding.field ??
+                    (() => {
+                        const entity = this.nexusAdapter.document!.queryEntities.getEntity(binding.entityId);
+                        return entity ? resolveFieldByPath(entity.fields, binding.fieldPath ?? binding.fieldName) : undefined;
+                    })();
+                if (!field) throw new Error("[METATRON PROBE] field not resolvable for " + (binding.fieldPath ?? binding.fieldName));
+                const control = this.bindingManager.deviceRef.controls.get(controlId);
+                const targetName = control?.audiotoolBindingDefinition?.targetName ?? binding.fieldName;
+                const curveKey = `${targetName}:${binding.fieldPath ?? binding.fieldName}`;
+                const echoSuppressed = controlId && typeof this.nexusAdapter.beginSuppressEcho === "function";
+                if (echoSuppressed) {
+                    console.warn("[METATRON CURVE-PROBE] bound field: echoes suppressed via hook; do NOT touch the parameter while probing.");
+                }
+                console.log(`[METATRON PROBE] starting probe for ${curveKey}...`);
+                const report = await probeField(
+                    this.nexusAdapter.document,
+                    field,
+                    curveKey,
+                    readDisplayed,
+                    10,
+                    echoSuppressed
+                        ? { onBeforeWrite: (n) => this.nexusAdapter.beginSuppressEcho(controlId, n) }
+                        : {},
+                );
+                console.log("[METATRON PROBE] finished.", report);
+                return report;
+            },
+        };
     }
 
     /** F3 — tear the whole UI down: remove every global window listener
