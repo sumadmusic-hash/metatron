@@ -27,6 +27,8 @@ import type { SyncedDocument } from "@audiotool/nexus";
 import type { BindingManager } from "../core/BindingManager";
 import type { AutomationRecording, AutomationSample } from "./AutomationRecording";
 import { resolveFieldByPath } from "../nexus/ChainPath";
+import { getTaper, linearToAutomation, taperKey as buildTaperKey } from "../nexus/CurveRegistry";
+import type { TaperDef } from "../nexus/CurveRegistry";
 
 export type AutomationWriteFailureReason =
     | "no-samples"
@@ -98,17 +100,26 @@ function isAutomatableField(field: any): boolean {
 
 /** Samples (time-ordered) → unique ticks. Samples that resolve to the same
  *  tick as the previous one are collapsed: the LATEST value wins, so no
- *  invalid same-tick double event is ever produced (M21.2 §8). */
-export function samplesToEvents(samples: AutomationSample[], bpm: number): WriteEvent[] {
+ *  invalid same-tick double event is ever produced (M21.2 §8).
+ *  B68 — Event-Werte liegen im AUDIOTOOL-Getaperten-Automation-Raum, nicht im
+ *  Metatron-linear-normalisierten Raum: `linearToAutomation` rechnet den
+ *  Sample-Wert um (Log-Taper gemäß Registry). Ohne registrierten Taper
+ *  (Identity) bleibt alles beim bisherigen Verhalten. */
+export function samplesToEvents(
+    samples: AutomationSample[],
+    bpm: number,
+    taper?: TaperDef
+): WriteEvent[] {
     const ordered = [...samples].sort((a, b) => a.timeSeconds - b.timeSeconds);
     const events: WriteEvent[] = [];
     let lastTick: number | undefined;
     for (const s of ordered) {
         const tick = secondsToTicks(s.timeSeconds, bpm);
+        const value = linearToAutomation(taper, s.normalizedValue);
         if (lastTick !== undefined && tick === lastTick) {
-            events[events.length - 1].value = s.normalizedValue;
+            events[events.length - 1].value = value;
         } else {
-            events.push({ positionTicks: tick, value: s.normalizedValue });
+            events.push({ positionTicks: tick, value });
             lastTick = tick;
         }
     }
@@ -137,6 +148,9 @@ interface WriteAttempt {
     controlType?: string;
     samples: AutomationSample[];
     field: any;
+    /** B68 — gemessener Automation-Taper dieses Felds (Registry-Lookup beim
+     *  Attempt-Aufbau); undefined = Identity (bisheriges Verhalten). */
+    taper?: TaperDef;
 }
 
 /**
@@ -188,12 +202,19 @@ export async function writeAutomationRecording(
             fail("not-automatable");
             continue;
         }
+        // B68 — Registry-Lookup pro Attempt. Key muss EXAKT der Probe-Kennung
+        // (curveKey) entsprechen: targetName stammt — wie in der Probe — aus
+        // control.audiotoolBindingDefinition (ActiveBinding trägt selbst kein
+        // targetName). Ohne Eintrag = Identity.
+        const targetName = bindings.deviceRef.controls.get(track.controlId)?.audiotoolBindingDefinition?.targetName;
+        const taper = getTaper(buildTaperKey(targetName, path));
 
         attempts.push({
             controlId: track.controlId,
             controlType: track.controlType,
             samples: track.samples,
             field,
+            taper,
         });
     }
 
@@ -218,7 +239,10 @@ export async function writeAutomationRecording(
         await document.modify((t: any) => {
             for (let i = 0; i < attempts.length; i++) {
                 const a = attempts[i];
-                const events = samplesToEvents(a.samples, recording.projectBpm);
+                // B68 — Taper wird beim Event-Berechnen angewandt (Identity wenn
+                // keiner registriert); Switch-/Boolean-Tracks bleiben unverändert,
+                // da für sie nie ein Log-Taper registriert wird.
+                const events = samplesToEvents(a.samples, recording.projectBpm, a.taper);
                 // Switches are stepped; every other control is sloped (M21.2 §8).
                 const interpolation = a.controlType === "switch" ? 1 : 2;
 

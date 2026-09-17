@@ -18,6 +18,7 @@ import { WRITE_REFUSED_CLASS, WRITE_REFUSED_TITLE } from "./writeRefusal";
 // ── TEMPORARY PHASE 5 PROBE HOOK (nach erfolgreichem Messen wieder entfernen) ──
 import { probeField, fitTransfer } from "../nexus/ValueCurveProbe";
 import { resolveFieldByPath } from "../nexus/ChainPath";
+import { taperKey, registerTaper } from "../nexus/CurveRegistry";
 import "./styles.css";
 
 /** P4 — trailing debounce window for VALUE-path persistence (MIDI stream,
@@ -256,15 +257,11 @@ export class AppUI {
                 if (!field) throw new Error("[METATRON PROBE] field not resolvable for " + (binding.fieldPath ?? binding.fieldName));
                 const control = this.bindingManager.deviceRef.controls.get(controlId);
                 const fieldPath = binding.fieldPath ?? binding.fieldName ?? "unknown";
-                // B66 — Registry-Keys stabil + schlank: targetName trägt bereits den
-                // FieldPath („pulverisateur / filter.cutoffFrequencyHz") → Head ohne
-                // Suffix, rest slugifiziert → "pulverisateur:filter.cutoffFrequencyHz"
-                const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-                const rawTarget = (control?.audiotoolBindingDefinition?.targetName ?? fieldPath).trim();
-                const head = rawTarget.endsWith(fieldPath)
-                    ? rawTarget.slice(0, rawTarget.length - fieldPath.length)
-                    : rawTarget;
-                const curveKey = `${slug(head || rawTarget)}:${fieldPath}`;
+                // B66/B68 — KANONISCHER Registry-Key über CurveRegistry.taperKey:
+                // Die Probe registriert unter DIESEM Key und der Writer sucht unter
+                // demselben (Ein „Head"-Suffix-FeldPath wird gestrippt, der Rest
+                // slugifiziert) → "pulverisateur:filter.cutoffFrequencyHz".
+                const curveKey = taperKey(control?.audiotoolBindingDefinition?.targetName, fieldPath);
                 const echoSuppressed = controlId && typeof this.nexusAdapter.beginSuppressEcho === "function";
                 if (echoSuppressed) {
                     console.warn("[METATRON CURVE-PROBE] bound field: echoes suppressed via hook; do NOT touch the parameter while probing.");
@@ -311,6 +308,17 @@ export class AppUI {
                 report.winner = winner;
                 console.log("[METATRON PROBE] refit done. identityTransfer:", identityTransfer, "winner:", winner);
                 return report;
+            },
+            // B68 — manuelle Registry-Registrierung (Mess-Runbook): aus der
+            // konstante-Bake-Messung (Paare (v, raw)) wird der Log-Taper unter dem
+            // KANONISCHEN taperKey eingetragen. Ebenfalls TEMPORARY (Hook-Removal).
+            registerTaper: (key: string, min: number, max: number) => {
+                if (!key || !(min > 0) || !(max > min)) {
+                    throw new Error("[METATRON PROBE] registerTaper braucht key + min>0 + max>min");
+                }
+                registerTaper(key, { kind: "log", min, max, source: "measured", measuredAt: new Date().toISOString() });
+                console.log(`[METATRON PROBE] taper registered: ${key} (log ${min}..${max})`);
+                return key;
             },
         };
     }

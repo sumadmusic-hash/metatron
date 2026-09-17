@@ -7,6 +7,8 @@ import { Control } from "../../src/core/model/Control";
 import { BindingManager } from "../../src/core/BindingManager";
 import { writeAutomationRecording, samplesToEvents } from "../../src/automation/AutomationWriter";
 import type { AutomationRecording, AutomationSample } from "../../src/automation/AutomationRecording";
+import { linearToAutomation, registerTaper, unregisterTaper, taperKey } from "../../src/nexus/CurveRegistry";
+import type { TaperDef } from "../../src/nexus/CurveRegistry";
 
 const KNOWN_SAMPLES: AutomationSample[] = [
     { timeSeconds: 0, normalizedValue: 0.0 },
@@ -576,5 +578,65 @@ describe("M22.0 — shared take duration for every AutomationRegion", () => {
         );
         const durations = regionDurations(regions);
         for (const d of durations) expect(d).toBe(secondsToTicks(6, BPM) + Ticks.Beat);
+    });
+});
+describe("B68 — sampled values are converted into the Audiotool-tapered automation space", () => {
+    const CUTOFF98: TaperDef = { kind: "log", min: 18, max: 15500, source: "measured", measuredAt: "2026-09-17T00:00:00.000Z" };
+
+    it("samplesToEvents converts a tapered sample away from the linear value (0.5 → ~0.8976)", () => {
+        const events = samplesToEvents(KNOWN_SAMPLES, 120, CUTOFF98);
+        expect(events[0].value).toBeCloseTo(linearToAutomation(CUTOFF98, 0.0), 6);
+        expect(events[1].value).toBeCloseTo(0.8976, 3); // ≠ 0.5
+        expect(events[2].value).toBeCloseTo(linearToAutomation(CUTOFF98, 1.0), 6);
+    });
+
+    it("without a taper the values stay unchanged (identity regression)", () => {
+        const events = samplesToEvents(KNOWN_SAMPLES, 120);
+        expect(events.map((e) => e.value)).toEqual([0.0, 0.5, 1.0]);
+    });
+
+    it("same-tick dedup keeps the CONVERTED latest value", () => {
+        const events = samplesToEvents(
+            [
+                { timeSeconds: 0, normalizedValue: 0.2 },
+                { timeSeconds: 0.0001, normalizedValue: 0.8 },
+            ],
+            30,
+            CUTOFF98
+        );
+        expect(events).toHaveLength(1);
+        expect(events[0].value).toBeCloseTo(linearToAutomation(CUTOFF98, 0.8), 6);
+        expect(events[0].value).not.toBeCloseTo(0.2, 3);
+    });
+
+    it("writeAutomationRecording resolves the registered taper and writes converted automationEvent values", async () => {
+        const key = taperKey("bassline / cutoffFrequencyHz", "cutoffFrequencyHz");
+        registerTaper(key, CUTOFF98);
+        try {
+            const doc = await newDoc();
+            const basslineId = await addBassline(doc);
+            const cutoff = basslineField(doc, basslineId, "cutoffFrequencyHz");
+            const bindings = makeBindings([
+                { controlId: "c1", entityId: basslineId, fieldPath: "cutoffFrequencyHz", field: cutoff },
+            ]);
+
+            const result = await writeAutomationRecording(
+                rec([{ controlId: "c1", controlType: "knob", samples: KNOWN_SAMPLES }]),
+                doc,
+                bindings
+            );
+            expect(result.ok).toBe(true);
+
+            const events = doc.queryEntities
+                .ofTypes("automationEvent")
+                .get()
+                .sort((a: any, b: any) => a.fields.positionTicks.value - b.fields.positionTicks.value);
+            const values = events.map((e: any) => e.fields.value.value);
+            expect(values[0]).toBeCloseTo(0.0, 6);
+            expect(values[1]).toBeCloseTo(0.8976, 3); // NOT 0.5 — the B68 bug
+            expect(values[2]).toBeCloseTo(1.0, 6);
+        } finally {
+            unregisterTaper(key);
+        }
     });
 });
