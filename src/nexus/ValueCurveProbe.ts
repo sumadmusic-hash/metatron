@@ -215,21 +215,20 @@ export async function probeField(
         }
     }
     const span = schemaMax - schemaMin || 1;
-    // Nexus speichert raw als FLOAT32: an der 15500-Skala liegt das Quantisierungs-
-    // Rauschen ~1e-3, eine absolute 1e-6-Toleranz wäre immer FALSCH (False-Negative).
-    // Toleranz deshalb relativ zur Skala (Float32-Epsilon ~1.2e-7 × Magnitude).
+    // RAW-Linearität: Nexus speichert raw als FLOAT32 — an der 15500-Skala liegt das
+    // Quantisierungs-Rauschen ~1e-3, eine absolute 1e-6-Toleranz wäre immer FALSCH
+    // (B64 False-Negative). Toleranz deshalb relativ zur Skala (Float32-Epsilon).
     const epsRaw = (v: number) => Math.max(1e-5, Math.abs(v) * 1.2e-7);
     const rawLinear = samples.every((s) => Math.abs(s.raw - (schemaMin + s.n * span)) <= epsRaw(schemaMax));
     const ys = samples.map((s) => s.displayed);
     const hasDisplay = ys.every((v) => typeof v === "number" && Number.isFinite(v as number));
-    // identityTransfer vergleicht displayed gegen den FLOAT32-raw-Stützpunkt — gleiche
-    // Skalen-Toleranz statt 1e-6 absolut (B64).
+    // B67 — MANUELLE Readouts tragen UI-Auflösung (gerundete Hz-/kHz-Ziffern); ein
+    // 1e-6-Identitätstest (oder bloßer f32-Epsilon) würde eine echte Identitäts-
+    // Transferfunktion als piecewise fehlklassifizieren und einen sinnlosen
+    // Registry-Eintrag erzeugen. Toleranz = 0.05 % der Schema-Spanne (floor 1e-6).
+    const identityTol = Math.max(1e-6, span * 5e-4);
     const identityTransfer =
-        hasDisplay && samples.every((s, i) => {
-            const d = ys[i] as number;
-            const diff = typeof d === "number" ? Math.abs(d - s.raw) : Infinity;
-            return diff <= epsRaw(Math.max(Math.abs(d), Math.abs(s.raw)));
-        });
+        hasDisplay && samples.every((s, i) => Math.abs((ys[i] as number) - s.raw) <= identityTol);
     const { fits, winner } =
         hasDisplay && !identityTransfer ? fitTransfer(samples, schemaMin, schemaMax) : { fits: [] as CurveFit[], winner: null };
     return {

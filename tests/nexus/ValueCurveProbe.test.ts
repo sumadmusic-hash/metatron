@@ -153,6 +153,18 @@ describe("ValueCurveProbe — fitTransfer (Phase 5 Schritt 1)", () => {
         expect(report.samples[0].raw).toBeCloseTo(20, 5);
     });
 
+    it("B67 rounded manual readouts still count as identityTransfer", async () => {
+        const field = fakePulvField();
+        // UI-Readout rundet auf ganze Hz (bzw. Zehn-Hz); echtes manuelles Ablesen:
+        // |displayed − raw| ≤ span*5e-4 = 9.99 → Identität bleibt erkannt.
+        const readRounded = () => Math.round(field.value / 10) * 10;
+
+        const report = await probeField(fakeDoc(), field, "pulverisator:filter.cutoffHz", readRounded, 10);
+        expect(report.identityTransfer).toBe(true);
+        expect(report.winner).toBeNull();
+        expect(report.fits).toHaveLength(0);
+    });
+
     it("probeField identityTransfer=false when the display disagrees with the raw write", async () => {
         const field = fakePulvField();
         const readHalf = () => field.value * 0.5; // display lags raw → NOT identity

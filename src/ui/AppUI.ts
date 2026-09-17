@@ -255,8 +255,16 @@ export class AppUI {
                     })();
                 if (!field) throw new Error("[METATRON PROBE] field not resolvable for " + (binding.fieldPath ?? binding.fieldName));
                 const control = this.bindingManager.deviceRef.controls.get(controlId);
-                const targetName = control?.audiotoolBindingDefinition?.targetName ?? binding.fieldName;
-                const curveKey = `${targetName}:${binding.fieldPath ?? binding.fieldName}`;
+                const fieldPath = binding.fieldPath ?? binding.fieldName ?? "unknown";
+                // B66 — Registry-Keys stabil + schlank: targetName trägt bereits den
+                // FieldPath („pulverisateur / filter.cutoffFrequencyHz") → Head ohne
+                // Suffix, rest slugifiziert → "pulverisateur:filter.cutoffFrequencyHz"
+                const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+                const rawTarget = (control?.audiotoolBindingDefinition?.targetName ?? fieldPath).trim();
+                const head = rawTarget.endsWith(fieldPath)
+                    ? rawTarget.slice(0, rawTarget.length - fieldPath.length)
+                    : rawTarget;
+                const curveKey = `${slug(head || rawTarget)}:${fieldPath}`;
                 const echoSuppressed = controlId && typeof this.nexusAdapter.beginSuppressEcho === "function";
                 if (echoSuppressed) {
                     console.warn("[METATRON CURVE-PROBE] bound field: echoes suppressed via hook; do NOT touch the parameter while probing.");
@@ -288,9 +296,12 @@ export class AppUI {
                 });
                 const ys = report.samples.map((s: any) => s.displayed);
                 const hasDisplay = ys.every((v: any) => typeof v === "number" && Number.isFinite(v));
-                const epsRaw = (v: number) => Math.max(1e-5, Math.abs(v) * 1.2e-7);
+                // B67 — manuelle Readouts tragen UI-Auflösung (gerundete Hz-/kHz-Ziffern);
+                // Toleranz = 0.05 % der Schema-Spanne, identisch zu probeField.
+                const span = (report.schemaMax - report.schemaMin) || 1;
+                const identityTol = Math.max(1e-6, span * 5e-4);
                 const identityTransfer =
-                    hasDisplay && report.samples.every((s: any, i: number) => Math.abs(ys[i] - s.raw) <= epsRaw(Math.max(Math.abs(ys[i]), Math.abs(s.raw))));
+                    hasDisplay && report.samples.every((s: any, i: number) => Math.abs(ys[i] - s.raw) <= identityTol);
                 const { fits, winner } =
                     hasDisplay && !identityTransfer
                         ? fitTransfer(report.samples, report.schemaMin, report.schemaMax)
