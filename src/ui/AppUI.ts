@@ -383,7 +383,7 @@ export class AppUI {
             // `hint` darf die Control-ID ODER der taperKey
             // ("pulverisateur:filter.cutoffFrequencyHz") sein — wird per
             // activeBinding↔taperKey aufgelöst.
-            pacedSweep: async (hint: string) => {
+            pacedSweep: async (hint: string, targets?: number[]) => {
                 const ids = this.bindingManager.getActiveBindingControlIds();
                 let controlId = this.bindingManager.getActiveBinding(hint) ? hint : undefined;
                 if (!controlId) {
@@ -417,12 +417,18 @@ export class AppUI {
                 const { createNexusValueMapping, mapNormalizedToNexus, mapNexusToNormalized } = await import("../nexus/NexusValueMapping");
                 const mapping = createNexusValueMapping(field);
                 const restoreMin = mapping.min ?? 0;
-                const steps = 10;
+                // Optionales Ziel-Set (nexus-normalized 0..1, aufsteigend); ohne
+                // Vorgabe 0..1 in 10 Schritten. Fürs Untermessen des steil
+                // gekrümmten unteren Bereichs eine feine Folge angeben.
+                const targetsNorm = (targets?.length
+                    ? targets.filter((t) => Number.isFinite(t) && t >= 0 && t <= 1).sort((a, b) => a - b)
+                    : Array.from({ length: 11 }, (_, i) => i / 10)) as number[];
+                const steps = targetsNorm.length;
                 const points: UICurvePoint[] = [];
-                console.log(`[METATRON UI-CURVE] paced sweep für ${key}:`);
+                console.log(`[METATRON UI-CURVE] paced sweep für ${key} (${steps} Punkte):`);
                 console.log("  Blick ins Audiotool-Fenster → Cutoff-Knob auf sichtbare 0..1 Position ablesen → eingeben → Enter.");
-                for (let i = 0; i <= steps; i++) {
-                    const uiNorm = i / steps;
+                for (let i = 0; i < steps; i++) {
+                    const uiNorm = targetsNorm[i];
                     const raw = mapNormalizedToNexus(mapping, uiNorm);
                     if (raw === undefined || typeof raw === "boolean") {
                         console.warn(`[METATRON UI-CURVE] skipping non-numeric step ${i}`);
@@ -435,7 +441,7 @@ export class AppUI {
                     await new Promise(r => setTimeout(r, 400)); // settle
                     const rawText = typeof raw === "number" ? (Number.isInteger(raw) ? String(raw) : raw.toFixed(1)) : String(raw);
                     const answer = window.prompt(
-                        `METATRON UI-CURVE Schritt ${i}/${steps}\n` +
+                        `METATRON UI-CURVE Schritt ${i + 1}/${steps}\n` +
                         `Nexus raw: ${rawText} Hz\n` +
                         `Wie steht der AUDIOTOOL-Cutoff-Knob sichtbar? 0..1 eingeben.`
                     );
@@ -447,7 +453,7 @@ export class AppUI {
                     }
                     const nexusNorm = mapNexusToNormalized(mapping, raw);
                     points.push({ ui: knobPos, nexus: nexusNorm });
-                    console.log(`[METATRON UI-CURVE] ${i}/${steps}: raw=${rawText} → knobPos=${knobPos.toFixed(4)} nexusNorm=${nexusNorm.toFixed(4)}`);
+                    console.log(`[METATRON UI-CURVE] ${i + 1}/${steps}: raw=${rawText} → knobPos=${knobPos.toFixed(4)} nexusNorm=${nexusNorm.toFixed(4)}`);
                 }
                 await this.nexusAdapter.document.modify(t => { t.update(field!, restoreMin as any); });
                 if (points.length >= 2) {
