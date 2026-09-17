@@ -1012,6 +1012,7 @@ toolbarLeft.appendChild(libraryBtn);
                     }
                 });
                 Toast.show("Project connected.", "success");
+                this.render(); // Chip erscheint sofort, ohne Mode-/Device-Wechsel
             } catch (e) {
                 console.error("Connection error", e);
                 this.applyStatusText("Error", "#f44336");
@@ -1113,6 +1114,17 @@ toolbarLeft.appendChild(libraryBtn);
             this.sidebarCollapsed = this.currentMode === "USE";
             this.render();
         };
+
+        // Session user chip (display-only, B72): sits LEFT of the mode toggle in the
+        // right cluster; omitted entirely when no display name could be resolved.
+        const sessionUser = this.nexusAdapter.getCurrentUser();
+        if (sessionUser) {
+            const chip = document.createElement("span");
+            chip.className = "user-chip";
+            chip.textContent = sessionUser.username; // textContent ONLY — never innerHTML (XSS)
+            chip.title = `Authenticated Audiotool session: ${sessionUser.username}`;
+            toolbarRight.appendChild(chip);
+        }
 
         // Right cluster: the mode toggle is the sole rightmost header control.
         toolbarRight.appendChild(modeToggle);

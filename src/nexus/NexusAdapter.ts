@@ -5,6 +5,7 @@ import { createNexusValueMapping, mapNormalizedToNexus, mapNexusToNormalized } f
 import { resolveFieldByPath } from "./ChainPath";
 import { taperKey } from "./CurveRegistry";
 import { getParameterUICurve, uiToNexusNorm, nexusNormToUi } from "./ParameterUICurve";
+import { resolveCurrentUser, type CurrentUser } from "./CurrentUser";
 
 /**
  * Resolve the OAuth redirect URL from the browser's current origin.
@@ -25,6 +26,36 @@ export class NexusAdapter {
     private client: any = null;
     public document: SyncedDocument | null = null;
     private bindingManager: BindingManager | null = null;
+
+    /** In-memory only (B72): display name of the authenticated session user.
+     *  Re-resolved on every successful authenticate()/openProject(); never
+     *  persisted to any device/preset/history/storage export. */
+    private currentUser?: CurrentUser;
+
+    /** Read-only, defensive ID-token lookup. ID_TOKEN_STORAGE_KEYS stays EMPTY
+     *  unless Schritt-0-Discovery names the real key; an opaque/absent token
+     *  degrades to "no chip", never to a guess. (Current discovery: the
+     *  AuthenticatedClient exposes `userName` directly — Path A — so no
+     *  storage key is needed.) */
+    private static readonly ID_TOKEN_STORAGE_KEYS: string[] = [];
+    private lookupIdToken(): string | undefined {
+        try {
+            const c: any = this.client;
+            const direct = c?.idToken ?? c?.tokens?.id ?? c?.tokens?.idToken ?? c?.session?.idToken;
+            if (typeof direct === "string" && direct !== "") return direct;
+            for (const k of NexusAdapter.ID_TOKEN_STORAGE_KEYS) {
+                const v = localStorage.getItem(k);
+                if (typeof v === "string" && v !== "") return v;
+            }
+        } catch {
+            return undefined;
+        }
+        return undefined;
+    }
+
+    public getCurrentUser(): CurrentUser | undefined {
+        return this.currentUser;
+    }
 
     // Track active event listeners to prevent memory leaks
     private updateListeners: Map<string, () => void> = new Map();
@@ -95,6 +126,7 @@ export class NexusAdapter {
             this.client.login();
             return false;
         }
+        this.currentUser = resolveCurrentUser(this.client, () => this.lookupIdToken());
         return true;
     }
 
@@ -102,6 +134,7 @@ export class NexusAdapter {
         if (!this.client || this.client.status !== "authenticated") {
             throw new Error("Client not authenticated");
         }
+        this.currentUser = resolveCurrentUser(this.client, () => this.lookupIdToken());
 
         // §40 — reconnecting to the SAME project URL (e.g. after a short sync
         // drop) is NOT a new project. Hard-resetting every binding
