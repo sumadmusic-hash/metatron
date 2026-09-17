@@ -1,4 +1,5 @@
 import { DeviceLibrary } from "../core/DeviceLibrary";
+import { Device } from "../core/model/Device";
 import { NexusAdapter } from "../nexus/NexusAdapter";
 import { MidiAccess } from "../midi/MidiAccess";
 import { MidiMapping } from "../midi/MidiMapping";
@@ -595,11 +596,27 @@ mk("REC", "Start recording (requires ARM) — Recording startet bei Tick 0 (kein
         // FIX 6 — Runner-Lifecycle: bei JEDEM Device-Wechsel stoppen (auch wenn
         // kein Device bleibt), nur für eine modulierungsfähige Matrix starten.
         this.modRunner?.stop();
-        if (device && device.modulation.slots.some((s) => s.enabled)) {
+        if (this.matrixRunnable(device)) {
             this.modRunner?.start();
         }
         this.render();
         this.modMatrixUI.render();
+    }
+
+    /** Single source of truth for "the matrix can produce destinations"
+     *  (FIX B55): a matrix is runnable only with an ENABLED slot whose
+     *  sourceId resolves to an EXISTING source — evaluateDestinations skips
+     *  slots with a dangling sourceId (ModulationEngine.ts:124), so an
+     *  enabled slot pointing nowhere would leave the runner idle-scanning an
+     *  empty destination map every frame. ModSource has no enabled flag —
+     *  a source is "active" exactly when an enabled slot routes it (B30). */
+    private matrixRunnable(device: Device | null | undefined): boolean {
+        if (!device) return false;
+        return device.modulation.slots.some(
+            (s) =>
+                s.enabled &&
+                device.modulation.sources.some((src) => src.id === s.sourceId),
+        );
     }
 
     private connectionLabel(): string {
@@ -904,9 +921,10 @@ toolbarLeft.appendChild(libraryBtn);
         this.root.appendChild(contentRow);
 
         // FIX 6 — start the runner when a modulatable matrix is live after
-        // every render; otherwise keep it stopped.
+        // every render; otherwise keep it stopped (FIX B55: also requires an
+        // enabled source — a slot-only matrix would idle-scan in vain).
         const modDevice = this.deviceLibrary.currentDevice;
-        if (modDevice && modDevice.modulation.slots.some((s) => s.enabled)) {
+        if (this.matrixRunnable(modDevice)) {
             this.modRunner?.start();
         } else {
             this.modRunner?.stop();
