@@ -10,6 +10,12 @@ import { AppUI } from "../../src/ui/AppUI";
 class TestNexusAdapter extends NexusAdapter {
     public subscribers: ((connected: boolean) => void)[] = [];
 
+    // R1 — Connect-Button verlangt jetzt eine authentifizierte Session; das
+    // Fixture übt den Connect-Fluss und meldet sich deshalb als angemeldet.
+    public override isAuthenticated(): boolean {
+        return true;
+    }
+
     public override async openProject(_url: string, _bindingManager?: any): Promise<void> {
         this.document = { connected: { subscribe: vi.fn(), getValue: () => true } } as any;
     }

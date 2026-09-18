@@ -9,8 +9,10 @@ import { installBuiltinUICurves, getParameterUICurve, BUILTIN_UI_CURVES } from "
 
 /** B6 — nicht blockierende Auth nach dem ersten Render: der OAuth-Handshake
  *  wird nie AWAITED bevor die Oberfläche steht (kein impliziter login()-Timer
- *  mehr, authenticate() ist passiv) und ein Fehler kippt den Boot nicht. */
-async function launchAuth(nexusAdapter: NexusAdapter): Promise<void> {
+ *  mehr, authenticate() ist passiv) und ein Fehler kippt den Boot nicht. R1 —
+ *  nach Abschluss stößt der onAuthComplete-Callback ein Re-Render an, damit
+ *  der Sign-in-Button verschwindet und das User-Badge (B72) erscheint. */
+async function launchAuth(nexusAdapter: NexusAdapter, onAuthComplete?: () => void): Promise<void> {
     // Set VITE_AUDIOTOOL_CLIENT_ID in your environment for a real client;
     // this dev fallback only works if it matches a registered application.
     const CLIENT_ID = import.meta.env.VITE_AUDIOTOOL_CLIENT_ID || "e498c930-864a-4ef0-8d57-b8a176bee096";
@@ -19,6 +21,8 @@ async function launchAuth(nexusAdapter: NexusAdapter): Promise<void> {
         console.log(`Nexus Authenticated: ${isAuthenticated}`);
     } catch (e) {
         console.error("Nexus Authentication Failed", e);
+    } finally {
+        onAuthComplete?.();
     }
 }
 
@@ -88,11 +92,13 @@ async function bootstrap() {
             bindingManager
         );
         appUI.render();
+
+        // 5b. Re-Render nach Auth-Abschluss (R1): Sign-in-Button raus, User-Badge rein.
+        void launchAuth(nexusAdapter, () => appUI.render());
     }
 
     // 5. Nicht-blockierender Start: Auth + MIDI NACH dem Render, je
     //    Fehler-toleriert. (B6 — kein `await` vor dem Render.)
-    void launchAuth(nexusAdapter);
     void launchMidi(midiAccess);
 }
 

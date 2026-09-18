@@ -295,6 +295,26 @@ body {
     white-space: nowrap;
 }
 
+/* R1 — Sign-in-Auslöser im Header (Pille wie das User-Badge), solange keine
+   Audiotool-Session authentifiziert ist. Nach erfolgreichem Login baut das
+   Re-Render den Header um und der Button verschwindet. */
+.sign-in-btn {
+    display: inline-flex;
+    align-items: center;
+    height: 26px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: var(--panel-solid);
+    border: 1px solid var(--mode-accent-2);
+    color: var(--text-hi);
+    font-size: 9px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.sign-in-btn:hover {
+    border-color: var(--accent-color);
+}
+
 /* Transport (USE only, header center): ARM/REC/STOP + engine chip + APPLY. */
 .transport {
     display: flex;

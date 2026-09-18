@@ -34,6 +34,9 @@ export function resolveOauthRedirectUrl(origin: string): string {
 
 export class NexusAdapter {
     private client: any = null;
+    /** R1 — der zuletzt verwendete ClientId (für einen späteren login(), der
+     *  ohne neuen authenticate()-Durchlauf auskommt). */
+    private clientId?: string;
     public document: SyncedDocument | null = null;
     private bindingManager: BindingManager | null = null;
 
@@ -129,23 +132,56 @@ export class NexusAdapter {
         return this.connectionCleanup ?? (() => {});
     }
 
-    public async authenticate(clientId: string): Promise<boolean> {
-        this.client = await audiotool({ 
-            clientId,
+    /** R1 — idempotente Client-Fabrik. Sowohl authenticate() (passiv,
+     *  Zustandsbericht beim Boot) als auch login() (explizit, per Nutzeraktion
+     *  im Header) brauchen einen konstruierten Client; login() muss auch OHNE
+     *  vorigen authenticate()-Durchlauf funktionieren. Einmal gebaut bleibt
+     *  der Client erhalten — keine Neu-Konstruktion pro Aufruf. */
+    private async ensureClient(clientId?: string): Promise<any> {
+        if (this.client) return this.client;
+        const id = clientId ?? this.clientId;
+        if (!id) throw new Error("No client id");
+        this.client = await audiotool({
+            clientId: id,
             redirectUrl: resolveOauthRedirectUrl(window.location.origin),
             scope: "project:write"
         });
-        
+        this.clientId = id;
+        return this.client;
+    }
+
+    public async authenticate(clientId: string): Promise<boolean> {
+        this.client = await this.ensureClient(clientId);
+
         if (this.client.status === "unauthenticated") {
             // B6 — KEIN impliziter login()-Redirect beim Laden der App: ein
             // OAuth-Wechsel würde die gerade gebaute Oberfläche sofort wieder
             // wegwerfen. authenticate() ist reiner passiver Zustandsbericht;
-            // eine explizite Anmeldung erfolgt über einen Login-Aktionspfad.
+            // eine explizite Anmeldung erfolgt über den Login-Aktionspfad (R1).
             console.log(`[METATRON NEXUS] unauthenticated — no implicit login redirect (B6)`);
             return false;
         }
         this.currentUser = resolveCurrentUser(this.client, () => this.lookupIdToken());
         return true;
+    }
+
+    /** R1 — explizite Anmeldung per Nutzeraktion (Sign-in-Button im Header).
+     *  Löst den OAuth-Redirect des Clients aus; Fehler landen im Log, die
+     *  Seite wird im Erfolgsfall vom Provider ohnehin neu geladen. */
+    public async login(): Promise<void> {
+        try {
+            const client = await this.ensureClient();
+            if (client.status === "authenticated") return;
+            await client.login();
+        } catch (e) {
+            console.error("[METATRON NEXUS] login() failed:", e);
+        }
+    }
+
+    /** R1 — öffentlicher Statusgeber: authentifizierte Session ja/nein.
+     *  Treibt den Sign-in-Button (Header) und den Connect-Guard. */
+    public isAuthenticated(): boolean {
+        return !!this.client && this.client.status === "authenticated";
     }
 
     public async openProject(projectUrl: string, bindingManager: BindingManager) {

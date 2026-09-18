@@ -871,9 +871,28 @@ export class AppUI {
         }
         toolbar.appendChild(headerCenter);
 
-        // Header-Right: connection cluster, mod toggle (USE), library, user badge.
+        // Header-Right: connection cluster, sign-in, mod toggle (USE), library,
+        // user badge.
         const headerRight = document.createElement("div");
         headerRight.className = "header-right";
+
+        // R1 — Sign-in-Auslöser, solange keine authentifizierte Audiotool-Session
+        // vorliegt. Nach OAuth-Rücklauf und authenticate() baut das Re-Render
+        // (main.ts-Callback) den Header um: der Button verschwindet, stattdessen
+        // (mit aufgelöstem Nutzer) das User-Badge. textContent ONLY — nie innerHTML.
+        if (!this.nexusAdapter.isAuthenticated()) {
+            const signInBtn = document.createElement("button");
+            signInBtn.id = "sign-in-btn";
+            signInBtn.className = "sign-in-btn";
+            signInBtn.type = "button";
+            signInBtn.setAttribute("aria-label", "Sign in to Audiotool");
+            signInBtn.title = "Sign in to Audiotool";
+            signInBtn.innerText = "Sign in";
+            signInBtn.onclick = () => {
+                void this.nexusAdapter.login();
+            };
+            headerRight.appendChild(signInBtn);
+        }
 
         // Project Connection UI — field (input + status chip) + Connect button.
         const connField = document.createElement("div");
@@ -905,6 +924,13 @@ export class AppUI {
         connectBtn.className = "conn-btn";
         connectBtn.innerText = "Connect";
         connectBtn.onclick = async () => {
+            if (!this.nexusAdapter.isAuthenticated()) {
+                // R1 — ohne Session ist openProject() zum Scheitern verurteilt;
+                // klarer Abbruch mit Toast statt undurchsichtigem client.open()-
+                // Fehler. Anmeldung: Sign-in-Button im Header.
+                Toast.show("Bitte zuerst bei Audiotool anmelden.", "error");
+                return;
+            }
             if (!urlInput.value) {
                 Toast.show("Enter an Audiotool project URL first.", "error");
                 return;

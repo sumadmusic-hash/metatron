@@ -15,6 +15,12 @@ class TestNexusAdapter extends NexusAdapter {
     public failNext = false;
     public subscribers: ((connected: boolean) => void)[] = [];
 
+    // R1 — Connect-Button verlangt jetzt eine authentifizierte Session; das
+    // Fixture übt den Connect-Fluss und meldet sich deshalb als angemeldet.
+    public override isAuthenticated(): boolean {
+        return true;
+    }
+
     public override async openProject(url: string, _bindingManager?: any): Promise<void> {
         this.openCalls++;
         this.lastUrl = url;
