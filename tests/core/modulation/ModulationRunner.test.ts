@@ -288,6 +288,53 @@ describe("ModulationRunner — Capture-Arbitration", () => {
         expect(recorder.capture).toHaveBeenCalledTimes(1);
     });
 
+    it("B2 — a constant modulated value (square wave) is NOT lost after the first blocked frame", () => {
+        // 5 destinations on ONE square source: the modulated value stays
+        // CONSTANT across all frames (0.8 within one half-wave), so the
+        // B42-DOM-Deduplizierung sieht immer "identisch" — und ohne den B2-Fix
+        // würde das 5. Ziel nie angeboten (erster Frame schrieb nur 4).
+        const device = new Device("Runner");
+        ["c1", "c2", "c3", "c4", "c5"].forEach((id, i) => {
+            const c = new Control("knob", id, { x: 0, y: i }, id);
+            c.value = 0.5;
+            device.addControl(c);
+        });
+        const matrix = createDefaultMatrix();
+        matrix.sources[0].waveform = "square";
+        matrix.sources[0].rateHz = 1; // 1 Hz → Halbwelle 0.5 s
+        for (let i = 0; i < 5; i++) {
+            matrix.slots[i].enabled = true;
+            matrix.slots[i].destControlId = `c${i + 1}`;
+            matrix.slots[i].amount = 0.3;
+            matrix.slots[i].sourceId = matrix.sources[0].id;
+        }
+        device.modulation = matrix;
+
+        const { runner, adapter } = makeRunner(device, "IDLE");
+        runner.start();
+        (runner as any).startTimeSec = 0;
+
+        // Frames innerhalb EINER Halbwelle (Phase 0.30..0.46 < 0.5 → square +1):
+        // Frame 1 schreibt nur MAX_WRITES_PER_TICK=4 Ziele, das 5. wird
+        // deferiert. Sein Wert ändert sich nie — ohne B2 gäbe es dafür nie
+        // einen Write-Aufruf, mit B2 wird es weiter angeboten und im nächsten
+        // Frame bedient.
+        for (const t of [300, 340, 380, 420, 460]) {
+            (runner as any).tick(t);
+        }
+
+        // Jedes Ziel bekam mindestens einen apply per Halbwelle — keins
+        // verhungert dauerhaft vor dem Per-Control-Cap.
+        for (let i = 1; i <= 5; i++) {
+            const calls = adapter.updateBoundControl.mock.calls.filter((c) => c[0] === `c${i}`);
+            expect(calls.length).toBeGreaterThanOrEqual(1);
+        }
+        // Genau die 4 geschriebenen Ziele des ersten Frames + das roll-über
+        // Ziel = 5 echte Writes (die 33-ms-Per-Control-Caps blockieren die
+        // restlichen Wiederholungen).
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(5);
+    });
+
     it("removes a destination whose slot was disabled from activeDestinationIds mid-run (needle off)", () => {
         const device = new Device("Runner");
         const c1 = new Control("knob", "Cutoff", { x: 0, y: 0 }, "c1");

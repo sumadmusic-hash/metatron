@@ -179,10 +179,16 @@ export class ModulationRunner {
         const writable: Array<[string, number]> = [];
         for (const [controlId, value] of entries) {
             const last = this.lastModValue.get(controlId);
-            if (last === value) continue; // B42 — skip redundant DOM writes
-            this.lastModValue.set(controlId, value);
-            this.activeDestinationIds.add(controlId);
-            this.surfaceUI.applyModDisplay(controlId, value);
+            // B2 — Deduplizierung betrifft NUR DOM und activeDestinationIds:
+            // bei konstantem Mod-Wert wird der Write weiterhin angeboten, auch
+            // wenn er im frühesten Frame vom Cap/inFlight blockiert wurde.
+            // Ein solcher Wert wird dauerhaft verschluckt, wenn die Schleife
+            // writable.push ebenfalls überspringt (vgl. B2).
+            if (last !== value) {
+                this.lastModValue.set(controlId, value);
+                this.activeDestinationIds.add(controlId);
+                this.surfaceUI.applyModDisplay(controlId, value);
+            }
             if (this.gestureTakeover.get(controlId)) {
                 // Gesture-Takeover: capture base value (B11 — unchanged).
                 if (this.recorder.currentState === "RECORDING") {
