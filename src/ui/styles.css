@@ -828,9 +828,8 @@ body {
 
 /* F10 — vector indicator arc (USE surface): replaces the conic-gradient +
    radial-mask band whose sub-pixel edges aliased at 1x zoom. Same geometry as
-   the old band (r42, stroke 3.5 → wide 9% band at 82.5–91.5% of the socket
-   radius), but rendered as an SVG stroke with round caps. Arc start −135°
-   (CSS rotate), visible arc = value · 270° exactly (dashoffset, no pixels). */
+   the old band (r43.5, stroke 4.5 → wide 9% band at 82.5–91.5% of the socket
+   radius), but rendered as an SVG stroke. Arc start/end via CSS rotate. */
 .knob-svg-ring {
     --knob-ring-track: #1c202c;
     --knob-arc-color: #00e5ff;
@@ -838,7 +837,11 @@ body {
     inset: 0;
     width: 100%;
     height: 100%;
-    transform: rotate(-135deg);
+    /* G1 — SVG-Dash-Pfade starten bei 3 Uhr (90°), CSS-Conic-Gradients bei
+       12 Uhr (0°). Deshalb hier +135°, nicht -135°: Start 90°+135°=225° (7:30),
+       Ende 225°+270°=135° (4:30), Lücke zentriert bei 180° = unten — exakt
+       deckungsgleich mit .knob-led-ring (from -135deg) und .knob-mod-ring. */
+    transform: rotate(135deg);
     pointer-events: none;
     z-index: 2;
 }
