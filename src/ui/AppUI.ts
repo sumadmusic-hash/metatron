@@ -105,6 +105,7 @@ export class AppUI {
     // flushed on render (mode/device switch) and on unload.
     private valueSaveTimer?: ReturnType<typeof setTimeout>;
     private valueSavePending = false;
+    private valueSaveFailureToastShown = false;
 
     // M21.8 — pure UI-side state for the automation strip. `recordingStartPerf`
     // drives a cosmetic elapsed timer; none of it touches the recorder's clock.
@@ -323,19 +324,26 @@ export class AppUI {
 
     /** P4 — persist a pending value-path save immediately (trailing end of a
      *  burst, render/switch, unload). Storage errors surface as a toast but
-     *  never propagate into the gesture that triggered the value change. */
+     *  never propagate into the gesture that triggered the value change. A
+     *  failed save stays pending so the NEXT flush retries it instead of
+     *  silently dropping the trailing change. */
     private flushValueSave = () => {
         if (this.valueSaveTimer !== undefined) {
             clearTimeout(this.valueSaveTimer);
             this.valueSaveTimer = undefined;
         }
         if (!this.valueSavePending) return;
-        this.valueSavePending = false;
         try {
             this.deviceLibrary.saveCurrentDevice();
+            this.valueSavePending = false;
+            this.valueSaveFailureToastShown = false;
         } catch (e) {
-            console.warn("[METATRON STORAGE] value-path persistence failed — control layout unaffected, next save will retry.", e);
-            Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
+            this.valueSavePending = true;
+            if (!this.valueSaveFailureToastShown) {
+                this.valueSaveFailureToastShown = true;
+                console.warn("[METATRON STORAGE] value-path persistence failed — control layout unaffected, next save will retry.", e);
+                Toast.show("Speichern fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)), "error");
+            }
         }
     };
 

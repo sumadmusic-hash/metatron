@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Device } from "../../src/core/model/Device";
 import { Control } from "../../src/core/model/Control";
 import { DeviceLibrary } from "../../src/core/DeviceLibrary";
+import { StorageError } from "../../src/persistence/Storage";
 import { NexusAdapter } from "../../src/nexus/NexusAdapter";
 import { MidiAccess } from "../../src/midi/MidiAccess";
 import { BindingManager } from "../../src/core/BindingManager";
@@ -81,5 +82,33 @@ describe("AppUI — VALUE-path saves are bundled during fast gestures (P4)", () 
         // and must NOT lose the trailing value save.
         app.render();
         expect(saveSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("B11 — a FAILED trailing save stays pending: the next render retries and the toast appears once per streak", () => {
+        const device = new Device("T3");
+        midiKnob(device, "c3");
+        const { lib, midi, app } = mount(device);
+
+        const saveSpy = vi
+            .spyOn(lib, "saveCurrentDevice")
+            .mockImplementationOnce(() => {
+                throw new StorageError("quota exceeded");
+            });
+
+        midi.trigger(1, 20, 64);
+        app.render();
+        // First flush fails loudly...
+        expect(saveSpy).toHaveBeenCalledTimes(1);
+        expect(document.body.innerText).toContain("Speichern fehlgeschlagen: quota exceeded");
+
+        // ...but the pending change is NOT dropped: a later flush retries it
+        // (old behavior: pending was cleared on failure and a second render
+        // skipped the save entirely -> trailing change silently lost).
+        app.render();
+        expect(saveSpy).toHaveBeenCalledTimes(2);
+
+        // The retry succeeds now: no second error toast for the same streak.
+        expect(document.body.innerText).not.toContain("Speichern fehlgeschlagen\nSpeichern fehlgeschlagen");
+        expect(saveSpy).toHaveBeenCalledTimes(2);
     });
 });

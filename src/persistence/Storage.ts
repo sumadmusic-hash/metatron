@@ -62,13 +62,17 @@ export class Storage {
      * Persist a device (serialized) into the stored device map, then write the
      * map back to LocalStorage.
      *
+     * The ENTIRE path — reading the existing map, serializing the device, and
+     * the LocalStorage write — is covered by the @throws contract, so a caller
+     * (e.g. the debounced value-path save) can always rely on StorageError
+     * instead of a raw SecurityError / serialization TypeError leaking out.
+     *
      * @throws {StorageError} when LocalStorage cannot be written
      */
     public static saveDevice(device: Device): void {
-        const devices = this.getAllDevices();
-        devices.set(device.id, device.serialize());
-
         try {
+            const devices = this.getAllDevices();
+            devices.set(device.id, device.serialize());
             localStorage.setItem(this.STORAGE_KEY, JSON.stringify(Object.fromEntries(devices)));
         } catch (e) {
             throw new StorageError("Failed to save device to local storage", { cause: e });
