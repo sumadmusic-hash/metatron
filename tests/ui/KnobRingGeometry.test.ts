@@ -71,7 +71,7 @@ function circumference(): number {
     return 2 * Math.PI * KNOB_RADIUS;
 }
 
-describe("G1 — USE glow ring rotated to match the conic EDIT ring", () => {
+describe("USE Glow-Ring Geometrie (G1–G5)", () => {
     beforeEach(() => {
         document.body.innerHTML = "";
         document.head.innerHTML = "";
@@ -107,5 +107,11 @@ describe("G1 — USE glow ring rotated to match the conic EDIT ring", () => {
         // Band: r ± stroke/2 = 41.25…45.75 → 82.5%…91.5% bei Sockelradius 50,
         // Außenkante 45.75 < 50 (kein Clipping). stroke-width steckt in der CSS.
         expect(STYLES).toMatch(/\.knob-svg-ring \.knob-svg-track\s*\{[^}]*stroke-width:\s*4\.5/);
+    });
+
+    it("G4 — USE-Ring traegt denselben Neon-Glow wie der EDIT-Ring (drop-shadow)", () => {
+        expect(STYLES).toMatch(
+            /\.knob-svg-ring\s*\{[^}]*filter:\s*drop-shadow\(0\s+0\s+4px\s+var\(--knob-arc-color\)\)/,
+        );
     });
 });

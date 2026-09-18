@@ -844,6 +844,10 @@ body {
     transform: rotate(135deg);
     pointer-events: none;
     z-index: 2;
+    /* G4 — derselbe Neon-Glow wie .knob-led-ring in EDIT. Schein 4 px liegt
+       bei Bandaußenkante 91,5 % großteils innen im Sockel; außen begrenzt ihn
+       das overflow:hidden des .knob-body (Cap-Stack-Schutz) — wie in EDIT. */
+    filter: drop-shadow(0 0 4px var(--knob-arc-color));
 }
 .knob-svg-ring .knob-svg-track {
     fill: none;
