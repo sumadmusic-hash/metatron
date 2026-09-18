@@ -118,6 +118,36 @@ describe("ModulationEngine — sampleHold / smoothRandom", () => {
     });
 });
 
+describe("ModulationEngine — seed namespace (B4: src.id statt sourceId)", () => {
+    it("zwei Random-Quellen mit leerem sourceId liefern verschiedene Werte", () => {
+        const a = source({ id: "mod1", type: "random", sourceId: "", drift: 0.5 });
+        const b = source({ id: "mod2", type: "random", sourceId: "", drift: 0.5 });
+        // Vor B4: Seed = `${sourceId}:${timeKey}` → beide "" → deterministisch
+        // identische Werte. Nach B4: Seed = `${src.id}:${timeKey}`.
+        expect(evaluateSource(a, 0.5, 120, () => 0, alwaysActive)).not.toBe(
+            evaluateSource(b, 0.5, 120, () => 0, alwaysActive)
+        );
+        // Deterministisch bleibt es trotzdem: gleiche Quelle, gleiches tSec.
+        expect(evaluateSource(a, 0.5, 120, () => 0, alwaysActive)).toBe(
+            evaluateSource(a, 0.5, 120, () => 0, alwaysActive)
+        );
+    });
+
+    it("sampleHold + smoothRandom trennen zwei Quellen mit identischem sourceId", () => {
+        const shA = source({ id: "mod1", waveform: "sampleHold", sourceId: "shared" });
+        const shB = source({ id: "mod2", waveform: "sampleHold", sourceId: "shared" });
+        expect(evaluateSource(shA, 1.0, 120, () => 0, alwaysActive)).not.toBe(
+            evaluateSource(shB, 1.0, 120, () => 0, alwaysActive)
+        );
+
+        const smA = source({ id: "mod1", waveform: "smoothRandom", sourceId: "shared" });
+        const smB = source({ id: "mod2", waveform: "smoothRandom", sourceId: "shared" });
+        expect(evaluateSource(smA, 0.25, 120, () => 0, alwaysActive)).not.toBe(
+            evaluateSource(smB, 0.25, 120, () => 0, alwaysActive)
+        );
+    });
+});
+
 describe("ModulationEngine — evaluateDestinations", () => {
     function multiSlotMatrix(amounts: number[]): ReturnType<typeof createDefaultMatrix> {
         const matrix = createDefaultMatrix();

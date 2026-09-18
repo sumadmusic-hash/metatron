@@ -40,7 +40,8 @@ export interface ModSource {
     phase: number;
     /** Random depth (noise sources scale their output by this). */
     drift: number;
-    /** Reference key: macro control id for "macro", seed namespace for noise. */
+    /** Macro control id for "macro" sources. Random sources deriven their
+     *  seed namespace from their OWN id (FIX B4), NOT from this field. */
     sourceId: string;
     /** Random-source smoothing window in milliseconds ([0, 10000], default 200). */
     smoothMs: number;

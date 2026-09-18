@@ -74,7 +74,10 @@ export function evaluateSource(
     if (src.type === "random") {
         const stepSec = Math.max(0.001, (src.smoothMs ?? 200) / 1000);
         const timeKey = `${Math.floor(tSec / stepSec)}`;
-        const sequence = hash01(`${src.sourceId}:${timeKey}`) * 2 - 1;
+        // B4 — Seed-Namespace ist die QUELLEN-ID (src.id), nicht sourceId:
+        // sourceId ist der Macro-Referenzkey und bei zwei Random-Quellen
+        // leer/identisch → sie produzierten deterministisch gleiche Werte.
+        const sequence = hash01(`${src.id}:${timeKey}`) * 2 - 1;
         return clamp(sequence * clamp(src.drift ?? 0.5, 0, 1), -1, 1);
     }
 
@@ -82,14 +85,14 @@ export function evaluateSource(
 
     if (src.waveform === "sampleHold") {
         const idx = Math.floor(tSec / period);
-        return hash01(`${src.sourceId}:${idx}`) * 2 - 1;
+        return hash01(`${src.id}:${idx}`) * 2 - 1;
     }
 
     if (src.waveform === "smoothRandom") {
         const idx = Math.floor(tSec / period);
         const frac = tSec / period - idx;
-        const a = hash01(`${src.sourceId}:${idx}`) * 2 - 1;
-        const b = hash01(`${src.sourceId}:${idx + 1}`) * 2 - 1;
+        const a = hash01(`${src.id}:${idx}`) * 2 - 1;
+        const b = hash01(`${src.id}:${idx + 1}`) * 2 - 1;
         return a + (b - a) * frac;
     }
 
