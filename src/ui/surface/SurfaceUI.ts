@@ -12,10 +12,12 @@ import { WRITE_REFUSED_CLASS, WRITE_REFUSED_TITLE } from "../writeRefusal";
 import type { MidiBindingDefinition } from "../../core/model/types";
 
 /** F10 — vector knob ring geometry: the arc is drawn on a circular SVG path
- *  (r42, viewBox 100). Total path length C = 2πr; the visible arc is 270° of
- *  the circle (= 0.75·C). dashoffset = ARC_END·(1 − value) → value/1 fills
- *  the base value's arc (replaces the sub-pixel-aliased conic-gradient band). */
-const KNOB_RADIUS = 42;
+ *  (r43.5, viewBox 100 → Band 82.5–91.5 % des Sockelradius, identisch zur
+ *  EDIT-Maske in .knob-led-ring). Total path length C = 2πr; the visible arc
+ *  is 270° of the circle (= 0.75·C). dashoffset = ARC_END·(1 − value) →
+ *  value/1 fills the base value's arc (replaces the sub-pixel-aliased
+ *  conic-gradient band). */
+const KNOB_RADIUS = 43.5;
 const KNOB_ARC_END = 0.75 * 2 * Math.PI * KNOB_RADIUS;
 
 export { KNOB_RADIUS, KNOB_ARC_END };

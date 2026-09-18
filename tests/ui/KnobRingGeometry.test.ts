@@ -97,4 +97,15 @@ describe("G1 — USE glow ring rotated to match the conic EDIT ring", () => {
         const expected = `${KNOB_ARC_END} ${circumference()}`;
         expect(track(root).getAttribute("stroke-dasharray")).toBe(expected);
     });
+
+    it("G3 — Ringband liegt in USE auf denselben 82.5–91.5% des Sockels wie die EDIT-Maske", () => {
+        const root = mount(makeRingDevice(), "use");
+        expect(KNOB_RADIUS).toBe(43.5);
+        expect(KNOB_ARC_END).toBeCloseTo(0.75 * 2 * Math.PI * KNOB_RADIUS, 10);
+        expect(valueArc(root).getAttribute("r")).toBe(String(KNOB_RADIUS));
+        expect(track(root).getAttribute("r")).toBe(String(KNOB_RADIUS));
+        // Band: r ± stroke/2 = 41.25…45.75 → 82.5%…91.5% bei Sockelradius 50,
+        // Außenkante 45.75 < 50 (kein Clipping). stroke-width steckt in der CSS.
+        expect(STYLES).toMatch(/\.knob-svg-ring \.knob-svg-track\s*\{[^}]*stroke-width:\s*4\.5/);
+    });
 });

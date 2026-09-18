@@ -7,6 +7,7 @@ import { BindingManager } from "../../src/core/BindingManager";
 import { NexusAdapter } from "../../src/nexus/NexusAdapter";
 import { MidiAccess } from "../../src/midi/MidiAccess";
 import { AppUI } from "../../src/ui/AppUI";
+import { KNOB_ARC_END } from "../../src/ui/surface/SurfaceUI";
 
 /**
  * M14 — the Morph slider is connected to the M9/M10 engine:
@@ -112,8 +113,7 @@ function knobValue(root: HTMLElement, controlId: string): string {
     const el = root.querySelector<SVGCircleElement>(`[data-ctl-id="${controlId}"] .knob-svg-value`);
     expect(el).toBeTruthy();
     const dash = parseFloat(el!.getAttribute("stroke-dashoffset") ?? "0");
-    const arc = 0.75 * 2 * Math.PI * 42;
-    return `${Math.round((1 - dash / arc) * 270)}deg`;
+    return `${Math.round((1 - dash / KNOB_ARC_END) * 270)}deg`;
 }
 
 beforeEach(() => {
