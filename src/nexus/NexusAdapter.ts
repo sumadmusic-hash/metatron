@@ -98,11 +98,16 @@ export class NexusAdapter {
     public onDocumentConnectedChanged(callback: (connected: boolean) => void): () => void {
         this.connectionCleanup?.();
         if (!this.document) {
+            // B5 — Frühabbruch bereinigt auch die Property: ein verwaister
+            // Cleanup des VORHERIGEN Dokuments darf nicht als "ererbt"
+            // weiterleben, und der Aufrufer bekommt einen echten No-op.
+            this.connectionCleanup = undefined;
             callback(false);
             return () => {};
         }
         const notifier = (this.document as any).connected;
         if (!notifier || typeof notifier.subscribe !== "function") {
+            this.connectionCleanup = undefined;
             callback(true);
             return () => {};
         }
@@ -142,10 +147,18 @@ export class NexusAdapter {
         // a soft reconnect keeps the active bindings instead.
         const sameProject = this.lastProjectUrl !== undefined && projectUrl === this.lastProjectUrl;
 
+        // B5 — während des asynchronen open() darf weder das alte (gestoppte)
+        // Dokument noch der alte BindingManager sichtbar bleiben: parallele
+        // Aufrufe (updateBoundControl/subscribeBoundControl) würden sonst
+        // Bindings des VORHERIGEN Projekts gegen einen toten Document
+        // re-resolven. Erst nach erfolgreichem open werden beide frisch
+        // gesetzt — document zuerst, dann der neue bindingManager.
         if (this.document) {
             await this.document.stop();
             this.clearAllListeners();
         }
+        this.document = null;
+        this.bindingManager = null;
 
         this.document = await this.client.open(projectUrl);
         this.bindingManager = bindingManager;

@@ -119,3 +119,80 @@ describe("NexusAdapter — reconnect to the SAME project URL keeps active bindin
         expect(control.activeBindingState).toBe("DISCONNECTED");
     });
 });
+
+describe("NexusAdapter — B5 Transition-Reinheit in openProject / onDocumentConnectedChanged", () => {
+    function makeDoc(fieldValue = 0) {
+        const listeners = new Set<(v: number) => void>();
+        const field = { value: fieldValue, mutable: true, location: "L" };
+        const entity = { id: "e1", fields: { cutoff: field } };
+        return {
+            field,
+            entity,
+            events: {
+                onUpdate: (_f: unknown, cb: (v: number) => void) => {
+                    listeners.add(cb);
+                    return { terminate: () => listeners.delete(cb) };
+                },
+            },
+            queryEntities: { getEntity: (id: string) => (id === entity.id ? entity : undefined) },
+            stop: vi.fn(async () => {}),
+            start: vi.fn(async () => {}),
+        };
+    }
+
+    it("während des asynchronen open() sind document und bindingManager null", async () => {
+        const doc1 = makeDoc(0.4);
+        const doc2 = makeDoc(0.6);
+        let resolveOpen!: (d: any) => void;
+        let duringOpen: { document: unknown; bm: unknown } | undefined;
+        const gate = new Promise<any>((r) => (resolveOpen = r));
+
+        const adapter = new NexusAdapter();
+        const pending = [doc1];
+        (adapter as any).client = {
+            status: "authenticated",
+            open: vi.fn((_url: string) => {
+                // Synchron beim Aufruf erfassen, was dieser Axe der Adapter
+                // gerade preisgibt — Microtask-Flush unten umreißt den Punkt
+                // nach document.stop() und klar vor resolveOpen.
+                duringOpen = { document: adapter.document, bm: (adapter as any).bindingManager };
+                if (pending.length) return Promise.resolve(pending.shift()!);
+                return gate.then(() => doc2); // zweiter open hängt, bis entriegelt
+            }),
+        };
+        const manager = new BindingManager(new Device("A"));
+
+        // Erstconnect → konkreter Ausgangszustand (document != null).
+        await adapter.openProject("https://audiotool.com/project/1", manager);
+        expect(adapter.document).toBe(doc1);
+
+        const opening = adapter.openProject("https://audiotool.com/project/2", manager);
+        // Mikrotask-Flush: läuft durch await stop() + nullung + open()-Aufruf.
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(duringOpen!.document).toBeNull(); // kein gestopptes Alt-Dokument
+        expect(duringOpen!.bm).toBeNull(); // kein BindingManager des Vorgängers
+
+        resolveOpen(doc2);
+        await opening;
+        expect(adapter.document).toBe(doc2);
+        expect((adapter as any).bindingManager).toBe(manager);
+    });
+
+    it("Frühabbruch von onDocumentConnectedChanged räumt connectionCleanup", () => {
+        const adapter = new NexusAdapter();
+        const unsub = vi.fn();
+        (adapter as any).document = { connected: { subscribe: () => unsub } };
+
+        adapter.onDocumentConnectedChanged(vi.fn());
+        expect((adapter as any).connectionCleanup).toBe(unsub);
+
+        // Document weg (Verbindung gekappt) → Frühabbruch-Pfad.
+        adapter.document = null;
+        adapter.onDocumentConnectedChanged(vi.fn());
+        // Vor B5 blieb der verwaiste Cleanup des alten Dokuments im Zustand.
+        expect((adapter as any).connectionCleanup).toBeUndefined();
+    });
+});
