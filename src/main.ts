@@ -7,6 +7,31 @@ import { AppUI } from "./ui/AppUI";
 import { Toast } from "./ui/Toast";
 import { installBuiltinUICurves, getParameterUICurve, BUILTIN_UI_CURVES } from "./nexus/ParameterUICurve";
 
+/** B6 — nicht blockierende Auth nach dem ersten Render: der OAuth-Handshake
+ *  wird nie AWAITED bevor die Oberfläche steht (kein impliziter login()-Timer
+ *  mehr, authenticate() ist passiv) und ein Fehler kippt den Boot nicht. */
+async function launchAuth(nexusAdapter: NexusAdapter): Promise<void> {
+    // Set VITE_AUDIOTOOL_CLIENT_ID in your environment for a real client;
+    // this dev fallback only works if it matches a registered application.
+    const CLIENT_ID = import.meta.env.VITE_AUDIOTOOL_CLIENT_ID || "e498c930-864a-4ef0-8d57-b8a176bee096";
+    try {
+        const isAuthenticated = await nexusAdapter.authenticate(CLIENT_ID);
+        console.log(`Nexus Authenticated: ${isAuthenticated}`);
+    } catch (e) {
+        console.error("Nexus Authentication Failed", e);
+    }
+}
+
+/** B6 — MIDI-Init hinter dem Render, Fehler abgefangen statt Boot-Optimist. */
+async function launchMidi(midiAccess: MidiAccess): Promise<void> {
+    try {
+        const hasMidi = await midiAccess.initialize();
+        console.log(`MIDI Initialized: ${hasMidi}`);
+    } catch (e) {
+        console.error("MIDI Initialization Failed", e);
+    }
+}
+
 async function bootstrap() {
     console.log("Starting Metatron...");
 
@@ -43,28 +68,16 @@ async function bootstrap() {
         Toast.show("Speicherfehler: Geräte konnten nicht geladen werden. Starte mit leerem Zustand.", "error");
     }
 
-    // 2. Initialize Nexus Adapter
+    // 2. Infrastruktur synchron konstruieren (nur Factory-Aufrufe, kein I/O).
     const nexusAdapter = new NexusAdapter();
-    // Set VITE_AUDIOTOOL_CLIENT_ID in your environment for a real client;
-    // this dev fallback only works if it matches a registered application.
-    const CLIENT_ID = import.meta.env.VITE_AUDIOTOOL_CLIENT_ID || "e498c930-864a-4ef0-8d57-b8a176bee096";
-    
-    try {
-        const isAuthenticated = await nexusAdapter.authenticate(CLIENT_ID);
-        console.log(`Nexus Authenticated: ${isAuthenticated}`);
-    } catch (e) {
-        console.error("Nexus Authentication Failed", e);
-    }
-    
-    // 3. Initialize MIDI
     const midiAccess = new MidiAccess();
-    const hasMidi = await midiAccess.initialize();
-    console.log(`MIDI Initialized: ${hasMidi}`);
 
-    // 4. Initialize Binding Manager (created per current device; null-safe in AppUI)
+    // 3. Binding Manager (created per current device; null-safe in AppUI)
     const bindingManager: BindingManager | null = deviceLibrary.currentDevice ? new BindingManager(deviceLibrary.currentDevice) : null;
 
-    // 5. Mount UI
+    // 4. Mount UI FIRST (B6): die Oberfläche muss sofort da sein; Auth und
+    //    MIDI laufen danach fire-and-forget, ohne das erste Render zu warten
+    //    oder die Seite via implizitem Login weiterzureißen.
     const rootElement = document.getElementById("app");
     if (rootElement) {
         const appUI = new AppUI(
@@ -76,6 +89,11 @@ async function bootstrap() {
         );
         appUI.render();
     }
+
+    // 5. Nicht-blockierender Start: Auth + MIDI NACH dem Render, je
+    //    Fehler-toleriert. (B6 — kein `await` vor dem Render.)
+    void launchAuth(nexusAdapter);
+    void launchMidi(midiAccess);
 }
 
 bootstrap().catch(console.error);

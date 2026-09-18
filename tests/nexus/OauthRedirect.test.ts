@@ -1,8 +1,12 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { resolveOauthRedirectUrl } from "../../src/nexus/NexusAdapter";
+import { resolveOauthRedirectUrl, NexusAdapter } from "../../src/nexus/NexusAdapter";
+
+vi.mock("@audiotool/nexus", () => ({
+    audiotool: vi.fn(async () => ({ status: "unauthenticated", login: vi.fn() })),
+}));
 
 describe("OAuth redirect URL is origin-derived (no development-host hardcode)", () => {
 
@@ -24,5 +28,16 @@ describe("OAuth redirect URL is origin-derived (no development-host hardcode)", 
         expect(redirectLine).toBeTruthy();
         expect(redirectLine).toMatch(/resolveOauthRedirectUrl\(window\.location\.origin\)/);
         expect(redirectLine).not.toMatch(/127\.0\.0\.1/);
+    });
+});
+
+describe("authenticate() — kein impliziter login()-Redirect beim Laden (B6)", () => {
+    it("unauthenticated client → false, ohne client.login() zu feuern", async () => {
+        const adapter = new NexusAdapter();
+        const isAuthenticated = await adapter.authenticate("b6-client");
+        expect(isAuthenticated).toBe(false);
+        // B6: der Boot darf die Seite nicht per OAuth-Redirect wegwerfen; die
+        // Anmeldung bleibt eine explizite Nutzeraktion.
+        expect((adapter as any).client.login).not.toHaveBeenCalled();
     });
 });

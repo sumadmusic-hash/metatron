@@ -127,8 +127,11 @@ export class NexusAdapter {
         });
         
         if (this.client.status === "unauthenticated") {
-            // Need user interaction for popup/redirect, but here we trigger redirect
-            this.client.login();
+            // B6 — KEIN impliziter login()-Redirect beim Laden der App: ein
+            // OAuth-Wechsel würde die gerade gebaute Oberfläche sofort wieder
+            // wegwerfen. authenticate() ist reiner passiver Zustandsbericht;
+            // eine explizite Anmeldung erfolgt über einen Login-Aktionspfad.
+            console.log(`[METATRON NEXUS] unauthenticated — no implicit login redirect (B6)`);
             return false;
         }
         this.currentUser = resolveCurrentUser(this.client, () => this.lookupIdToken());
