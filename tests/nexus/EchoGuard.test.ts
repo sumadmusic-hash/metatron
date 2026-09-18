@@ -273,3 +273,23 @@ describe("Echo-Guard - delayed/offset echoes (B12 ring)", () => {
         expect(received).toEqual([0.7]);
     });
 });
+
+describe("B9 — Echo-Pfad-Logging hinter dem Verbose-Gate", () => {
+    it("ein onUpdate-Echo-Roundtrip emittiert KEIN console.log (vor consumeEcho)", () => {
+        const doc = fakeDocument();
+        const { control } = makeDeviceAndControl();
+        const manager = bind(doc, control);
+        const adapter = makeAdapter(doc, manager);
+        adapter.subscribeBoundControl(control.id);
+
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        try {
+            // Jeder eigene Write kommt hier als Echo zurück, BEVOR consumeEcho
+            // ihn verwirft — dieser Callback darf im Hit-Pfad nicht loggen.
+            doc.fire(0.5);
+            expect(log).not.toHaveBeenCalled();
+        } finally {
+            log.mockRestore();
+        }
+    });
+});

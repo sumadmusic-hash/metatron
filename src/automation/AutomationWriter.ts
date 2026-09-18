@@ -122,6 +122,15 @@ export function samplesToEvents(
     const ordered = [...samples].sort((a, b) => a.timeSeconds - b.timeSeconds);
     const events: WriteEvent[] = [];
     let lastTick: number | undefined;
+    // B9 — Warnung EINMAL vor der Schleife statt pro Sample: bei langen Takes
+    // (hunderte Samples) wäre dasselbe Double-Tapering sonst als Tornado im
+    // Log (der Zustand ändert sich pro Sample nicht).
+    if (hasUICurve && taper) {
+        console.warn(
+            `[METATRON AUTOMATION] double-taper guard active for key — UI curve exists, ` +
+                `registered taper ignored (value is already in the target space).`
+        );
+    }
     for (const s of ordered) {
         // F9 — round BEFORE the dedup comparison (float ticks would never
         // match exactly, so near-identical sample times kept creating both
@@ -129,12 +138,6 @@ export function samplesToEvents(
         const tick = Math.round(secondsToTicks(s.timeSeconds, bpm));
         let value = s.normalizedValue;
 
-        if (hasUICurve && taper) {
-            console.warn(
-                `[METATRON AUTOMATION] double-taper guard active for key — UI curve exists, ` +
-                    `registered taper ignored (value is already in the target space).`
-            );
-        }
         if (!hasUICurve && taper) {
             // Nur anwenden, wenn KEINE UI-Kurve existiert, aber ein Taper
             // registriert ist (der Live-Pfad hat den Wert sonst schon gemappt).

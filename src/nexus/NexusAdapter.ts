@@ -7,6 +7,16 @@ import { taperKey } from "./CurveRegistry";
 import { getParameterUICurve, uiToNexusNorm, nexusNormToUi } from "./ParameterUICurve";
 import { resolveCurrentUser, type CurrentUser } from "./CurrentUser";
 
+/** B9 — Verbose-Gate für die Hot-Path-Logs. Jeder erfolgreiche Modulations-
+ *  Write feuert hier den Write-Log UND — weil der Write per onUpdate als
+ *  Eigen-Echo zurückkommt und erst NACH dem Log konsumiert (consumeEcho) wird —
+ *  wenig später den Event-Log desselben Werts: ein modulierter Wertwechsel =
+ *  zwei console.log. Bei bis zu 4 Writes/Tick × ~30 Hz rattert das schnell.
+ *  Die vier Log-Zweige (CURVE/kein-Curve, je Write+Event) hängen alle hinter
+ *  diesem Schalter. Fehlerzustände (console.warn-Refusals, console.error-Catch)
+ *  bleiben bewusst immer sichtbar. */
+const NEXUS_VERBOSE_LOGGING = false;
+
 /**
  * Resolve the OAuth redirect URL from the browser's current origin.
  *
@@ -233,14 +243,18 @@ export class NexusAdapter {
             await this.document.modify(t => {
                 t.update(field, mapped);
             });
-            if (uiCurve) {
-                console.log(
-                    `[METATRON CURVE] control=${controlId} field=${path} ` +
-                        `ui=${Number(value).toFixed(4)} → nexusNorm=${nexusNorm.toFixed(4)} → raw=${mapped} ` +
-                        `curve=${uiCurve.points.length}pts (source:${uiCurve.source})`
-                );
-            } else {
-                console.log(`[METATRON NEXUS WRITE] control=${controlId} field=${path} normalized=${Number(value).toFixed(4)} -> nexus=${mapped}`);
+            // B9 — beide Log-Zweige hinter dem Verbose-Gate (Hit-Pfad: jeder
+            // modulierte Write loggt hier UND als Eigen-Echo im onUpdate).
+            if (NEXUS_VERBOSE_LOGGING) {
+                if (uiCurve) {
+                    console.log(
+                        `[METATRON CURVE] control=${controlId} field=${path} ` +
+                            `ui=${Number(value).toFixed(4)} → nexusNorm=${nexusNorm.toFixed(4)} → raw=${mapped} ` +
+                            `curve=${uiCurve.points.length}pts (source:${uiCurve.source})`
+                    );
+                } else {
+                    console.log(`[METATRON NEXUS WRITE] control=${controlId} field=${path} normalized=${Number(value).toFixed(4)} -> nexus=${mapped}`);
+                }
             }
             return true;
         } catch (e) {
@@ -359,14 +373,19 @@ export class NexusAdapter {
             const nexusNorm = mapNexusToNormalized(mapping, newValue);
             // Nexus-normalized → Metatron UI 0..1 (gemessene Audiotool-Knob-Position).
             const uiNorm = nexusNormToUi(uiCurve, nexusNorm);
-            if (uiCurve) {
-                console.log(
-                    `[METATRON CURVE] control=${controlId} field=${path} ` +
-                        `raw=${String(newValue)} → nexusNorm=${nexusNorm.toFixed(4)} → ui=${uiNorm.toFixed(4)} ` +
-                        `curve=${uiCurve.points.length}pts (source:${uiCurve.source})`
-                );
-            } else {
-                console.log(`[METATRON NEXUS EVENT] control=${controlId} field=${path} nexus=${String(newValue)} normalized=${nexusNorm.toFixed(4)}`);
+            // B9 — beide Log-Zweige hinter dem Verbose-Gate: dieser Callback
+            // empfängt JEDEN eigenen Write als Echo (der consumeEcho-Guard
+            // liegt erst NACH dem Log), sonst doppelt sich jeder Wertwechsel.
+            if (NEXUS_VERBOSE_LOGGING) {
+                if (uiCurve) {
+                    console.log(
+                        `[METATRON CURVE] control=${controlId} field=${path} ` +
+                            `raw=${String(newValue)} → nexusNorm=${nexusNorm.toFixed(4)} → ui=${uiNorm.toFixed(4)} ` +
+                            `curve=${uiCurve.points.length}pts (source:${uiCurve.source})`
+                    );
+                } else {
+                    console.log(`[METATRON NEXUS EVENT] control=${controlId} field=${path} nexus=${String(newValue)} normalized=${nexusNorm.toFixed(4)}`);
+                }
             }
             // FIX 1 (Phase 2) — absorb our own write's echo BEFORE it is
             // re-applied to the UI: the round-trip value matches the guard,

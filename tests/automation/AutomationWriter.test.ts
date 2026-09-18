@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createOfflineDocument } from "@audiotool/nexus/node";
 import { Ticks, secondsToTicks } from "@audiotool/nexus/utils";
 import { TargetType, getSchemaLocationDetails } from "@audiotool/nexus/document";
@@ -593,6 +593,25 @@ describe("B68 — sampled values are converted into the Audiotool-tapered automa
     it("without a taper the values stay unchanged (identity regression)", () => {
         const events = samplesToEvents(KNOWN_SAMPLES, 120);
         expect(events.map((e) => e.value)).toEqual([0.0, 0.5, 1.0]);
+    });
+
+    it("B9 — double-taper guard warns ONCE, not once per sample (log from the hot loop)", () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+            const many = Array.from({ length: 60 }, (_unused, i) => ({
+                timeSeconds: i * 0.05,
+                normalizedValue: i / 60,
+            }));
+            const events = samplesToEvents(many, 120, CUTOFF98, true /* hasUICurve */);
+            expect(events.length).toBeGreaterThan(1);
+            // hasUICurve ⇒ Wert ist bereits im Zielraum, Taper wird NICHT
+            // angewandt (Double-Taper-Guard) — der Wert bleibt linear.
+            expect(events[0].value).toBe(0);
+            const taperWarns = warn.mock.calls.filter((c) => String(c[0]).includes("double-taper"));
+            expect(taperWarns).toHaveLength(1); // einmal, NICHT 60×
+        } finally {
+            warn.mockRestore();
+        }
     });
 
     it("same-tick dedup keeps the CONVERTED latest value", () => {

@@ -163,3 +163,47 @@ describe("M6 write guards — refusals never call modify and never stay pending"
         expect(modify).not.toHaveBeenCalled();
     });
 });
+
+describe("B9 — Hot-Path-Write-Logging hinter dem Verbose-Gate", () => {
+    const connectedDoc = (modify: any) => ({
+        connected: { getValue: () => true },
+        queryEntities: { getEntity: () => ({}), get: () => [] },
+        events: { onUpdate: () => () => {} },
+        modify,
+    });
+
+    it("erfolgreicher Write ist still (kein console.log); Refusals bleiben sichtbar", async () => {
+        const modify = vi.fn(async () => {});
+        const doc: any = connectedDoc(modify);
+        const device = new Device("B9");
+        const control = new Control("knob", "K");
+        device.addControl(control);
+        const manager = new BindingManager(device);
+        const field = { location: "L", value: 0.5, mutable: true };
+        manager.setBinding(control.id, "e1", "feedbackFactor", "stompboxDelay / feedbackFactor", field, "feedbackFactor");
+        // Deterministische Mapping-fähige Feldform (Fake ohne Schema).
+        (manager.getActiveBinding(control.id) as any).valueMapping = {
+            kind: "linear", min: 0, max: 1, isInteger: false, typeLabel: "number",
+        };
+        const adapter = makeAdapter(doc, manager, control.id, field);
+
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+            const ok = await adapter.updateBoundControl(control.id, 0.4);
+            expect(ok).toBe(true);
+            expect(modify).toHaveBeenCalledTimes(1);
+            // B9 — der Hit-Pfad (Write + Eigen-Echo) loggt nicht mehr.
+            expect(log).not.toHaveBeenCalled();
+
+            // Fehlerzustände sind bewusst NICHT gegatet und bleiben sichtbar:
+            (doc as any).connected = { getValue: () => false };
+            const refused = await adapter.updateBoundControl(control.id, 0.4);
+            expect(refused).toBe(false);
+            expect(warn.mock.calls.some((c) => String(c[0]).includes("refused"))).toBe(true);
+        } finally {
+            log.mockRestore();
+            warn.mockRestore();
+        }
+    });
+});
