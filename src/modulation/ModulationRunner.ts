@@ -107,6 +107,12 @@ export class ModulationRunner {
             cancelAnimationFrame(this.rafId);
             this.rafId = null;
         }
+        // B3 — Snap-back der aktiven Mod-Ziele auf ihren Basiswert, damit der
+        // Klang hörbar aufhört statt auf dem letzten Mod-Wert schweben zu
+        // bleiben. Läuft VOR gestureTakeover.clear(), damit ein gerade vom
+        // User gegriffener Regler nicht freigegeben wird (Takeover = User
+        // hält ihn, kein Snap-back).
+        this.activeDestinationIds.forEach((id) => this.writeBaseValueToNexus(id));
         this.gestureTakeover.clear();
         this.activeDestinationIds.forEach((id) => this.surfaceUI.applyModDisplay(id, null));
         this.activeDestinationIds.clear();
@@ -133,7 +139,10 @@ export class ModulationRunner {
             // B38 — make sure the previously active mod displays go idle when
             // the last enabled slot is disabled mid-run; otherwise stale amber
             // arcs stay on the surface although the matrix is inactive.
-            this.activeDestinationIds.forEach((id) => this.surfaceUI.applyModDisplay(id, null));
+            this.activeDestinationIds.forEach((id) => {
+                this.writeBaseValueToNexus(id); // B3 — Basiswert hörbar machen
+                this.surfaceUI.applyModDisplay(id, null);
+            });
             this.activeDestinationIds.clear();
             this.lastModValue.clear(); // B42 — no stale deltas across re-activation
             this.gestureTakeover.clear(); // B43 — stale takeovers never survive matrix deactivation
@@ -165,6 +174,7 @@ export class ModulationRunner {
 
         for (const id of this.activeDestinationIds) {
             if (!destinations.has(id)) {
+                this.writeBaseValueToNexus(id); // B3 — Ziel weg → Basiswert hörbar
                 this.surfaceUI.applyModDisplay(id, null);
                 this.activeDestinationIds.delete(id);
                 this.lastModValue.delete(id); // B42 — cleanup
@@ -227,6 +237,26 @@ export class ModulationRunner {
             idx = (idx + 1) % total;
         }
         this.lastProcessedDestinationIndex = idx;
+    }
+
+    /** B3 — schreibt den Basiswert eines Ziels genau einmal nach Nexus, wenn
+     *  dieses aufhört moduliert zu werden (stop(), Matrix-Deaktivierung,
+     *  Ziel-Verschwinden): fire-and-forget, bewusst NICHT durch die
+     *  Mod-Fahrspuren (Per-Control-Cap / inFlight) blockiert — ein Snap-back
+     *  ist ein One-Shot und darf nie von den Throttles verschluckt werden.
+     *  Guards: nur aktives Binding, nicht archiviert, nicht im Gesture-
+     *  Takeover. Kein Recorder-Capture: der Snap-back ist ein Controller-Move,
+     *  keine Mod-Aufnahme. */
+    private writeBaseValueToNexus(controlId: string): void {
+        const device = this.getDevice();
+        const control = device?.getControl(controlId);
+        if (!control || control.archived) return;
+        if (this.gestureTakeover.get(controlId)) return;
+        if (!this.bindingManager.getActiveBinding(controlId)) return;
+
+        const baseValue = control.value;
+        this.nexusAdapter.beginSuppressEcho(controlId, baseValue);
+        this.nexusAdapter.updateBoundControl(controlId, baseValue);
     }
 
     /** Writes a modulated value to Nexus (F2 per-control write-cap +

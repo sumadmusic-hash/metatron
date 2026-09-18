@@ -476,6 +476,147 @@ describe("ModulationRunner — Takeover-Klemmfalle", () => {
 });
 
 /* ------------------------------------------------------------------ *
+ *  Tests: B3 Snap-back (Basiswert nach Nexus beim Stop der Mod)
+ * ------------------------------------------------------------------ */
+
+describe("ModulationRunner — B3 Snap-back", () => {
+    it("stop() schreibt den Basiswert jedes aktiven Ziels einmal nach Nexus", () => {
+        const device = makeModDevice();
+        const { runner, adapter } = makeRunner(device, "IDLE");
+
+        runner.start();
+        (runner as any).startTimeSec = 0;
+        (runner as any).tick(450); // tSec 0.45 → mod 0.809, wird geschrieben
+
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(1);
+
+        runner.stop();
+        // Der Snap-back passiert µs nach dem Mod-Write — die 33-ms-Fahrspur
+        // würde ihn schlucken; B3 umgeht sie bewusst (fire-and-forget).
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(2);
+        const [id, value] = adapter.updateBoundControl.mock.calls.at(-1);
+        expect(id).toBe("cutoff");
+        expect(value).toBe(0.5); // Kontroll-Basiswert, nicht der Mod-Wert
+        expect(adapter.beginSuppressEcho).toHaveBeenLastCalledWith("cutoff", 0.5);
+    });
+
+    it("verschwundenes Ziel bekommt seinen Basiswert (Ziel-weg-Schleife)", () => {
+        const device = new Device("Runner");
+        const c1 = new Control("knob", "Cutoff", { x: 0, y: 0 }, "c1");
+        c1.value = 0.5;
+        const c2 = new Control("knob", "Reso", { x: 0, y: 1 }, "c2");
+        c2.value = 0.5;
+        device.addControl(c1);
+        device.addControl(c2);
+
+        const matrix = createDefaultMatrix();
+        matrix.slots[0].enabled = true;
+        matrix.slots[0].destControlId = "c1";
+        matrix.slots[0].amount = 1;
+        matrix.slots[0].sourceId = matrix.sources[0].id;
+        matrix.slots[1].enabled = true;
+        matrix.slots[1].destControlId = "c2";
+        matrix.slots[1].amount = 1;
+        matrix.slots[1].sourceId = matrix.sources[0].id;
+        device.modulation = matrix;
+
+        const { runner, adapter, surface } = makeRunner(device, "IDLE");
+        runner.start();
+        (runner as any).startTimeSec = 0;
+        (runner as any).tick(450); // c1 + c2 werden moduliert und geschrieben
+
+        matrix.slots[0].enabled = false;
+        (runner as any).tick(600); // c1 verschwindet aus destinations
+
+        expect(runner.isModulated("c1")).toBe(false);
+        expect(runner.isModulated("c2")).toBe(true);
+        const [id, value] = adapter.updateBoundControl.mock.calls.at(-1);
+        expect(id).toBe("c1");
+        expect(value).toBe(0.5); // Basiswert, nicht der letzte Mod-Wert
+        expect(surface.applyModDisplay).toHaveBeenCalledWith("c1", null);
+    });
+
+    it("Matrix-Deaktivierung schreibt die Basiswerte (Frühabbruch)", () => {
+        const device = makeModDevice();
+        const { runner, adapter, surface } = makeRunner(device, "IDLE");
+
+        runner.start();
+        (runner as any).startTimeSec = 0;
+        (runner as any).tick(450);
+
+        device.modulation.slots[0].enabled = false;
+        (runner as any).tick(600); // Frühabbruch, kein aktiver Slot mehr
+
+        expect(runner.isModulated("cutoff")).toBe(false);
+        const [id, value] = adapter.updateBoundControl.mock.calls.at(-1);
+        expect(id).toBe("cutoff");
+        expect(value).toBe(0.5);
+        expect(surface.applyModDisplay).toHaveBeenCalledWith("cutoff", null);
+    });
+
+    it("kein Snap-back für archivierte Ziele", () => {
+        const device = makeModDevice();
+        const { runner, adapter } = makeRunner(device, "IDLE");
+
+        runner.start();
+        (runner as any).startTimeSec = 0;
+        (runner as any).tick(450);
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(1);
+
+        device.getControl("cutoff")!.softDelete(); // archiviert
+        runner.stop();
+
+        // Archivierte Controls sind nie hörbar → kein Basiswert-Write.
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(1);
+        expect(adapter.beginSuppressEcho).toHaveBeenCalledTimes(1);
+    });
+
+    it("kein Snap-back ohne aktives Binding", () => {
+        const device = makeModDevice();
+        const adapter = mockAdapter();
+        const bm = { getActiveBinding: vi.fn().mockReturnValue(undefined) } as unknown as BindingManager;
+        const recorder = mockRecorder("IDLE");
+        const surface = mockSurfaceUI();
+        const runner = new ModulationRunner(
+            () => device,
+            () => 120,
+            adapter,
+            bm,
+            recorder as any,
+            surface
+        );
+
+        runner.start();
+        (runner as any).startTimeSec = 0;
+        (runner as any).tick(450);
+        expect(runner.isModulated("cutoff")).toBe(true); // Nadel an...
+
+        runner.stop();
+
+        // ...aber ohne Binding wird weder der Mod-Wert noch der Basiswert
+        // nach Nexus geschrieben (nichts zu hören).
+        expect(adapter.updateBoundControl).not.toHaveBeenCalled();
+        expect(adapter.beginSuppressEcho).not.toHaveBeenCalled();
+    });
+
+    it("kein Snap-back während Gesture-Takeover (User hält den Regler)", () => {
+        const device = makeModDevice();
+        const { runner, adapter } = makeRunner(device, "IDLE");
+
+        runner.start();
+        (runner as any).startTimeSec = 0;
+        runner.setGestureTakeover("cutoff", true);
+        (runner as any).tick(450);
+        runner.stop();
+
+        // Während des Takeover wird der Regler weder moduliert noch auf den
+        // Basiswert zurückgezogen — der User besitzt den Wert gerade.
+        expect(adapter.updateBoundControl).not.toHaveBeenCalled();
+        expect(adapter.beginSuppressEcho).not.toHaveBeenCalled();
+    });
+});
+
+/* ------------------------------------------------------------------ *
  *  Tests: applyModDisplay idle-Toggle
  * ------------------------------------------------------------------ */
 
