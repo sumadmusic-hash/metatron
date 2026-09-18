@@ -210,6 +210,56 @@ describe("ParameterUICurve — registry", () => {
     });
 });
 
+// ── B12: rejected curves never clobber the registry ─────────────────────
+
+describe("ParameterUICurve — B12: rejected curves never clobber the registry", () => {
+    const GOOD: ParameterUICurve = {
+        source: "measured",
+        measuredAt: "",
+        points: [
+            { ui: 0, nexus: 0 },
+            { ui: 0.5, nexus: 0.5 },
+            { ui: 1, nexus: 1 },
+        ],
+    };
+    const BAD: ParameterUICurve = {
+        source: "measured",
+        measuredAt: "",
+        points: [
+            { ui: 0, nexus: 0 },
+            { ui: 0.5, nexus: 0.8 },
+            { ui: 1, nexus: 0.3 }, // non-monotonic!
+        ],
+    };
+
+    it("a non-monotonic curve must NOT overwrite an existing good curve under the same key", () => {
+        const key = "test:b12-clobber";
+        registerParameterUICurve(key, GOOD);
+        expect(getParameterUICurve(key)).toBeTruthy();
+
+        registerParameterUICurve(key, BAD);
+
+        // Old behavior stored `undefined` under the key — the good measured
+        // curve silently vanished (data loss → identity fallback). The reject
+        // must leave the existing curve untouched.
+        const c = getParameterUICurve(key);
+        expect(c).toBeDefined();
+        expect(c?.points.length).toBe(GOOD.points.length);
+        expect(uiToNexusNorm(c, 0.5)).toBeCloseTo(0.5, 6);
+        unregisterParameterUICurve(key);
+    });
+
+    it("a rejected fresh key stays absent (identity fallback), later good register works", () => {
+        const key = "test:b12-fresh";
+        registerParameterUICurve(key, BAD);
+        expect(getParameterUICurve(key)).toBeUndefined();
+
+        registerParameterUICurve(key, GOOD);
+        expect(getParameterUICurve(key)).toBeDefined();
+        unregisterParameterUICurve(key);
+    });
+});
+
 // ── Regression: concrete bug for Pulverisateur cutoff ───────────────────
 
 describe("ParameterUICurve — regression test for Pulverisateur Cutoff", () => {

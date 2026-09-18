@@ -52,8 +52,18 @@ export interface ParameterUICurve {
 
 const UI_REGISTRY = new Map<string, ParameterUICurve>();
 
+/** Registriert eine parametrische UI-Kurve (sanitized). Eine nicht
+ *  invertierbare (nicht-monotone) Kurve wird ABGELEHNT und NICHT
+ *  registriert — weder unter einem neuen noch unter einem bestehenden Key
+ *  (ein undefined-Overwrite würde eine gesunde Messkurve still löschen).
+ *  Abwesenheit im Registry = Identity-Fallback. */
 export function registerParameterUICurve(key: string, curve: ParameterUICurve): void {
-    UI_REGISTRY.set(key, sanitize(curve));
+    const clean = sanitize(curve);
+    if (!clean) {
+        console.warn(`[METATRON UI CURVE] non-monotonic curve rejected for "${key}" — identity fallback, existing curve (falls vorhanden) bleibt`);
+        return;
+    }
+    UI_REGISTRY.set(key, clean);
 }
 
 export function getParameterUICurve(key: string): ParameterUICurve | undefined {
@@ -160,7 +170,10 @@ export function nexusNormToUi(curve: ParameterUICurve | undefined, nexus: number
 
 // ── Sanitize (sort, dedup, enforce endpoints, reject non-monotonic) ────
 
-function sanitize(curve: ParameterUICurve): ParameterUICurve {
+/** Sanitized curve, or undefined when the points are not invertible
+ *  (non-monotonic nexus) — the caller must then NOT register anything.
+ *  Identity (kein Eintrag) ist der dokumentierte Fallback. */
+function sanitize(curve: ParameterUICurve): ParameterUICurve | undefined {
     const sorted = [...curve.points]
         .map((p) => ({ ui: clamp01(p.ui), nexus: clamp01(p.nexus) }))
         .sort((a, b) => a.ui - b.ui || a.nexus - b.nexus);
@@ -187,7 +200,7 @@ function sanitize(curve: ParameterUICurve): ParameterUICurve {
                 `[METATRON UI CURVE] rejected non-monotonic nexus at ui=${deduped[i].ui} ` +
                     `(${deduped[i - 1].nexus} → ${deduped[i].nexus}), falling back to identity`
             );
-            return undefined as unknown as ParameterUICurve;
+            return undefined;
         }
     }
 
