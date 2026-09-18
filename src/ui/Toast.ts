@@ -2,6 +2,12 @@
 export class Toast {
     private static container: HTMLElement | null = null;
 
+    /** Obergrenze gleichzeitig sichtbarer Toasts. Gestapelte Fail-Serien
+     *  (z. B. Storage-Daueraustfall während einer Renderschleife) dürfen die
+     *  Toast-Spalte nie unbegrenzt anwachsen lassen — älteste werden sofort
+     *  entfernt, die jüngste Meldung bleibt sichtbar. */
+    private static readonly MAX_VISIBLE_TOASTS = 3;
+
     private static ensureContainer(): HTMLElement {
         if (!Toast.container) {
             Toast.container = document.createElement("div");
@@ -26,6 +32,9 @@ export class Toast {
             "box-shadow:0 8px 30px rgba(0,0,0,0.5);max-width:70vw;";
         el.innerText = message;
         container.appendChild(el);
+        while (container.children.length > Toast.MAX_VISIBLE_TOASTS) {
+            container.removeChild(container.firstChild!);
+        }
         window.setTimeout(() => {
             el.style.transition = "opacity 0.3s";
             el.style.opacity = "0";
