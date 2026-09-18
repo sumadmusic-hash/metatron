@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Device } from "../../src/core/model/Device";
 import { Control } from "../../src/core/model/Control";
 import { DeviceLibrary } from "../../src/core/DeviceLibrary";
@@ -85,5 +85,59 @@ describe("B7 — Mode switch cancels pending learns and respects detached subtre
         // reRender must not throw and must NOT re-attach the container
         expect(() => surface.reRender()).not.toThrow();
         expect(document.contains(container)).toBe(false);
+    });
+
+    describe("B8 — knob drag cleanup releases the gesture takeover", () => {
+        function mountSurfaceWithTakeover(): { surface: any; root: HTMLElement; takeover: ReturnType<typeof vi.fn> } {
+            const { app } = mount();
+            const surface: any = (app as any).surfaceUI;
+            const root = (app as any).root as HTMLElement;
+            const takeover = vi.fn();
+            surface.onGestureTakeover = takeover as any;
+            surface.render(root);
+            return { surface, root, takeover };
+        }
+
+        function dragStart(surface: any): HTMLElement {
+            const body = surface.container.querySelector<HTMLElement>(".knob-body")!;
+            body.dispatchEvent(new PointerEvent("pointerdown", { pointerId: 1, clientY: 100, bubbles: true }));
+            return body;
+        }
+
+        it("reRender releases a takeover mid-drag (pointerup never fires on the rebuilt DOM)", () => {
+            const { surface, takeover } = mountSurfaceWithTakeover();
+            dragStart(surface);
+
+            // Drag is live — modulation for the control is suspended.
+            expect(takeover).toHaveBeenCalledWith("c1", true);
+
+            // A rebuild mid-gesture (external Nexus change, MIDI learn, …)
+            // destroys the knob node with its listeners.
+            surface.reRender();
+
+            // The takeover must NOT stay stuck.
+            expect(takeover).toHaveBeenCalledWith("c1", false);
+            expect(surface.gestureControlId).toBeNull();
+        });
+
+        it("lostpointercapture releases the takeover (pointerup/cancel never fire)", () => {
+            const { surface, takeover } = mountSurfaceWithTakeover();
+            const body = dragStart(surface);
+            expect(takeover).toHaveBeenCalledWith("c1", true);
+
+            // Browser reclaims/forced capture release: neither pointerup nor
+            // pointercancel is guaranteed here.
+            body.dispatchEvent(new PointerEvent("lostpointercapture", { pointerId: 1, bubbles: true }));
+
+            expect(takeover).toHaveBeenCalledWith("c1", false);
+            expect(surface.gestureControlId).toBeNull();
+
+            // A subsequent move must no longer change the control value — the
+            // dead gesture is inert, not live-but-stuck.
+            const control = surface.deviceLibrary.currentDevice.getControl("c1");
+            const before = control.value;
+            body.dispatchEvent(new PointerEvent("pointermove", { pointerId: 1, clientY: 60, bubbles: true }));
+            expect(control.value).toBe(before);
+        });
     });
 });

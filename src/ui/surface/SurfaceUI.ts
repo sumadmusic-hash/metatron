@@ -38,6 +38,10 @@ private container!: HTMLElement;
      *  nachgeführte container.parentElement — ein abgehängter Container hätte
      *  null und reRender() würde blind auf ein toten Knoten rendern. */
     private mountParent: HTMLElement | null = null;
+    /** B8 — laufender Knob-Drag (ControlId). reRender() zerstört den Knoten
+     *  samt Listenern mitten in der Geste, dann kämen pointerup/pointercancel
+     *  nie mehr an und das Modulations-Takeover bliebe dauerhaft hängen. */
+    private gestureControlId: string | null = null;
     private nexusLearnFlow: NexusLearnFlow | null = null;
     private midiLearn: MidiLearn;
     private midiHandler: (channel: number, cc: number, value: number) => void;
@@ -604,6 +608,7 @@ private container!: HTMLElement;
             dragging = true;
             startY = e.clientY;
             startValue = control.value;
+            this.gestureControlId = control.id;
             body.setPointerCapture(e.pointerId);
             // Phase 2 — the user's hand owns this control while the drag is
             // live: the runner suspends its modulation writes/captures.
@@ -617,13 +622,20 @@ private container!: HTMLElement;
             this.updateControlElement(control.id, value);
         });
         const endGesture = () => {
+            if (!dragging) return;
             dragging = false;
+            this.gestureControlId = null;
             // Phase 2 — a cancelled pointer must not leave a stuck takeover:
             // pointerup AND pointercancel both release it.
             this.onGestureTakeover?.(control.id, false);
         };
         body.addEventListener("pointerup", endGesture);
         body.addEventListener("pointercancel", endGesture);
+        // B8 — the pointer-capture-loss path neither pointerup nor
+        // pointercancel covers (element removed mid-gesture, browser forcing a
+        // reclaim, window blur): the gesture can no longer continue, so the
+        // takeover is released here too instead of being stuck.
+        body.addEventListener("lostpointercapture", endGesture);
     }
 
     private attachSwitchClick(body: HTMLElement, control: any) {
@@ -702,6 +714,15 @@ private container!: HTMLElement;
     }
 
     private reRender() {
+        // B8 — jeder Rebuild mitten in einem Knob-Drag beendet die Geste:
+        // deren Knoten (samt pointer-Listenern) wird gleich ersetzt, ein
+        // pointerup/pointercancel/lostpointercapture käme nie mehr an — das
+        // Modulations-Takeover bliebe hängen. Immer erst freigeben (auch bei
+        // abgehängtem Subtree), dann evtl. neu rendern.
+        if (this.gestureControlId !== null) {
+            this.onGestureTakeover?.(this.gestureControlId, false);
+            this.gestureControlId = null;
+        }
         // B7 — NUR rendern, solange die Fläche im live-Dokument hängt. Nach
         // Mode-/Device-Wechsel wurde der alte mountParent vom AppUI-Rebuild
         // verworfen (document.contains=false); ein blindes Re-Render würde auf
