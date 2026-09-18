@@ -18,6 +18,8 @@ import type { MidiBindingDefinition } from "../../core/model/types";
 const KNOB_RADIUS = 42;
 const KNOB_ARC_END = 0.75 * 2 * Math.PI * KNOB_RADIUS;
 
+export { KNOB_RADIUS, KNOB_ARC_END };
+
 /**
  * USE-mode control surface. Controls are interactive here:
  * - knobs: vertical drag; switches: click to toggle
@@ -302,7 +304,9 @@ private container!: HTMLElement;
             track.setAttribute("cy", "50");
             track.setAttribute("r", String(KNOB_RADIUS));
             const circumference = 2 * Math.PI * KNOB_RADIUS;
-            track.setAttribute("stroke-dasharray", `${circumference} ${circumference}`);
+            // G2 — Track endet bei 270° wie der Wertbogen (EDIT-Maske hat
+            // ebenfalls `transparent 270deg`): kein Vollkreis durch die Lücke.
+            track.setAttribute("stroke-dasharray", `${KNOB_ARC_END} ${circumference}`);
 
             const valueArc = document.createElementNS(svgNS, "circle");
             valueArc.classList.add("knob-svg-value");
