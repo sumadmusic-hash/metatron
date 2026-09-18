@@ -96,7 +96,7 @@ export function evaluateSource(
         return a + (b - a) * frac;
     }
 
-    const phase = ((src.phase ?? 0) % 1 + tSec / period) % 1;
+    const phase = ((((src.phase ?? 0) % 1) + 1) % 1 + tSec / period) % 1;
     return clamp(wave(phase, src.waveform ?? "sine"), -1, 1);
 }
 

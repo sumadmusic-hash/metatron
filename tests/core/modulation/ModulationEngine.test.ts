@@ -67,6 +67,18 @@ describe("ModulationEngine — LFO waveforms", () => {
         expect(evaluateSource(s, 0.49, 120, () => 0, alwaysActive)).toBe(1);
         expect(evaluateSource(s, 0.51, 120, () => 0, alwaysActive)).toBe(-1);
     });
+
+    it("OPT — a negative phase is normalized into [0,1): saw matches the equivalent positive phase", () => {
+        // phase=-0.75 bypass case (direkte Zuweisung an src.phase; der
+        // Deserialize-Clamp deckt den Import-Pfad ab). JS % behaelt das
+        // Vorzeichen, die Auswertung musste aber [0,1)-normalisiert sein.
+        const neg = source({ id: "p", waveform: "saw", rateHz: 1, phase: -0.75 });
+        const pos = source({ id: "q", waveform: "saw", rateHz: 1, phase: 0.25 });
+        expect(evaluateSource(neg, 0, 120, () => 0, alwaysActive)).toBeCloseTo(
+            evaluateSource(pos, 0, 120, () => 0, alwaysActive),
+            6
+        );
+    });
 });
 
 describe("ModulationEngine — tempo sync", () => {
