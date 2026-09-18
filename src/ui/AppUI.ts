@@ -985,6 +985,14 @@ export class AppUI {
         return this.nexusAdapter.isDocumentConnected() ? "Connected" : "Disconnected (no sync)";
     }
 
+    /** B7 — alle laufenden Lernvorgänge beider Oberflächen abbrechen (Mode-/
+     *  Device-/View-Wechsel). Werden nicht abgebrochen, leuchten ihre Bars in
+     *  die andere Ansicht hinein und die Lern-Promise hängt bis zum Timeout. */
+    private cancelPendingLearns(): void {
+        this.surfaceUI.cancelPendingLearns();
+        this.editorUI.cancelPendingLearns();
+    }
+
     private applyStatusText(text: string, color: string) {
         this.currentConnectionStatus = { text, color };
         if (this.connectionStatusEl) {
@@ -1057,6 +1065,10 @@ export class AppUI {
             // USE mode favors maximum controller width, so start the library
             // collapsed there; EDIT restores normal library access.
             this.sidebarCollapsed = this.currentMode === "USE";
+            // B7 — offene Lerns beider Oberflächen abbrechen, BEVOR die Ansicht
+            // wechselt: die Learn-Bar der anderen Mode darf weder anleuchten
+            // noch eine hängende Promise hinterlassen.
+            this.cancelPendingLearns();
             // Leaving USE closes the mod-matrix drawer (EDIT exposes no MOD).
             if (this.currentMode === "EDIT" && this.modMatrixOpen) {
                 this.modMatrixOpen = false;

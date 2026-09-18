@@ -61,7 +61,13 @@ export class MidiLearn {
         }
 
         this.state = "LEARNING";
-        this.previousCallback = currentCallback;
+        // B7 — Handler-Identität beim Reset: der zu restaurierende Handler ist
+        // das, was VOR dem Learn installiert war. Liefert der Aufrufer keinen
+        // expliziten Rückgabe-Handler, greifen wir auf den zum Learn-Zeitpunkt
+        // tatsächlich installierten zurück — ein konfigurationslos gestartetes
+        // Learn riss sonst die App-Pipeline aus (reset() restauriert sonst
+        // nichts und der Learn-Handler bliebe dauerhaft drin).
+        this.previousCallback = currentCallback ?? this.midiAccess.getMessageHandler() ?? undefined;
         this.timeout = undefined;
 
         const timeoutMs = options.timeoutMs;

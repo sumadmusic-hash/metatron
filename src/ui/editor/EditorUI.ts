@@ -161,6 +161,17 @@ export class EditorUI {
         this.clearColorGesture();
     }
 
+    /** B7 — laufende Lernvorgänge (MIDI + Nexus) abbrechen und Overlay-Zustand
+     *  räumen (Mode-/View-Wechsel). Kein reRender hier: der Aufrufer (AppUI)
+     *  baut die Ansicht im nächsten Schritt ohnehin neu. */
+    public cancelPendingLearns(): void {
+        if (this.midiLearningId !== null) {
+            this.midiLearn?.cancelLearn();
+            this.midiLearningId = null;
+        }
+        this.nexusLearnFlow?.cancel();
+    }
+
     public render(parent: HTMLElement) {
         // Every color-picker gesture dies with its DOM elements: the canvas is
         // being rebuilt, so the next gesture must capture a fresh baseline

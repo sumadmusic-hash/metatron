@@ -36,6 +36,13 @@ export class MidiAccess {
         this.onMessageCallback = callback;
     }
 
+    /** B7 — der aktuell installierte Handler. MidiLearn braucht ihn als
+     *  Restore-Fallback, wenn ein Learn ohne expliziten Rückgabe-Handler
+     *  gestartet wird: so überlebt die App-Pipeline ihren Learn unbeschadet. */
+    public getMessageHandler(): ((channel: number, cc: number, value: number) => void) | null {
+        return this.onMessageCallback ?? null;
+    }
+
     private handleMidiMessage(event: MIDIMessageEvent) {
         if (!event.data || event.data.length < 3) return;
 

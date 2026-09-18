@@ -34,6 +34,10 @@ export class SurfaceUI {
     private onLocalChange: (controlId: string, value: number) => void;
 
 private container!: HTMLElement;
+    /** B7 — der zuletzt gemountete Elter (render-Kontrakt), NICHT der fragil
+     *  nachgeführte container.parentElement — ein abgehängter Container hätte
+     *  null und reRender() würde blind auf ein toten Knoten rendern. */
+    private mountParent: HTMLElement | null = null;
     private nexusLearnFlow: NexusLearnFlow | null = null;
     private midiLearn: MidiLearn;
     private midiHandler: (channel: number, cc: number, value: number) => void;
@@ -121,6 +125,9 @@ private container!: HTMLElement;
             this.container.appendChild(this.buildMidiLearningBar());
         }
 
+        // B7 — Mount-Parent explizit merken; reRender() prüft gegen genau
+        // diesen Knoten (nicht gegen container.parentElement).
+        this.mountParent = parent;
         parent.innerHTML = "";
         parent.appendChild(this.container);
     }
@@ -695,6 +702,24 @@ private container!: HTMLElement;
     }
 
     private reRender() {
-        this.render(this.container.parentElement!);
+        // B7 — NUR rendern, solange die Fläche im live-Dokument hängt. Nach
+        // Mode-/Device-Wechsel wurde der alte mountParent vom AppUI-Rebuild
+        // verworfen (document.contains=false); ein blindes Re-Render würde auf
+        // den abgehängten Subtree zugreifen und Legende/Oberfläche verfälschen.
+        if (!this.mountParent || !document.contains(this.mountParent)) return;
+        this.render(this.mountParent);
+    }
+
+    /** B7 — laufende Lernvorgänge (MIDI + Nexus) abbrechen und Overlays
+     *  räumen (Mode-/View-Wechsel): weder die Learn-Bar noch die prüfende
+     *  Promise sollen eine andere Ansicht anleuchten oder hängenbleiben.
+     *  NexusLearnFlow.cancel() re-rendert selbst; die MIDI-Seite räumt vorher
+     *  ihre Lern-Bar. */
+    public cancelPendingLearns(): void {
+        if (this.midiLearn.isActive()) {
+            this.midiLearn.cancelLearn(); // fail() → reject + reset (Handler-Identität bleibt)
+            this.reRender();
+        }
+        this.nexusLearnFlow?.cancel();
     }
 }

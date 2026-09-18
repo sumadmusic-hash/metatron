@@ -10,6 +10,10 @@ class FakeMidiAccess extends MidiAccess {
         this.installedHandler = callback;
     }
 
+    public override getMessageHandler(): ((channel: number, cc: number, value: number) => void) | null {
+        return this.installedHandler as any;
+    }
+
     public trigger(channel: number, cc: number, value: number) {
         this.installedHandler?.(channel, cc, value);
     }
@@ -88,5 +92,24 @@ describe("MidiLearn state machine — every path settles the promise (§25-27)",
 
         access.trigger(2, 44, 77);
         await expect(second).resolves.toEqual({ channel: 2, cc: 44 });
+    });
+
+    it("B7 — Learn ohne Restore-Handler restauriert den installierten Handler in Identität", async () => {
+        // AppUI bootet: die App-Pipeline ist installiert.
+        const appPipeline = (_c: number, _cc: number, _v: number) => {};
+        access.setMessageHandler(appPipeline);
+
+        // Ein konfigurationsloses Learn (kein expliziter Rückgabe-Handler, wie
+        // in Tests/Fehlerpfaden) darf die Pipeline nicht entfernen.
+        const p = learn.startLearn(undefined, { timeoutMs: 5000 });
+        expect(learn.currentState).toBe("LEARNING");
+        // Der Learn-Handler liegt zwischen, die Pipeline ist verdrängt:
+        expect(access.installedHandler).not.toBe(appPipeline);
+
+        access.trigger(1, 1, 64);
+        await expect(p).resolves.toEqual({ channel: 1, cc: 1 });
+        expect(learn.currentState).toBe("IDLE");
+        // Identität wiederhergestellt — NICHT der Learn-Closure.
+        expect(access.installedHandler).toBe(appPipeline);
     });
 });
