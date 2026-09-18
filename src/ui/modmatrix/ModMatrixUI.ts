@@ -4,7 +4,7 @@ import type { ModSource, ModSlot, Waveform } from "../../core/modulation/Modulat
 import type { DeviceHistory } from "../../core/history/DeviceHistory";
 import type { BindingManager } from "../../core/BindingManager";
 import type { NexusAdapter } from "../../nexus/NexusAdapter";
-import { renderMatrixToRecording } from "../../modulation/BakeRenderer";
+import { renderMatrixToRecording, MAX_BAKE_BARS } from "../../modulation/BakeRenderer";
 import { writeAutomationRecording, readTempoBpm } from "../../automation/AutomationWriter";
 import { Toast } from "../Toast";
 
@@ -241,6 +241,7 @@ export class ModMatrixUI {
         bars.className = "mod-bake-bars";
         bars.type = "number";
         bars.min = "1";
+        bars.max = String(MAX_BAKE_BARS);
         bars.step = "1";
         bars.value = "4";
         barsLabel.appendChild(bars);
@@ -282,9 +283,15 @@ export class ModMatrixUI {
         renderBtn.className = "btn mod-bake-render";
         renderBtn.innerText = "Render";
         renderBtn.onclick = () => {
-            const rawBars = Number(bars.value);
+            const parsed = Number(bars.value);
+            const finite = Number.isFinite(parsed);
+            const rawBars = finite ? parsed : 1;
+            const clamped = Math.min(Math.max(Math.floor(rawBars), 1), MAX_BAKE_BARS);
+            if (finite && clamped !== rawBars) {
+                Toast.show(`Bake capped to ${MAX_BAKE_BARS} bars.`, "warning");
+            }
             const normalizedGrid = grid.value as "1/16" | "1/32";
-            void this.onBakeRequested(Number.isFinite(rawBars) && rawBars > 0 ? rawBars : 1, normalizedGrid);
+            void this.onBakeRequested(clamped, normalizedGrid);
         };
         actions.appendChild(renderBtn);
 

@@ -6,6 +6,8 @@ import { BindingManager } from "../../src/core/BindingManager";
 import { NexusAdapter } from "../../src/nexus/NexusAdapter";
 import { DeviceHistory } from "../../src/core/history/DeviceHistory";
 import { ModMatrixUI, sourceLabel } from "../../src/ui/modmatrix/ModMatrixUI";
+import { MAX_BAKE_BARS } from "../../src/modulation/BakeRenderer";
+import { Toast } from "../../src/ui/Toast";
 
 /**
  * Phase 2b — ModMatrixUI drawer (Source-Rack + Slot-Matrix) + history
@@ -39,6 +41,11 @@ function mount(ui: ModMatrixUI): HTMLElement {
 beforeEach(() => {
     document.body.innerHTML = "";
     localStorage.clear();
+    // Toast.container ist statisch gecacht; ein vorheriger Test (setTimeout
+    // laeuft zwischen den Tests), der die Body-Wipe bereits erlebt hat, wuerde
+    // sonst in einen detached Container schreiben und .toContain-Assertions
+    // order-abhaengig machen. Frischer Container pro Test.
+    (Toast as unknown as { container: HTMLElement | null }).container = null;
 });
 
 describe("ModMatrixUI — drawer", () => {
@@ -145,6 +152,29 @@ function lookupLabelFor(root: HTMLElement, input: Element): HTMLLabelElement | n
         expect(gridLabel).toBeTruthy();
         expect(gridLabel?.htmlFor).toBe("");
         expect(gridLabel?.control).toBe(grid);
+    });
+
+    it("B13 - bake dialog caps the bars input at MAX_BAKE_BARS", () => {
+        const { ui } = makeDeps(makeDevice());
+        const container = mount(ui);
+        container.querySelector<HTMLButtonElement>(".mod-matrix-bake")?.click();
+        const bars = container.querySelector<HTMLInputElement>("#mod-bake-bars");
+        expect(bars?.max).toBe(String(MAX_BAKE_BARS));
+        expect(bars?.min).toBe("1");
+    });
+
+    it("B13 - an absurd bars value is clamped before rendering (warning toast, no unbounded bake)", () => {
+        const { ui } = makeDeps(makeDevice());
+        const container = mount(ui);
+        container.querySelector<HTMLButtonElement>(".mod-matrix-bake")?.click();
+
+        const bars = container.querySelector<HTMLInputElement>("#mod-bake-bars");
+        bars!.value = "999999";
+        container.querySelector<HTMLButtonElement>(".mod-bake-render")?.click();
+
+        // The handler clamps to MAX_BAKE_BARS and surfaces the cap - it never
+        // feeds 999999 bars into the renderer (old behavior: unbounded loop).
+        expect(document.body.innerText).toContain(`Bake capped to ${MAX_BAKE_BARS} bars.`);
     });
 
     it("bake with no open document surfaces an error toast", () => {

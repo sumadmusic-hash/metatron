@@ -17,6 +17,13 @@ export interface BakeOptions {
     grid: "1/16" | "1/32";
 }
 
+/** Harte Obergrenze für einen Offline-Render: 64 Takte × 1/32 → 2048 Steps.
+ *  Verhindert, dass ein unplausibler bars-Wert (z. B. 1e9 aus einem
+ *  Dialog-Input) den Render in eine nicht mehr terminierbare Sample-Schleife
+ *  laufen lässt. Die UI clammt denselben Wert; diese Konstante ist die
+ *  zweite Verteidigungslinie für jeden anderen Aufrufer. */
+export const MAX_BAKE_BARS = 64;
+
 /**
  * Bake the (edited) modulation matrix into a static automation recording.
  *
@@ -33,7 +40,7 @@ export function renderMatrixToRecording(
     device: Device,
     options: BakeOptions
 ): AutomationRecording {
-    const rawBars = options.bars > 0 ? options.bars : 1;
+    const rawBars = Math.min(Number.isFinite(options.bars) && options.bars > 0 ? Math.floor(options.bars) : 1, MAX_BAKE_BARS);
     const barTicks = Ticks.SemiBreve;
     const totalTicks = rawBars * barTicks;
     const stepTicks = options.grid === "1/16" ? barTicks / 16 : barTicks / 32;

@@ -3,7 +3,7 @@ import { Ticks } from "@audiotool/nexus/utils";
 import { Device } from "../../src/core/model/Device";
 import { Control } from "../../src/core/model/Control";
 import { createDefaultMatrix } from "../../src/core/modulation/ModulationTypes";
-import { renderMatrixToRecording } from "../../src/modulation/BakeRenderer";
+import { renderMatrixToRecording, MAX_BAKE_BARS } from "../../src/modulation/BakeRenderer";
 
 /**
  * Phase 3 — BakeRenderer: the matrix is rasterized deterministically on the
@@ -81,6 +81,20 @@ describe("renderMatrixToRecording", () => {
         );
         // 4 bars at 125 BPM = 4 * (240/125) seconds = 7.68s
         expect(recording.durationSeconds).toBeCloseTo(7.68, 2);
+    });
+
+    it("B13 — clamps an absurd bars value to MAX_BAKE_BARS (no unbounded sample loop)", () => {
+        const device = makeDevice();
+        const recording = renderMatrixToRecording(
+            device.modulation,
+            device,
+            { bars: 1000, startTick: 0, projectBpm: 120, grid: "1/32" }
+        );
+
+        // 1000 bars would mean 32000 samples (32/bar) — old code rendered them
+        // all; the renderer must cap at MAX_BAKE_BARS instead of spinning.
+        expect(recording.durationSeconds).toBeCloseTo(MAX_BAKE_BARS * (240 / 120), 1);
+        expect(recording.tracks[0].samples).toHaveLength(MAX_BAKE_BARS * 32);
     });
 
     /** Macro source bound to an (unarchived) control: the control VALUE must
