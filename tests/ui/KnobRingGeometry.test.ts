@@ -114,4 +114,10 @@ describe("USE Glow-Ring Geometrie (G1–G5)", () => {
             /\.knob-svg-ring\s*\{[^}]*filter:\s*drop-shadow\(0\s+0\s+4px\s+var\(--knob-arc-color\)\)/,
         );
     });
+
+    it("G5 — Wert-Bogen hat harte Kanten wie die Conic-Maske (butt statt round): kein Cyan-Punkt bei Wert 0", () => {
+        expect(STYLES).toMatch(
+            /\.knob-svg-ring \.knob-svg-value\s*\{[^}]*stroke-linecap:\s*butt/,
+        );
+    });
 });

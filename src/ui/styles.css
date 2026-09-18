@@ -853,13 +853,16 @@ body {
     fill: none;
     stroke: var(--knob-ring-track);
     stroke-width: 4.5;
-    stroke-linecap: round;
+    stroke-linecap: butt;
 }
 .knob-svg-ring .knob-svg-value {
     fill: none;
     stroke: var(--knob-arc-color);
     stroke-width: 4.5;
-    stroke-linecap: round;
+    /* G5 — butt statt round: Bei Wert 0 ist die sichtbare Dash-Länge 0; mit
+       round-Caps rendern Browser das als Cyan-Punkt am Bogenanfang. Hart wie
+       die Conic-Kante in EDIT (.knob-led-ring), kein Punkt in Nullstellung. */
+    stroke-linecap: butt;
     transition: stroke-dashoffset 0.05s linear;
 }
 .knob-body.modulated .knob-svg-ring {
