@@ -33,12 +33,34 @@ export class BindingManager {
 
     /** Re-point the manager at another Device (device switching, Phase B).
      *  Same-instance refreshes (preset load, undo/redo, rename) must NOT
-     *  destroy the current project's live bindings. */
+     *  destroy the current project's live bindings.
+     *
+     *  B1 — EINHEITLICHER Wechsel-Begriff (ID, nicht Referenz), abgestimmt mit
+     *  `AppUI.onDeviceChanged` (AppUI.ts:948): "gleiche ID, neue Instanz" (z. B.
+     *  Undo/Redo einer Library-Aktion über `realizeDevice`, DeviceLibrary-Import)
+     *  ist eine REHYDRIERUNG, kein Wechsel — `activeBindings` bleiben erhalten
+     *  und werden auf die neuen Control-Instanzen übertragen ("CONNECTED" neu
+     *  gepinnt; `Control.deserialize` setzt das Flag sonst auf "DISCONNECTED").
+     *  Nur bei abweichender ID wird geleert. Damit stimmen `getActiveBinding`
+     *  und `control.activeBindingState` nach dem Undo nie auseinander. */
     public setDevice(device: Device) {
         if (device === this.device) {
             return;
         }
+        const sameDeviceId = device.id === this.device.id;
         this.device = device;
+        if (sameDeviceId) {
+            // Rehydrierung: bestehende Bindings auf die neuen Control-Instanzen
+            // übertragen ("CONNECTED" neu pinnen — Control.deserialize setzt das
+            // Flag bei der Neurealisierung sonst auf "DISCONNECTED"). Die
+            // Live-Feld-Referenzen bleiben gültig: das Nexus-Dokument hat sich
+            // nicht geändert, nur die Device-Wrapper-Objekte sind neu.
+            for (const controlId of this.activeBindings.keys()) {
+                const control = this.device.getControl(controlId);
+                if (control) control.activeBindingState = "CONNECTED";
+            }
+            return;
+        }
         this.activeBindings.clear();
     }
 

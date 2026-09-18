@@ -945,6 +945,9 @@ export class AppUI {
             // manager — a stale Nexus event for an old control id must never
             // bleed into the newly active device. Same-device refreshes
             // (preset load, undo/redo, rename) keep their live subscriptions.
+            // B1 — BindingManager.setDevice nutzt denselben ID-Begriff:
+            // "gleiche ID, neue Instanz" ist Rehydrierung (Bindings bleiben),
+            // abweichende ID ein echter Wechsel (Bindings werden geleert).
             if (this.bindingManager.deviceRef.id !== device.id) {
                 this.nexusAdapter.clearBoundControlSubscriptions();
             }

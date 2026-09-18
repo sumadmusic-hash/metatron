@@ -601,3 +601,61 @@ describe("DeviceHistory — restore at the 32-control cap (P1/I1)", () => {
         expect(live.getActiveControlCount()).toBe(32);
     });
 });
+
+describe("DeviceHistory — B1: same-id library undo must not kill live bindings silently", () => {
+
+    it("restoreLibraryState re-realizes the ACTIVE device (same id): bindings survive and flags stay CONNECTED", () => {
+        const lib = new DeviceLibrary();
+        const a = lib.createNewDevice("A");
+        addKnob(a, "Cutoff", 100, 100);
+        lib.saveCurrentDevice();
+        lib.createNewDevice("Z");
+        lib.saveCurrentDevice();
+
+        // A is the live, bound device (fresh instance from storage).
+        const aLive = lib.loadDevice(a.id)!;
+        const k = aLive.controls.values().next().value!;
+        const bm = new BindingManager(aLive);
+        bm.setBinding(k.id, "entity-1", "cutoff", "Cutoff", { location: "filter.cutoff" }, "filter.cutoff");
+        expect(bm.getActiveBinding(k.id)).toBeDefined();
+        expect(aLive.getControl(k.id)!.activeBindingState).toBe("CONNECTED");
+
+        // Library action that does NOT switch the active device: delete Z.
+        const history = new DeviceHistory(lib);
+        const before = history.captureLibraryState();
+        lib.deleteDevice(lib.listDevices().find((d) => d.id !== a.id)!.id);
+        const after = history.captureLibraryState();
+        history.record({ type: "device.delete", scope: "library", deviceId: null, before, after });
+
+        // The undo re-realizes A via realizeDevice → FRESH instance, SAME id.
+        expect(history.undo()).toBe(true);
+        const restored = lib.currentDevice!;
+        expect(restored.id).toBe(a.id);
+        expect(restored).not.toBe(aLive);
+
+        // AppUI.onDeviceChanged side effect (same file, ID-compare): same id →
+        // subscriptions stay, setDevice = Rehydrierung, nie ein Mix aus
+        // gültigem Binding und abgeklemmtem Control.
+        bm.setDevice(restored);
+
+        expect(bm.getActiveBinding(k.id)).toBeDefined();
+        expect(bm.getActiveBinding(k.id)!.fieldPath).toBe("filter.cutoff");
+        expect(restored.getControl(k.id)!.activeBindingState).toBe("CONNECTED");
+    });
+
+    it("a true device switch (different id) still clears bindings", () => {
+        const lib = new DeviceLibrary();
+        const a = lib.createNewDevice("A");
+        addKnob(a, "Cutoff", 100, 100);
+        lib.saveCurrentDevice();
+        const bm = new BindingManager(lib.loadDevice(a.id)!);
+        const k = bm.deviceRef.controls.values().next().value!;
+        bm.setBinding(k.id, "entity-1", "cutoff", "Cutoff", {}, "filter.cutoff");
+        expect(bm.getActiveBinding(k.id)).toBeDefined();
+
+        const b = lib.createNewDevice("B");
+        bm.setDevice(b);
+        expect(bm.getActiveBinding(k.id)).toBeUndefined();
+        expect(bm.deviceRef.id).toBe(b.id);
+    });
+});
