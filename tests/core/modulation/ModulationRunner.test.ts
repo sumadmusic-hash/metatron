@@ -174,6 +174,9 @@ describe("ModulationRunner — Capture-Arbitration", () => {
     });
 
     it("RECORDING captures ONLY values writeControl actually applies (S2 regression)", () => {
+        // F2: the write-cap is PER-CONTROL, so two enabled destinations in one
+        // tick are both served and both captured (recorded == applied, FIX S2).
+        // The pre-F2 global cap starved everything but the first destination.
         const device = new Device("Runner");
         const c1 = new Control("knob", "Cutoff", { x: 0, y: 0 }, "c1");
         c1.value = 0.5;
@@ -198,8 +201,89 @@ describe("ModulationRunner — Capture-Arbitration", () => {
         runner.start();
         (runner as any).tick(performance.now());
 
-        // First write passes → captured. Second write is blocked by
-        // WRITE_INTERVAL_MS → MUST NOT be captured (recorded == applied, FIX S2).
+        // Both destinations pass the per-control WRITE_INTERVAL_MS cap in the
+        // same tick and are captured — no starvation (F2).
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(2);
+        expect(recorder.capture).toHaveBeenCalledTimes(2);
+    });
+
+    it("F2 — no write-cap starvation: 3 destinations are all served in one tick", () => {
+        const device = new Device("Runner");
+        ["c1", "c2", "c3"].forEach((id, i) => {
+            const c = new Control("knob", id, { x: 0, y: i }, id);
+            c.value = 0.5;
+            device.addControl(c);
+        });
+        const matrix = createDefaultMatrix();
+        for (let i = 0; i < 3; i++) {
+            matrix.slots[i].enabled = true;
+            matrix.slots[i].destControlId = `c${i + 1}`;
+            matrix.slots[i].amount = 1;
+            matrix.slots[i].sourceId = matrix.sources[0].id;
+        }
+        device.modulation = matrix;
+
+        const { runner, recorder, adapter } = makeRunner(device, "RECORDING");
+        runner.start();
+        (runner as any).tick(performance.now());
+
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(3);
+        expect(recorder.capture).toHaveBeenCalledTimes(3);
+        for (const id of ["c1", "c2", "c3"]) {
+            expect(recorder.capture).toHaveBeenCalledWith(id, expect.any(Number), "knob");
+        }
+    });
+
+    it("F2 — round-robin caps writes at MAX_WRITES_PER_TICK (5th destination rolls over)", () => {
+        const device = new Device("Runner");
+        ["c1", "c2", "c3", "c4", "c5"].forEach((id, i) => {
+            const c = new Control("knob", id, { x: 0, y: i }, id);
+            c.value = 0.5;
+            device.addControl(c);
+        });
+        const matrix = createDefaultMatrix();
+        for (let i = 0; i < 5; i++) {
+            matrix.slots[i].enabled = true;
+            matrix.slots[i].destControlId = `c${i + 1}`;
+            // amount 0.6 keeps the modulated value off the 0/1 clamps so it
+            // genuinely changes between the two ticks (B42 never swallows it).
+            matrix.slots[i].amount = 0.6;
+            matrix.slots[i].sourceId = matrix.sources[0].id;
+        }
+        device.modulation = matrix;
+
+        const { runner, recorder, adapter } = makeRunner(device, "RECORDING");
+        runner.start();
+        // Deterministic timeline: startTimeSec = 0 → tick(tMs) yields
+        // tSec = tMs/1000 (sine phase shifts visibly between ticks).
+        (runner as any).startTimeSec = 0;
+
+        // First tick: at most MAX_WRITES_PER_TICK (4) actual Nexus writes;
+        // the 5th destination is deferred (round-robin cursor at index 4).
+        (runner as any).tick(450);
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(4);
+        expect(recorder.capture).toHaveBeenCalledTimes(4);
+
+        // Second tick: the deferred destination is served first (roll-over);
+        // the four written µs ago are still inside their 33 ms per-control cap
+        // and are NOT rewritten.
+        (runner as any).tick(600);
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(5);
+        expect(recorder.capture).toHaveBeenCalledTimes(5);
+    });
+
+    it("F2 — per-control cap still throttles ONE destination across ticks (< 33 ms)", () => {
+        const device = makeModDevice();
+        const { runner, recorder, adapter } = makeRunner(device, "RECORDING");
+
+        runner.start();
+        (runner as any).tick(performance.now());
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(1);
+
+        // Second tick happens µs later: the value is still off-base, so the
+        // write is ATTEMPTED but the per-control 33 ms cap blocks it (and with
+        // it the capture — recorded == applied).
+        (runner as any).tick(performance.now());
         expect(adapter.updateBoundControl).toHaveBeenCalledTimes(1);
         expect(recorder.capture).toHaveBeenCalledTimes(1);
     });

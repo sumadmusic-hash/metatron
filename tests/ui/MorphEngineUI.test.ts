@@ -106,9 +106,14 @@ function move(s: HTMLInputElement, value: string) {
 }
 
 function knobValue(root: HTMLElement, controlId: string): string {
-    const el = root.querySelector<HTMLElement>(`[data-ctl-id="${controlId}"] .knob-led-ring`);
+    // F10 — the arc is an SVG stroke now: dashoffset = ARC_END·(1−v), read it
+    // back into the readable "value·270°" angle domain (same assertions as the
+    // old conic-gradient `--knob-arc-end`).
+    const el = root.querySelector<SVGCircleElement>(`[data-ctl-id="${controlId}"] .knob-svg-value`);
     expect(el).toBeTruthy();
-    return el!.style.getPropertyValue("--knob-arc-end");
+    const dash = parseFloat(el!.getAttribute("stroke-dashoffset") ?? "0");
+    const arc = 0.75 * 2 * Math.PI * 42;
+    return `${Math.round((1 - dash / arc) * 270)}deg`;
 }
 
 beforeEach(() => {

@@ -11,6 +11,13 @@ import { isModulated } from "../../core/modulation/ModulationMatrix";
 import { WRITE_REFUSED_CLASS, WRITE_REFUSED_TITLE } from "../writeRefusal";
 import type { MidiBindingDefinition } from "../../core/model/types";
 
+/** F10 — vector knob ring geometry: the arc is drawn on a circular SVG path
+ *  (r42, viewBox 100). Total path length C = 2πr; the visible arc is 270° of
+ *  the circle (= 0.75·C). dashoffset = ARC_END·(1 − value) → value/1 fills
+ *  the base value's arc (replaces the sub-pixel-aliased conic-gradient band). */
+const KNOB_RADIUS = 42;
+const KNOB_ARC_END = 0.75 * 2 * Math.PI * KNOB_RADIUS;
+
 /**
  * USE-mode control surface. Controls are interactive here:
  * - knobs: vertical drag; switches: click to toggle
@@ -37,7 +44,7 @@ private container!: HTMLElement;
     /** Phase 2 — rendered element cache (FIX 10): every control's live DOM
      *  refs, rebuilt on each render, so per-tick value updates never query the
      *  container again. */
-    private ctlElements = new Map<string, { ring: HTMLElement | null; pos: HTMLElement | null; sw: HTMLElement | null; modRing: HTMLElement | null }>();
+    private ctlElements = new Map<string, { svgValue: SVGCircleElement | null; pos: HTMLElement | null; sw: HTMLElement | null; modRing: HTMLElement | null }>();
 
     constructor(
         deviceLibrary: DeviceLibrary,
@@ -130,8 +137,10 @@ private container!: HTMLElement;
     private updateControlElement(controlId: string, value: number) {
         const refs = this.ctlElements.get(controlId);
         if (!refs) return;
-        if (refs.ring) {
-            refs.ring.style.setProperty("--knob-arc-end", `${value * 270}deg`);
+        if (refs.svgValue) {
+            // F10 — vector arc: dashoffset = ARC_END·(1−v) → the visible arc
+            // is exactly `value * 270°` (round caps, no sub-pixel aliasing).
+            refs.svgValue.setAttribute("stroke-dashoffset", String((1 - value) * KNOB_ARC_END));
         }
         if (refs.modRing) {
             refs.modRing.dataset.baseValue = String(value);
@@ -268,10 +277,32 @@ private container!: HTMLElement;
             socket.className = "knob-socket";
             body.appendChild(socket);
 
-            const ring = document.createElement("div");
-            ring.className = "knob-led-ring";
-            ring.style.setProperty("--knob-arc-end", `${control.value * 270}deg`);
-            body.appendChild(ring);
+            // F10 — vector indicator arc: SVG circles with stroke-dashoffset
+            // instead of the old conic-gradient + radial-mask band (which
+            // aliased at 1x zoom). Arc start −135° via CSS rotate on the svg.
+            const svgNS = "http://www.w3.org/2000/svg";
+            const svg = document.createElementNS(svgNS, "svg");
+            svg.setAttribute("viewBox", "0 0 100 100");
+            svg.classList.add("knob-svg-ring");
+
+            const track = document.createElementNS(svgNS, "circle");
+            track.classList.add("knob-svg-track");
+            track.setAttribute("cx", "50");
+            track.setAttribute("cy", "50");
+            track.setAttribute("r", String(KNOB_RADIUS));
+            const circumference = 2 * Math.PI * KNOB_RADIUS;
+            track.setAttribute("stroke-dasharray", `${circumference} ${circumference}`);
+
+            const valueArc = document.createElementNS(svgNS, "circle");
+            valueArc.classList.add("knob-svg-value");
+            valueArc.setAttribute("cx", "50");
+            valueArc.setAttribute("cy", "50");
+            valueArc.setAttribute("r", String(KNOB_RADIUS));
+            valueArc.setAttribute("stroke-dasharray", `${KNOB_ARC_END} ${circumference}`);
+            valueArc.setAttribute("stroke-dashoffset", String((1 - control.value) * KNOB_ARC_END));
+
+            svg.append(track, valueArc);
+            body.appendChild(svg);
 
             // Phase 2 — dynamic amber arc: base value → modulated value on the
             // ring band. Toggled by applyModDisplay; `.idle` hides it.
@@ -414,7 +445,7 @@ private container!: HTMLElement;
         // Phase 2 (FIX 10) — cache this control's live element refs once, so
         // the 60Hz tick and per-event updates never query the container again.
         this.ctlElements.set(control.id, {
-            ring: el.querySelector(".knob-led-ring"),
+            svgValue: el.querySelector(".knob-svg-value"),
             pos: el.querySelector(".knob-position"),
             sw: el.querySelector(".switch-body"),
             modRing: el.querySelector(".knob-mod-ring"),

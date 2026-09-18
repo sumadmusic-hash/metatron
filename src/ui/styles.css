@@ -826,6 +826,40 @@ body {
     --knob-arc-color: #ff9a00;
 }
 
+/* F10 — vector indicator arc (USE surface): replaces the conic-gradient +
+   radial-mask band whose sub-pixel edges aliased at 1x zoom. Same geometry as
+   the old band (r42, stroke 3.5 → wide 9% band at 82.5–91.5% of the socket
+   radius), but rendered as an SVG stroke with round caps. Arc start −135°
+   (CSS rotate), visible arc = value · 270° exactly (dashoffset, no pixels). */
+.knob-svg-ring {
+    --knob-ring-track: #1c202c;
+    --knob-arc-color: #00e5ff;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: rotate(-135deg);
+    pointer-events: none;
+    z-index: 2;
+}
+.knob-svg-ring .knob-svg-track {
+    fill: none;
+    stroke: var(--knob-ring-track);
+    stroke-width: 3.5;
+    stroke-linecap: round;
+}
+.knob-svg-ring .knob-svg-value {
+    fill: none;
+    stroke: var(--knob-arc-color);
+    stroke-width: 3.5;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.05s linear;
+}
+.knob-body.modulated .knob-svg-ring {
+    --knob-ring-track: #261b10;
+    --knob-arc-color: #ff9a00;
+}
+
 /* Dynamic modulation range overlay — a thinner warm-gold arc slicing the band
    from the base value to the current modulated value. Live only in USE mode. */
 /* Dynamic modulation range overlay — a thinner warm-gold arc slicing the band
@@ -924,6 +958,15 @@ body {
     );
     mask-image: radial-gradient(closest-side, transparent 95%, black 96%, black 98%, transparent 99%);
     -webkit-mask-image: radial-gradient(closest-side, transparent 95%, black 96%, black 98%, transparent 99%);
+}
+
+/* F10 — the 1x-zoom repeating-conic ticks of the cap rim alias badly at 1x
+   (sub-pixel dashes shimmer). Hide them below 1.5 dppx; the smooth socket and
+   bezel carry the rim at that resolution. */
+@media (max-resolution: 1.49dppx) {
+    .knob-rib {
+        display: none;
+    }
 }
 
 /* Concave dished top surface (concaveTop + dark rim + inner bright ring).

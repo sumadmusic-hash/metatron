@@ -4,9 +4,17 @@ import type { BindingManager } from "../core/BindingManager";
 import type { Device } from "../core/model/Device";
 import type { NexusAdapter } from "../nexus/NexusAdapter";
 
-/** Minimum wall-clock distance between two Nexus writes of ANY control
- *  (FIX 8 — write-cap). ≈30 writes/s max across the whole matrix. */
+/** Minimum wall-clock distance between two Nexus writes of THE SAME control
+ *  (FIX 8 + F2 — per-control write-cap). ≈30 writes/s max per destination.
+ *  The old global sink starved every destination after the first one per tick;
+ *  the cap is now scoped per control so modulated takes never thin out. */
 const WRITE_INTERVAL_MS = 33;
+
+/** F2 — hard ceiling of ACTUAL Nexus writes per rAF tick. Beyond this the
+ *  remaining (changed) destinations are deferred to the next tick via
+ *  round-robin, so a wide matrix never fires a write-transaction explosion
+ *  in a single frame while every destination still gets served fairly. */
+const MAX_WRITES_PER_TICK = 4;
 
 /** Minimum absolute change of the modulated value vs. the control's base value
  *  before a control is written again. Below this, the modulation has no
@@ -26,8 +34,11 @@ export interface ModulationSurfaceUI {
  *  - FIX 2 (Capture-Arbitration): while a destination is modulated, its
  *    recording capture happens HERE (only while the recorder is RECORDING),
  *    and a live user gesture (gestureTakeover) suspends its writes.
- *  - FIX 8 (Write-Cap): writes are capped at WRITE_INTERVAL_MS and guarded by
- *    an in-flight set so a slow Nexus write never piles up per control.
+ *  - FIX 8 + F2 (Write-Cap): writes of each control are capped at
+ *    WRITE_INTERVAL_MS (per-control, not global) and guarded by an in-flight
+ *    set so a slow Nexus write never piles up. A tick may apply at most
+ *    MAX_WRITES_PER_TICK destinations; surplus ones roll over via round-robin
+ *    so the whole matrix — not just the first destination — gets written.
  *  - FIX 1 (Echo-Guard): every Nexus write is preceded by
  *    beginSuppressEcho, so the round-trip event is absorbed by the adapter.
  */
@@ -41,7 +52,12 @@ export class ModulationRunner {
 
     private rafId: number | null = null;
     private startTimeSec = 0;
-    private lastWriteMs = 0;
+    /** F2 — last Nexus write per control (per-control write-cap instead of the
+     *  old global single slot that starved all but the first destination). */
+    private readonly lastWriteMsByControl = new Map<string, number>();
+    /** F2 — round-robin cursor: which destination the next tick starts writing
+     *  at, so no destination is systematically starved at the tick frontier. */
+    private lastProcessedDestinationIndex = 0;
     private readonly inFlight = new Set<string>();
     private readonly activeDestinationIds = new Set<string>();
     private readonly gestureTakeover = new Map<string, boolean>();
@@ -81,7 +97,8 @@ export class ModulationRunner {
     public start(): void {
         if (this.rafId !== null) return;
         this.startTimeSec = performance.now() / 1000;
-        this.lastWriteMs = 0;
+        this.lastWriteMsByControl.clear();
+        this.lastProcessedDestinationIndex = 0;
         this.rafId = requestAnimationFrame(this.loop);
     }
 
@@ -95,6 +112,10 @@ export class ModulationRunner {
         this.activeDestinationIds.clear();
         this.lastModValue.clear();
         this.inFlight.clear();
+        // F2 — state zurücksetzen bei Stop: die per-control Write-Caps und der
+        // Round-Robin-Cursor dürfen einen späteren Neustart nicht beeinflussen.
+        this.lastWriteMsByControl.clear();
+        this.lastProcessedDestinationIndex = 0;
     }
 
     private loop = (now: number): void => {
@@ -150,9 +171,15 @@ export class ModulationRunner {
             }
         }
 
-        destinations.forEach((value, controlId) => {
+        const entries = [...destinations.entries()];
+
+        // Phase 1 — display + gesture-takeover capture for EVERY destination
+        // (unchanged: the needle reflects the modulated value each frame, and
+        // takeover captures the base value the listener actually hears).
+        const writable: Array<[string, number]> = [];
+        for (const [controlId, value] of entries) {
             const last = this.lastModValue.get(controlId);
-            if (last === value) return; // B42 — skip redundant DOM writes
+            if (last === value) continue; // B42 — skip redundant DOM writes
             this.lastModValue.set(controlId, value);
             this.activeDestinationIds.add(controlId);
             this.surfaceUI.applyModDisplay(controlId, value);
@@ -164,28 +191,47 @@ export class ModulationRunner {
                         this.recorder.capture(controlId, baseValues[controlId] ?? value, control.type);
                     }
                 }
-                return;
+                continue;
             }
-            if (!this.bindingManager.getActiveBinding(controlId)) return;
+            if (!this.bindingManager.getActiveBinding(controlId)) continue;
+            writable.push([controlId, value]);
+        }
+
+        // Phase 2 — F2 round-robin writes, capped by MAX_WRITES_PER_TICK.
+        // Started at the last tick's cursor so every destination is served
+        // fairly; recorder capture is keyed to ACTUAL writes only (FIX S2).
+        const total = writable.length;
+        if (total === 0) return;
+        let writesThisTick = 0;
+        let idx = this.lastProcessedDestinationIndex % total;
+        let processed = 0;
+        while (processed < total && writesThisTick < MAX_WRITES_PER_TICK) {
+            const [controlId, value] = writable[idx];
+            processed++;
             const wrote = this.writeControl(controlId, value, baseValues[controlId] ?? 0);
-            if (wrote && this.recorder.currentState === "RECORDING") {
-                const control = device.getControl(controlId);
-                if (control && !control.archived) {
-                    this.recorder.capture(controlId, value, control.type);
+            if (wrote) {
+                writesThisTick++;
+                if (this.recorder.currentState === "RECORDING") {
+                    const control = device.getControl(controlId);
+                    if (control && !control.archived) {
+                        this.recorder.capture(controlId, value, control.type);
+                    }
                 }
             }
-        });
+            idx = (idx + 1) % total;
+        }
+        this.lastProcessedDestinationIndex = idx;
     }
 
-    /** Writes a modulated value to Nexus (FIX 8 write-cap + in-flight guard +
-     *  delta-epsilon jitter gate). The echo of this write is suppressed via
-     *  beginSuppressEcho (FIX 1). */
+    /** Writes a modulated value to Nexus (F2 per-control write-cap +
+     *  in-flight guard + delta-epsilon jitter gate). The echo of this write is
+     *  suppressed via beginSuppressEcho (FIX 1). */
     /** Returns true iff the value was ACTUALLY written to Nexus (i.e. passed
-     *  the write-cap, the delta-epsilon gate Reports, the archive guard, the
-     *  binding guard and the in-flight guard). Returns false when any of those
-     *  gates blocked the write. FIX S2: recording may ONLY capture a value
-     *  that was really applied — so tick() keys its recorder.capture() off this
-     *  return value (captured == angewendet). */
+     *  the per-control write-cap, the delta-epsilon gate Reports, the archive
+     *  guard, the binding guard and the in-flight guard). Returns false when
+     *  any of those gates blocked the write. FIX S2: recording may ONLY capture
+     *  a value that was really applied — so tick() keys its recorder.capture()
+     *  off this return value (captured == angewendet). */
     private writeControl(controlId: string, value: number, baseValue: number): boolean {
         if (this.inFlight.has(controlId)) return false;
 
@@ -195,10 +241,11 @@ export class ModulationRunner {
         if (!this.bindingManager.getActiveBinding(controlId)) return false;
 
         const now = performance.now();
-        if (now - this.lastWriteMs < WRITE_INTERVAL_MS) return false;
+        const lastWrite = this.lastWriteMsByControl.get(controlId) ?? 0;
+        if (now - lastWrite < WRITE_INTERVAL_MS) return false;
         if (Math.abs(value - baseValue) < DELTA_EPSILON) return false;
 
-        this.lastWriteMs = now;
+        this.lastWriteMsByControl.set(controlId, now);
         this.inFlight.add(controlId);
         this.nexusAdapter.beginSuppressEcho(controlId, value);
         this.nexusAdapter.updateBoundControl(controlId, value).finally(() => {

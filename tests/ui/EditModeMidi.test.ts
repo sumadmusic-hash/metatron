@@ -70,8 +70,9 @@ describe("EDIT mode MIDI handling", () => {
         midi.trigger(1, 20, 127);
 
         expect(c.value).toBe(1);
-        const ring = root.querySelector(`[data-ctl-id="${c.id}"] .knob-led-ring`) as HTMLElement | null;
+        const ring = root.querySelector(`[data-ctl-id="${c.id}"] .knob-svg-value`) as SVGCircleElement | null;
         expect(ring).not.toBeNull();
-        expect(ring!.style.getPropertyValue("--knob-arc-end")).toBe("270deg");
+        // F10 — value 1 → dashoffset 0 → full 270° arc.
+        expect(ring!.getAttribute("stroke-dashoffset")).toBe("0");
     });
 });

@@ -28,6 +28,7 @@ import type { BindingManager } from "../core/BindingManager";
 import type { AutomationRecording, AutomationSample } from "./AutomationRecording";
 import { resolveFieldByPath } from "../nexus/ChainPath";
 import { getTaper, linearToAutomation, taperKey as buildTaperKey } from "../nexus/CurveRegistry";
+import { getParameterUICurve } from "../nexus/ParameterUICurve";
 import type { TaperDef } from "../nexus/CurveRegistry";
 
 export type AutomationWriteFailureReason =
@@ -104,18 +105,42 @@ function isAutomatableField(field: any): boolean {
  *  B68 — Event-Werte liegen im AUDIOTOOL-Getaperten-Automation-Raum, nicht im
  *  Metatron-linear-normalisierten Raum: `linearToAutomation` rechnet den
  *  Sample-Wert um (Log-Taper gemäß Registry). Ohne registrierten Taper
- *  (Identity) bleibt alles beim bisherigen Verhalten. */
+ *  (Identity) bleibt alles beim bisherigen Verhalten.
+ *  F5 — sobald für den Feld-Key eine gemessene ParameterUICurve registriert
+ *  ist, hat der Live-Pfad den Sample-Wert bereits in den Zielraum (Audiotool-
+ *  Knob-Position) gemappt: Ein zusätzlicher Taper wäre "Double-Tapering" und
+ *  ist dann ein Fehler — der Wert wird unverändert (Identity) durchgereicht.
+ *  F9 — `secondsToTicks` liefert Floats; vor der Same-Tick-Deduplizierung wird
+ *  der Tick auf den nächsten Integer gerundet, damit µs-Jitter innerhalb des
+ *  Samples nicht zwei Events auf (fast) denselben Tick erzeugt. */
 export function samplesToEvents(
     samples: AutomationSample[],
     bpm: number,
-    taper?: TaperDef
+    taper?: TaperDef,
+    hasUICurve: boolean = false
 ): WriteEvent[] {
     const ordered = [...samples].sort((a, b) => a.timeSeconds - b.timeSeconds);
     const events: WriteEvent[] = [];
     let lastTick: number | undefined;
     for (const s of ordered) {
-        const tick = secondsToTicks(s.timeSeconds, bpm);
-        const value = linearToAutomation(taper, s.normalizedValue);
+        // F9 — round BEFORE the dedup comparison (float ticks would never
+        // match exactly, so near-identical sample times kept creating both
+        // a duplicate event and an invalid same-tick double event).
+        const tick = Math.round(secondsToTicks(s.timeSeconds, bpm));
+        let value = s.normalizedValue;
+
+        if (hasUICurve && taper) {
+            console.warn(
+                `[METATRON AUTOMATION] double-taper guard active for key — UI curve exists, ` +
+                    `registered taper ignored (value is already in the target space).`
+            );
+        }
+        if (!hasUICurve && taper) {
+            // Nur anwenden, wenn KEINE UI-Kurve existiert, aber ein Taper
+            // registriert ist (der Live-Pfad hat den Wert sonst schon gemappt).
+            value = linearToAutomation(taper, s.normalizedValue);
+        }
+
         if (lastTick !== undefined && tick === lastTick) {
             events[events.length - 1].value = value;
         } else {
@@ -151,6 +176,10 @@ interface WriteAttempt {
     /** B68 — gemessener Automation-Taper dieses Felds (Registry-Lookup beim
      *  Attempt-Aufbau); undefined = Identity (bisheriges Verhalten). */
     taper?: TaperDef;
+    /** F5 — explizites Flag: existiert für diesen Feld-Key eine ParameterUICurve,
+     *  ist der Live-Pfad den Sample-Wert bereits in den Zielraum gemappt;
+     *  ein zusätzliches Taper-Anwenden wäre Double-Tapering ( Regel 0.3 ). */
+    hasUICurve: boolean;
 }
 
 /**
@@ -208,6 +237,12 @@ export async function writeAutomationRecording(
         // targetName). Ohne Eintrag = Identity.
         const targetName = bindings.deviceRef.controls.get(track.controlId)?.audiotoolBindingDefinition?.targetName;
         const taper = getTaper(buildTaperKey(targetName, path));
+        // F5 — hat dieser Feld-Key eine gemessene ParameterUICurve, ist der
+        // aufgenommene Sample-Wert bereits im Audiotool-Zielraum (der
+        // Live-Pfad hat beim RECORDING uiToNexusNorm-Mapping angewendet).
+        // Dann darf kein weiterer Taper angewendet werden (Double-Tapering).
+        const curveKey = buildTaperKey(targetName, path);
+        const hasUICurve = getParameterUICurve(curveKey) !== undefined;
 
         attempts.push({
             controlId: track.controlId,
@@ -215,6 +250,7 @@ export async function writeAutomationRecording(
             samples: track.samples,
             field,
             taper,
+            hasUICurve,
         });
     }
 
@@ -242,7 +278,7 @@ export async function writeAutomationRecording(
                 // B68 — Taper wird beim Event-Berechnen angewandt (Identity wenn
                 // keiner registriert); Switch-/Boolean-Tracks bleiben unverändert,
                 // da für sie nie ein Log-Taper registriert wird.
-                const events = samplesToEvents(a.samples, recording.projectBpm, a.taper);
+                const events = samplesToEvents(a.samples, recording.projectBpm, a.taper, a.hasUICurve);
                 // Switches are stepped; every other control is sloped (M21.2 §8).
                 const interpolation = a.controlType === "switch" ? 1 : 2;
 
