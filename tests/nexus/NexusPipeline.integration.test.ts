@@ -371,6 +371,7 @@ describe("PROJECT CHANGE SEMANTICS (§39/§40, user decision: NO auto-reconnect,
             "setBinding",
             "clearBinding",
             "getActiveBinding",
+            "rehydrateToCurrentDevice",
         ]);
     });
 });

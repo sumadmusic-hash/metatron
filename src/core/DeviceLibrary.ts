@@ -1,5 +1,6 @@
 import { Device } from "./model/Device";
 import { Storage } from "../persistence/Storage";
+import { BindingManager } from "./BindingManager";
 
 /** Pick the device to restore on app start (I18 §13): the most-recently-used
  *  note when it still exists, else the first saved device (insertion order) —
@@ -19,6 +20,7 @@ export function resolveStartupDeviceId(
 export class DeviceLibrary {
     // Keeps a reference to the currently active device in memory
     public currentDevice?: Device;
+    public bindingManager?: BindingManager;
 
     public createNewDevice(name: string = "New Device"): Device {
         this.currentDevice = new Device(name);
@@ -53,10 +55,12 @@ export class DeviceLibrary {
     }
 
     public deleteDevice(id: string) {
+        // Atomic: only update currentDevice AFTER storage delete succeeds.
+        // If storage fails, currentDevice remains valid and the error propagates.
+        Storage.deleteDevice(id);
         if (this.currentDevice?.id === id) {
             this.currentDevice = undefined;
         }
-        Storage.deleteDevice(id);
         // The deleted device can never be the restore target again.
         if (Storage.getLastActiveDeviceId() === id) {
             this.clearLastActive();

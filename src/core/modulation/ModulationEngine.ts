@@ -31,8 +31,9 @@ export function hash01(seed: string): number {
 }
 
 /** BPM clamped into a deterministic playback range (guard against corrupted
- *  transport values). */
+ *  transport values and NaN/Infinity). */
 export function safeBpm(bpm: number): number {
+    if (!Number.isFinite(bpm)) return 120;
     return clamp(bpm, 30, 1000);
 }
 

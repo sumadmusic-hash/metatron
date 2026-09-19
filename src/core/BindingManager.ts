@@ -106,12 +106,26 @@ export class BindingManager {
      * reference against the freshly opened document (same project → same entity
      * ids, but new field wrapper objects). `resolveField` returns the new field
      * for an entity id + field path, or undefined when unresolvable.
+     * Unresolvable bindings are treated as orphaned: their old field reference
+     * is cleared, subscriptions are cleaned up, and the binding is removed.
      */
     public rehydrateActiveBindings(resolveField: (entityId: string, fieldPath: string) => any) {
-        this.activeBindings.forEach((binding) => {
+        const toDelete: string[] = [];
+        this.activeBindings.forEach((binding, controlId) => {
             const field = resolveField(binding.entityId, binding.fieldPath ?? binding.fieldName);
-            if (field) binding.field = field;
+            if (field) {
+                binding.field = field;
+            } else {
+                // Unresolvable → orphaned binding: clear subscription and remove
+                binding.unsubscribe?.();
+                toDelete.push(controlId);
+            }
         });
+        for (const controlId of toDelete) {
+            this.activeBindings.delete(controlId);
+            const control = this.device.getControl(controlId);
+            if (control) control.activeBindingState = "DISCONNECTED";
+        }
     }
 
     /**
@@ -169,5 +183,22 @@ export class BindingManager {
 
     public getActiveBinding(controlId: string): ActiveBinding | undefined {
         return this.activeBindings.get(controlId);
+    }
+
+    /** Re-maps all active bindings to the CURRENT device's Control instances.
+     *  Call after an undo/redo that may have replaced Control instances with new
+     *  ones (same ID, new object). Preserves binding state (field refs, subscriptions)
+     *  while updating the Control reference. */
+    public rehydrateToCurrentDevice(): void {
+        for (const [controlId, binding] of this.activeBindings) {
+            const control = this.device.getControl(controlId);
+            if (control) {
+                control.activeBindingState = "CONNECTED";
+            } else {
+                // Control no longer exists — clean up orphaned binding
+                binding.unsubscribe?.();
+                this.activeBindings.delete(controlId);
+            }
+        }
     }
 }

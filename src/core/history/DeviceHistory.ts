@@ -407,6 +407,12 @@ export class DeviceHistory {
         }
 
         restoreDeviceState(device, patch);
+
+        // Rehydrate BindingManager to point to the (potentially new) Control
+        // instances after restoreDeviceState may have replaced some controls
+        // with new instances (same ID, new object).
+        this.library.bindingManager?.rehydrateToCurrentDevice();
+
         return true;
     }
 

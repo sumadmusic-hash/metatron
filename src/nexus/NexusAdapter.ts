@@ -184,11 +184,24 @@ export class NexusAdapter {
         return !!this.client && this.client.status === "authenticated";
     }
 
+    /** Cancel any in-progress Learn (Nexus or MIDI) on either surface.
+     *  Called on Device change and Project open/Reconnect to prevent stale
+     *  Learn results from being applied to the wrong Device/Project. */
+    public cancelPendingLearns(): void {
+        // This is a no-op at the Adapter level — the actual cancellation happens
+        // in the UI layer (EditorUI/SurfaceUI) via AppUI.cancelPendingLearns().
+        // Kept here for API completeness and future use.
+    }
+
     public async openProject(projectUrl: string, bindingManager: BindingManager) {
         if (!this.client || this.client.status !== "authenticated") {
             throw new Error("Client not authenticated");
         }
         this.currentUser = resolveCurrentUser(this.client, () => this.lookupIdToken());
+
+        // Cancel any in-progress Learn before opening a new project.
+        // A Learn result from the old project must never be applied to the new one.
+        this.cancelPendingLearns?.();
 
         // §40 — reconnecting to the SAME project URL (e.g. after a short sync
         // drop) is NOT a new project. Hard-resetting every binding

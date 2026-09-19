@@ -111,7 +111,10 @@ export class ModulationRunner {
         this.startTimeSec = performance.now() / 1000;
         this.lastWriteMsByControl.clear();
         this.lastProcessedDestinationIndex = 0;
-        this.writeGeneration.clear();
+        // writeGeneration NICHT leeren — die laufenden Snap-backs des vorherigen
+        // Laufs nutzen ihre beim Start erfasste Generation zum Vergleich.
+        // Durch monoton steigende Generationszahlen über alle Läufe hinweg
+        // sind Kollisionen zwischen altem Snap-back und neuem Mod-Write unmöglich.
         this.rafId = requestAnimationFrame(this.loop);
     }
 

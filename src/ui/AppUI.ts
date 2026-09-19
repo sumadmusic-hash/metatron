@@ -168,6 +168,7 @@ export class AppUI {
         const nullDevice = createNullDevice();
         const device = this.deviceLibrary.currentDevice ?? nullDevice;
         this.bindingManager = bindingManager ?? new BindingManager(device);
+        this.deviceLibrary.bindingManager = this.bindingManager;
 
         // Session-scoped undo/redo (C1). Transient by design — no persistence.
         this.history = new DeviceHistory(this.deviceLibrary);
@@ -763,6 +764,10 @@ export class AppUI {
     private onDeviceChanged() {
         const device = this.deviceLibrary.currentDevice;
         
+        // Cancel any pending learns on BOTH surfaces before device state changes.
+        // A Learn result from an old Device/Project must never be applied after a switch.
+        this.cancelPendingLearns();
+        
         // 1. If there's a real device switch, hard-reset the runner FIRST
         // (before changing the device reference) so its state doesn't leak
         // to the new device. Uses a dedicated method that stops WITHOUT snap-backs.
@@ -1012,6 +1017,9 @@ export class AppUI {
                 this.applyStatusText("Connecting...", "#ffeb3b");
                 this.connectionUnsub?.();
                 this.connectionUnsub = undefined;
+                // Cancel any pending Learn before connecting to a new project.
+                // A Learn result from the old project must never be applied to the new one.
+                this.cancelPendingLearns();
                 await this.nexusAdapter.openProject(urlInput.value, this.bindingManager);
                 this.connectionUnsub = this.nexusAdapter.onDocumentConnectedChanged((connected) => {
                     if (!connected) {
