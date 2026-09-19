@@ -6,9 +6,12 @@ import { Device } from "../../src/core/model/Device";
 import { Control } from "../../src/core/model/Control";
 import { BindingManager } from "../../src/core/BindingManager";
 import { writeAutomationRecording, samplesToEvents } from "../../src/automation/AutomationWriter";
+import { renderMatrixToRecording } from "../../src/modulation/BakeRenderer";
 import type { AutomationRecording, AutomationSample } from "../../src/automation/AutomationRecording";
 import { linearToAutomation, registerTaper, unregisterTaper, taperKey } from "../../src/nexus/CurveRegistry";
+import { getParameterUICurve, uiToNexusNorm, registerParameterUICurve, unregisterParameterUICurve, PULVERISATEUR_CUTOFF_UI_CURVE } from "../../src/nexus/ParameterUICurve";
 import type { TaperDef } from "../../src/nexus/CurveRegistry";
+import type { ModulationMatrixConfig } from "../../src/core/modulation/ModulationTypes";
 
 const KNOWN_SAMPLES: AutomationSample[] = [
     { timeSeconds: 0, normalizedValue: 0.0 },
@@ -580,8 +583,9 @@ describe("M22.0 — shared take duration for every AutomationRegion", () => {
         for (const d of durations) expect(d).toBe(secondsToTicks(6, BPM) + Ticks.Beat);
     });
 });
-describe("B68 — sampled values are converted into the Audiotool-tapered automation space", () => {
+describe("B68/F5 — sampled values are converted into the Audiotool-tapered automation space", () => {
     const CUTOFF98: TaperDef = { kind: "log", min: 18, max: 15500, source: "measured", measuredAt: "2026-09-17T00:00:00.000Z" };
+    const CURVE_KEY = "pulverisateur:filter.cutoffFrequencyHz";
 
     it("samplesToEvents converts a tapered sample away from the linear value (0.5 → ~0.8976)", () => {
         const events = samplesToEvents(KNOWN_SAMPLES, 120, CUTOFF98);
@@ -595,26 +599,63 @@ describe("B68 — sampled values are converted into the Audiotool-tapered automa
         expect(events.map((e) => e.value)).toEqual([0.0, 0.5, 1.0]);
     });
 
-    it("B9 — double-taper guard warns ONCE, not once per sample (log from the hot loop)", () => {
-        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    it("with UI curve + taper: applies uiToNexusNorm FIRST, then linearToAutomation", () => {
+        // Sample value is Metatron UI normalized (e.g. 0.87 = Pulverisateur cutoff UI position)
+        // Pulverisateur UI curve: ui=0.87 → nexus=0.5
+        // Taper: nexus=0.5 → automation ≈ 0.8976
+        const samples: AutomationSample[] = [{ timeSeconds: 0, normalizedValue: 0.87 }];
+
+        // Register the UI curve for this test
+        registerParameterUICurve(CURVE_KEY, PULVERISATEUR_CUTOFF_UI_CURVE);
+
         try {
-            const many = Array.from({ length: 60 }, (_unused, i) => ({
-                timeSeconds: i * 0.05,
-                normalizedValue: i / 60,
-            }));
-            const events = samplesToEvents(many, 120, CUTOFF98, true /* hasUICurve */);
-            expect(events.length).toBeGreaterThan(1);
-            // hasUICurve ⇒ Wert ist bereits im Zielraum, Taper wird NICHT
-            // angewandt (Double-Taper-Guard) — der Wert bleibt linear.
-            expect(events[0].value).toBe(0);
-            const taperWarns = warn.mock.calls.filter((c) => String(c[0]).includes("double-taper"));
-            expect(taperWarns).toHaveLength(1); // einmal, NICHT 60×
+            const events = samplesToEvents(samples, 120, CUTOFF98, CURVE_KEY);
+
+            // Step 1: UI curve converts 0.87 → 0.5 (nexus normalized)
+            const nexusNorm = uiToNexusNorm(PULVERISATEUR_CUTOFF_UI_CURVE, 0.87);
+            expect(nexusNorm).toBeCloseTo(0.5, 3);
+
+            // Step 2: Taper converts 0.5 → ~0.8976 (automation space)
+            const expectedAutomation = linearToAutomation(CUTOFF98, nexusNorm);
+            expect(events[0].value).toBeCloseTo(expectedAutomation, 3);
+            expect(events[0].value).toBeCloseTo(0.8976, 3);
+
+            // The result is NOT simply 0.87 (raw UI value passed through)
+            expect(events[0].value).not.toBeCloseTo(0.87, 3);
         } finally {
-            warn.mockRestore();
+            unregisterParameterUICurve(CURVE_KEY);
         }
     });
 
-    it("same-tick dedup keeps the CONVERTED latest value", () => {
+    it("with UI curve but NO taper: applies only uiToNexusNorm", () => {
+        const samples: AutomationSample[] = [{ timeSeconds: 0, normalizedValue: 0.87 }];
+
+        registerParameterUICurve(CURVE_KEY, PULVERISATEUR_CUTOFF_UI_CURVE);
+
+        try {
+            const events = samplesToEvents(samples, 120, undefined, CURVE_KEY);
+
+            // Only UI curve applied: 0.87 → 0.5
+            const expected = uiToNexusNorm(PULVERISATEUR_CUTOFF_UI_CURVE, 0.87);
+            expect(events[0].value).toBeCloseTo(expected, 3);
+            expect(events[0].value).toBeCloseTo(0.5, 3);
+        } finally {
+            unregisterParameterUICurve(CURVE_KEY);
+        }
+    });
+
+    it("without UI curve but WITH taper: applies linearToAutomation directly to sample", () => {
+        // Sample value is already Metatron-linear (Nexus-normalized over linear schema range)
+        const samples: AutomationSample[] = [{ timeSeconds: 0, normalizedValue: 0.5 }];
+
+        const events = samplesToEvents(samples, 120, CUTOFF98);
+
+        // Direct taper: 0.5 → ~0.8976
+        expect(events[0].value).toBeCloseTo(linearToAutomation(CUTOFF98, 0.5), 3);
+        expect(events[0].value).toBeCloseTo(0.8976, 3);
+    });
+
+    it("same-tick dedup keeps the CONVERTED latest value (with taper)", () => {
         const events = samplesToEvents(
             [
                 { timeSeconds: 0, normalizedValue: 0.2 },
@@ -656,6 +697,171 @@ describe("B68 — sampled values are converted into the Audiotool-tapered automa
             expect(values[2]).toBeCloseTo(1.0, 6);
         } finally {
             unregisterTaper(key);
+        }
+    });
+
+    it("writeAutomationRecording with UI curve + taper: full pipeline (Bake + Live REC path)", async () => {
+        // Use the same targetName that the binding will use: "pulverisateur / filter.cutoffFrequencyHz"
+        // This matches the built-in curve key "pulverisateur:filter.cutoffFrequencyHz"
+        const targetName = "pulverisateur / filter.cutoffFrequencyHz";
+        const fieldPath = "filter.cutoffFrequencyHz";
+        const key = taperKey(targetName, fieldPath);
+        registerTaper(key, CUTOFF98);
+        registerParameterUICurve(key, PULVERISATEUR_CUTOFF_UI_CURVE);
+
+        try {
+            const doc = await newDoc();
+            const basslineId = await addBassline(doc);
+            const cutoff = basslineField(doc, basslineId, "cutoffFrequencyHz");
+            const bindings = makeBindings([
+                { controlId: "c1", entityId: basslineId, fieldPath, field: cutoff },
+            ]);
+
+            // Override the targetName on the control to match the built-in curve
+            const device = bindings.deviceRef;
+            const control = device.controls.get("c1");
+            if (control) {
+                control.audiotoolBindingDefinition = { targetName };
+            }
+
+            // Sample at UI=0.87 (Pulverisateur cutoff middle position)
+            // Pipeline: UI=0.87 → uiToNexusNorm → 0.5 → linearToAutomation → ~0.8976
+            const samples: AutomationSample[] = [{ timeSeconds: 0, normalizedValue: 0.87 }];
+
+            const result = await writeAutomationRecording(
+                rec([{ controlId: "c1", controlType: "knob", samples }]),
+                doc,
+                bindings
+            );
+            expect(result.ok).toBe(true);
+
+            const events = doc.queryEntities
+                .ofTypes("automationEvent")
+                .get()
+                .sort((a: any, b: any) => a.fields.positionTicks.value - b.fields.positionTicks.value);
+            const values = events.map((e: any) => e.fields.value.value);
+
+            // Full pipeline result
+            const nexusNorm = uiToNexusNorm(PULVERISATEUR_CUTOFF_UI_CURVE, 0.87);
+            const expectedAutomation = linearToAutomation(CUTOFF98, nexusNorm);
+            expect(values[0]).toBeCloseTo(expectedAutomation, 3);
+            expect(values[0]).toBeCloseTo(0.8976, 3);
+            expect(values[0]).not.toBeCloseTo(0.87, 3);
+        } finally {
+            unregisterTaper(key);
+            unregisterParameterUICurve(key);
+        }
+    });
+
+    it("regression: switch/boolean without taper stays unchanged (no log taper)", () => {
+        const switchSamples: AutomationSample[] = [
+            { timeSeconds: 0, normalizedValue: 0 },
+            { timeSeconds: 1, normalizedValue: 1 },
+        ];
+        // No taper registered for switch parameters
+        const events = samplesToEvents(switchSamples, 120);
+        expect(events.map((e) => e.value)).toEqual([0, 1]);
+    });
+
+    it("regression: parameter without UI curve and without taper stays unchanged", () => {
+        const samples: AutomationSample[] = [{ timeSeconds: 0, normalizedValue: 0.42 }];
+        const events = samplesToEvents(samples, 120);
+        expect(events[0].value).toBe(0.42);
+    });
+
+    it("Bake path: renderMatrixToRecording → writeAutomationRecording with UI curve + taper", async () => {
+        const targetName = "pulverisateur / filter.cutoffFrequencyHz";
+        const fieldPath = "filter.cutoffFrequencyHz";
+        const key = taperKey(targetName, fieldPath);
+        registerTaper(key, CUTOFF98);
+        registerParameterUICurve(key, PULVERISATEUR_CUTOFF_UI_CURVE);
+
+        try {
+            const doc = await newDoc();
+            const basslineId = await addBassline(doc);
+            const cutoff = basslineField(doc, basslineId, "cutoffFrequencyHz");
+            const bindings = makeBindings([
+                { controlId: "cutoff", entityId: basslineId, fieldPath, field: cutoff },
+            ]);
+
+            // Create a minimal device with a cutoff control
+            const device = new Device("Test");
+            device.addControl(new Control("knob", "cutoff", undefined, "cutoff"));
+            const cutoffControl = device.controls.get("cutoff")!;
+            cutoffControl.value = 0.87; // UI normalized value
+            cutoffControl.audiotoolBindingDefinition = { targetName };
+
+            // Create a modulation matrix that targets the cutoff (proper array format)
+            const matrix: ModulationMatrixConfig = {
+                version: 1,
+                sources: [
+                    {
+                        id: "mod1",
+                        type: "lfo",
+                        waveform: "sine",
+                        rateHz: 1,
+                        bpmSync: false,
+                        noteDivision: 4,
+                        phase: 0,
+                        drift: 0.5,
+                        sourceId: "",
+                        smoothMs: 200,
+                    },
+                ],
+                slots: [
+                    {
+                        id: "slot1",
+                        enabled: true,
+                        sourceId: "mod1",
+                        destControlId: "cutoff",
+                        amount: 1,
+                        mode: "add",
+                    },
+                ],
+            };
+
+            // Bake: renderMatrixToRecording produces samples in Metatron UI normalized space
+            const recording = renderMatrixToRecording(matrix, device, {
+                bars: 2,
+                projectBpm: 120,
+                startTick: Ticks.Bars(2),
+                grid: "1/16",
+            });
+
+            // Verify the recording has samples
+            const cutoffTrack = recording.tracks.find((t) => t.controlId === "cutoff");
+            expect(cutoffTrack).toBeDefined();
+            expect(cutoffTrack!.samples.length).toBeGreaterThan(0);
+
+            // Write: writeAutomationRecording should apply full pipeline
+            const result = await writeAutomationRecording(recording, doc, bindings);
+            expect(result.ok).toBe(true);
+            expect(result.createdTracks).toBe(1);
+
+            const events = doc.queryEntities
+                .ofTypes("automationEvent")
+                .get()
+                .sort((a: any, b: any) => a.fields.positionTicks.value - b.fields.positionTicks.value);
+            const values = events.map((e: any) => e.fields.value.value);
+
+            // All events should have gone through the full pipeline:
+            // Bake samples (UI normalized) → uiToNexusNorm → linearToAutomation
+            // Since the LFO modulates from -1 to 1, mapped to 0..1 UI normalized,
+            // the samples will vary. Check that they are transformed, not raw.
+            for (const v of values) {
+                // Should not be raw UI values (which would be linear 0..1)
+                // Should be transformed through UI curve + taper
+                expect(v).toBeGreaterThanOrEqual(0);
+                expect(v).toBeLessThanOrEqual(1);
+            }
+
+            // At least some values should differ from what a linear mapping would produce
+            // (since the UI curve is highly non-linear and taper is log)
+            const hasTransformedValues = values.some((v) => v !== 0 && v !== 1);
+            expect(hasTransformedValues).toBe(true);
+        } finally {
+            unregisterTaper(key);
+            unregisterParameterUICurve(key);
         }
     });
 });

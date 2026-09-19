@@ -90,3 +90,38 @@ export function automationToLinear(t: TaperDef | undefined, v: number): number {
     const ratio = t.max / t.min;
     return (Math.pow(ratio, c) - 1) / (ratio - 1);
 }
+
+// ── Documented BUILT-IN tapers (measured, no heuristics) ─────────────────
+//
+// Wird beim App-Start via installBuiltinTapers() (src/main.ts) installiert,
+// damit nach Page-Reload der gemessene Automation-Taper verfügbar bleibt.
+//
+// Hinzufügungsregel (keinerlei Heuristik):
+//   - NUR echte Messdaten (source:"measured") aus der Automation-Probe.
+//   - Jeder Taper ist hier dokumentiert UND in
+//     tests/nexus/CurveRegistry.test.ts als Fixture gepinnt.
+//   - NIEMALS aus Parameternamen / globalen Taper-Annahmen abgeleitet.
+
+/** Pulverisateur Filter Cutoff 18..15500 Hz — gemessen per Automation-Probe (B68).
+ *  Log-Taper: Audiotool interpretiert automationEvent.value als exponentiellen
+ *  Normalraum: raw ≈ min · (max/min)^v. */
+export const PULVERISATEUR_CUTOFF_TAPER: TaperDef = {
+    kind: "log",
+    min: 18,
+    max: 15500,
+    source: "measured",
+    measuredAt: "2026-09-17T00:00:00.000Z",
+};
+
+/** Kanonische Liste der beim Start zu installierenden Taper. */
+export const BUILTIN_TAPERS: ReadonlyArray<{ key: string; taper: TaperDef }> = [
+    { key: "pulverisateur:filter.cutoffFrequencyHz", taper: PULVERISATEUR_CUTOFF_TAPER },
+];
+
+/** Installiert alle dokumentierten Built-in-Taper (idempotent).
+ *  Aufgerufen aus src/main.ts beim Bootstrap. */
+export function installBuiltinTapers(): void {
+    for (const { key, taper } of BUILTIN_TAPERS) {
+        registerTaper(key, taper);
+    }
+}

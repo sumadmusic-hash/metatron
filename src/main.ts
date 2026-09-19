@@ -6,6 +6,7 @@ import { BindingManager } from "./core/BindingManager";
 import { AppUI } from "./ui/AppUI";
 import { Toast } from "./ui/Toast";
 import { installBuiltinUICurves, getParameterUICurve, BUILTIN_UI_CURVES } from "./nexus/ParameterUICurve";
+import { installBuiltinTapers, getTaper, BUILTIN_TAPERS } from "./nexus/CurveRegistry";
 
 /** B6 — nicht blockierende Auth nach dem ersten Render: der OAuth-Handshake
  *  wird nie AWAITED bevor die Oberfläche steht (kein impliziter login()-Timer
@@ -46,6 +47,15 @@ async function bootstrap() {
         BUILTIN_UI_CURVES.map(({ key }) => {
             const c = getParameterUICurve(key);
             return `${key} (${c?.points.length ?? 0}pts)`;
+        }));
+
+    // 0b. Install documented BUILT-IN Automation Tapers (B68). Runs on every
+    //     boot so the measured Pulverisateur cutoff taper survives reload.
+    installBuiltinTapers();
+    console.log("[METATRON TAPER] Built-in tapers installed:",
+        BUILTIN_TAPERS.map(({ key }) => {
+            const t = getTaper(key);
+            return `${key} (${t?.kind ?? "none"} ${t?.min ?? ""}..${t?.max ?? ""})`;
         }));
 
     // 1. Initialize Core Models

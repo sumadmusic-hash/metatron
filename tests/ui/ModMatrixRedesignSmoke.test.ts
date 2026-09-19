@@ -156,9 +156,13 @@ describe("Aufräum-Auftrag (1-20) — Captions, Label-Geometrie, Fader, Sticky, 
         expect(src.querySelector(".mod-seg-btn")).toBeTruthy();
     });
 
-    it("§1 — Source-Label ist 64px breit (keine 88px mehr)", () => {
-        expect(STYLES).toMatch(/\.mod-source-label \{[\s\S]*?flex: 0 0 64px/);
-        expect(STYLES).toMatch(/\.mod-source-label \{[\s\S]*?width: 64px/);
+    it("§1 — Source-Label hat intrinsische Breite (nur so breit wie Text + Padding)", () => {
+        expect(STYLES).toMatch(/\.mod-source-label \{[\s\S]*?flex: 0 0 auto/);
+        expect(STYLES).toMatch(/\.mod-source-label \{[\s\S]*?width: max-content/);
+        expect(STYLES).toMatch(/\.mod-source-label \{[\s\S]*?min-width: 0/);
+        // Keine feste 64px-Breite mehr
+        expect(STYLES).not.toMatch(/\.mod-source-label \{[\s\S]*?flex: 0 0 64px/);
+        expect(STYLES).not.toMatch(/\.mod-source-label \{[\s\S]*?width: 64px(?!%)/);
     });
 
     it("§1 — Rows füllen die Spaltenbreite aus (width 100%, min-width 0)", () => {

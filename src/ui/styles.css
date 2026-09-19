@@ -2114,9 +2114,9 @@ body {
    dark chassis in every state; the teal "active" wash lives on routing rows
    only, and the label's linked accent comes exclusively from .source-linked. */
 .mod-source-label {
-    flex: 0 0 64px;
-    width: 64px;
-    min-width: 64px;
+    flex: 0 0 auto;
+    width: max-content;
+    min-width: 0;
     color: var(--mm-text-strong);
     overflow: hidden;
     text-overflow: ellipsis;
