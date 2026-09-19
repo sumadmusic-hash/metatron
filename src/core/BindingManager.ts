@@ -9,12 +9,17 @@ export interface ActiveBinding {
     /** Full dot path of the field (e.g. "oscillatorA.channel.isActive"); equals
      * fieldName for top-level fields. Used to resolve the live field object. */
     fieldPath?: string;
-    /** Project-specific value mapping (normalized 0..1 ↔ Nexus range), derived
-     * from the real field schema at Learn time. Transient: NOT part of the
-     * project-independent Device definition (§2 — mapping belongs to Binding). */
+/** Project-specific value mapping (normalized 0..1 ↔ Nexus range), derived
+     *  from the real field schema at Learn time. Transient: NOT part of the
+     *  project-independent Device definition (§2 — mapping belongs to Binding). */
     valueMapping?: NexusValueMapping;
     /** Live reference to the Nexus field object so values can be written and observed. */
     field: any;
+    /** R3 — pro Binding gespeichertes Cleanup: räumt die zugehörige
+     *  Nexus-Subscription ab (NexusAdapter.subscribeBoundControl hinterlegt es).
+     *  BindingManager ruft es beim Rehydrieren verwaister Bindings auf, ohne
+     *  NexusAdapter-Interna zu kennen. */
+    unsubscribe?: () => void;
 }
 
 export class BindingManager {
@@ -55,9 +60,18 @@ export class BindingManager {
             // Flag bei der Neurealisierung sonst auf "DISCONNECTED"). Die
             // Live-Feld-Referenzen bleiben gültig: das Nexus-Dokument hat sich
             // nicht geändert, nur die Device-Wrapper-Objekte sind neu.
-            for (const controlId of this.activeBindings.keys()) {
+            for (const [controlId, binding] of this.activeBindings) {
                 const control = this.device.getControl(controlId);
-                if (control) control.activeBindingState = "CONNECTED";
+                if (control) {
+                    control.activeBindingState = "CONNECTED";
+                } else {
+                    // R3 — verwaistes Binding: die gebundenen Controls wurden
+                    // durch das Undo/Redo entfernt. Eintrag samt seiner
+                    // Nexus-Subscription abräumen — sonst lebt der Listener
+                    // weiter und die Map wächst über jeden Zyklus.
+                    binding.unsubscribe?.();
+                    this.activeBindings.delete(controlId);
+                }
             }
             return;
         }

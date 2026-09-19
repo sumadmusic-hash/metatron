@@ -437,6 +437,11 @@ export class NexusAdapter {
         } else if (cleanup && typeof cleanup.terminate === "function") {
             this.updateListeners.set(controlId, () => cleanup.terminate());
         }
+
+        // R3 — Backup-Cleanup auf dem Binding hinterlegen, damit der
+        // BindingManager eine überholte Subscription (Control beim Rehydrieren
+        // verschwunden) abräumen kann, ohne NexusAdapter-Interna zu kennen.
+        binding.unsubscribe = () => this.unsubscribeFromParameter(controlId);
     }
 
     public unsubscribeFromParameter(controlId: string) {

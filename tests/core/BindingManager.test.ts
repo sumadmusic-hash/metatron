@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Device } from '../../src/core/model/Device';
 import { Control } from '../../src/core/model/Control';
 import { BindingManager } from '../../src/core/BindingManager';
@@ -133,5 +133,22 @@ describe('BindingManager — live field bindings (Phase C/D pipeline)', () => {
         expect(bound.activeBindingState).toBe('DISCONNECTED');
         expect(free.activeBindingState).toBe('UNCONFIGURED');
         expect(manager.getActiveBinding(bound.id)).toBeUndefined();
+    });
+
+    it('R3 — Rehydrierung räumt verwaiste Bindings inkl. Nexus-Cleanup ab', () => {
+        const a = new Control('knob', 'A', { x: 0, y: 0 }, 'a');
+        device.addControl(a);
+        manager.setBinding('a', 'entity-1', 'feedbackFactor');
+        const cleanup = vi.fn();
+        manager.getActiveBinding('a')!.unsubscribe = cleanup;
+
+        // Undo/Redo hat genau das gebundene Control entfernt — gleiche
+        // Device-ID, neue Instanz OHNE "a".
+        const rehydrated = new Device('Test', device.id);
+        manager.setDevice(rehydrated);
+
+        // Verwaistes Binding ist weg UND seine Subscription wurde abgeräumt.
+        expect(manager.getActiveBinding('a')).toBeUndefined();
+        expect(cleanup).toHaveBeenCalledTimes(1);
     });
 });
