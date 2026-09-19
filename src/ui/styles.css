@@ -1986,7 +1986,7 @@ body {
 /* Column cards: each column reads as a raised panel on the canvas. */
 .mod-source-rack,
 .mod-slot-matrix {
-    padding: 10px 14px;
+    padding: 0 14px 10px;
     background: var(--mm-panel);
     border-radius: var(--mm-radius-lg);
     margin: 8px;
@@ -2005,7 +2005,9 @@ body {
 /* Section headers — Metatron caption language (uppercase, letter-spaced).
    §9 — sticky inside the per-column scroll: the caption stays pinned to the
    top of the visible column while the rows scroll beneath it. background is
-   inherited from the owning column card so scrolled rows never bleed through. */
+   inherited from the owning column card so scrolled rows never bleed through.
+   The title carries its own top padding (matching the former container padding)
+   so it sticks flush to the panel's top border edge, not the content edge. */
 .mod-section-title {
     position: sticky;
     top: 0;
@@ -2019,7 +2021,7 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.12em;
     line-height: 1;
-    padding: 4px 2px 6px;
+    padding: 10px 2px 6px; /* top padding matches former container padding-top */
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
