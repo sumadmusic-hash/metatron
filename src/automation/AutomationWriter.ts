@@ -153,10 +153,10 @@ export function samplesToEvents(
  *  track types, max(existing orderAmongTracks) + 1, then +1 per additional
  *  track. Reads every entity that exposes `orderAmongTracks`, so it never
  *  needs to hardcode track-type keys. */
-function maxOrderAmongTracks(document: any): number {
+function maxOrderAmongTracks(entities: any): number {
     let max = 0;
     try {
-        for (const entity of document.queryEntities.get()) {
+        for (const entity of entities.get()) {
             const v = entity?.fields?.orderAmongTracks?.value;
             if (typeof v === "number" && v > max) max = v;
         }
@@ -255,7 +255,6 @@ export async function writeAutomationRecording(
         };
     }
 
-    const orderBase = maxOrderAmongTracks(document);
     const created: { controlId: string; trackId: string; collectionId: string; regionId: string; eventCount: number }[] = [];
     // M22.0 — shared region duration for all tracks in this take: derived
     // from the common `recording.durationSeconds` (set once at STOP) so every
@@ -264,8 +263,19 @@ export async function writeAutomationRecording(
     const takeTicks = Math.max(0, secondsToTicks(recording.durationSeconds, recording.projectBpm));
     const regionTicks = Math.max(1, takeTicks + Ticks.Beat);
 
+    // Check document connection before starting transaction
+    if (!document.connected) {
+        return {
+            ok: false,
+            error: "Document not connected",
+            perTrack: attempts.map((a) => ({ controlId: a.controlId, ok: false, reason: "transaction-failed" })),
+            createdTracks: 0,
+        };
+    }
+
     try {
         await document.modify((t: any) => {
+            const orderBase = maxOrderAmongTracks(t.entities);
             for (let i = 0; i < attempts.length; i++) {
                 const a = attempts[i];
                 // B68/F5 — korrekte Pipeline: UI-Kurve (falls vorhanden) → Nexus-normiert → Automation-Taper.

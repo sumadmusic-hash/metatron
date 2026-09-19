@@ -383,6 +383,9 @@ export class ModMatrixUI {
                 `Baked ${recording.tracks.length} track(s) into automation (${recording.durationSeconds.toFixed(1)}s).`,
                 "success"
             );
+        } else if (!result.ok) {
+            // Transaction failed completely — show the actual error
+            Toast.show(`Bake transaction failed: ${result.error ?? "unknown error"}`, "error");
         } else if (failed.length === recording.tracks.length) {
             const reasons = failed.map((track) => `"${track.reason}"`).join(", ");
             Toast.show(`Bake failed for all tracks — ${reasons}`, "error");
