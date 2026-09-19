@@ -798,3 +798,56 @@ describe("SurfaceUI.applyModDisplay — idle-Toggle", () => {
         expect(modRing!.classList.contains("idle")).toBe(true);
     });
 });
+
+/* ------------------------------------------------------------------ *
+ *  Tests: Snap-back Generation Guard (Race Condition)
+ * ------------------------------------------------------------------ */
+
+describe("ModulationRunner — Snap-back Generation Guard", () => {
+    const flushWrites = async () => new Promise((r) => setTimeout(r, 0));
+
+    it("alter Snap-back darf nach Restart keinen neueren Mod-Wert überschreiben", async () => {
+        const device = makeModDevice();
+        let resolveModWrite: (v: boolean) => void = () => {};
+        const modWrite = new Promise<boolean>((resolve) => { resolveModWrite = resolve; });
+        const adapter = mockAdapter();
+        (adapter.updateBoundControl as any).mockReturnValueOnce(modWrite);
+
+        const { runner, adapter: ad } = makeRunner(device, "IDLE");
+        // override adapter with our controlled one
+        (runner as any).nexusAdapter = adapter;
+
+        runner.start();
+        (runner as any).startTimeSec = 0;
+        (runner as any).tick(450); // mod write starts, stays pending
+
+        // stop() triggers snap-back which awaits the pending mod write
+        runner.stop();
+        // Don't flush yet - let the snap-back wait for the mod write
+
+        // Restart: new mod write should be dispatched
+        runner.start();
+        (runner as any).startTimeSec = 0;
+        (runner as any).tick(500); // new mod value
+
+        // Now resolve the OLD mod write
+        resolveModWrite(true);
+        await flushWrites();
+
+        // The OLD snap-back should NOT have written base value (generation guard)
+        // Only the new mod write + potentially a NEW snap-back from the restart
+        const calls = ad.updateBoundControl.mock.calls;
+        // Find calls for "cutoff"
+        const cutoffCalls = calls.filter((c: any[]) => c[0] === "cutoff");
+        
+        // Should have: 1 old mod write (pending), 1 new mod write
+        // The old snap-back should be suppressed by generation guard
+        expect(cutoffCalls.length).toBeLessThanOrEqual(2);
+        
+        // If there are 2 calls, the LAST one should be the new mod value (not base 0.5)
+        if (cutoffCalls.length === 2) {
+            const lastCall = cutoffCalls[1];
+            expect(lastCall[1]).not.toBe(0.5); // not the base value
+        }
+    });
+});

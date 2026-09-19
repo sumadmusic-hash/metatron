@@ -55,6 +55,11 @@ function setSliderFill(el: HTMLElement, startPct: number, endPct: number): void 
     el.style.setProperty("--mod-fill-end", `${endPct}%`);
 }
 
+/** Escape a string for use as a CSS identifier in selectors. */
+function escapeCssId(id: string): string {
+    return CSS.escape(id);
+}
+
 export class ModMatrixUI {
     private readonly deviceLibrary: { currentDevice?: Device; saveCurrentDevice(): void };
     private readonly history: DeviceHistory;
@@ -112,11 +117,11 @@ export class ModMatrixUI {
         }
 
         this.flushMatrixSave();
+        // Commit any pending live gesture BEFORE rebuilding the DOM,
+        // so the gesture's undo snapshot is not lost.
+        this.commitLiveEdit();
         this.container.innerHTML = "";
         this.container.classList.toggle("open", this.drawerOpen);
-        // A rebuild drops any in-flight slider gesture's DOM — never commit a
-        // stale snapshot against a fresh row set.
-        this.liveGesture = undefined;
 
         const header = document.createElement("div");
         header.className = "mod-matrix-header";
@@ -203,7 +208,7 @@ export class ModMatrixUI {
         matrix.querySelectorAll<HTMLElement>(".mod-slot-row.on").forEach((slotRow) => {
             const srcId = device.modulation.slots.find((s) => s.id === slotRow.dataset.slotId)?.sourceId;
             if (!srcId) return;
-            rack.querySelector<HTMLElement>(`.mod-source-row[data-source-id="${srcId}"]`)?.classList.add("source-linked");
+            rack.querySelector<HTMLElement>(`.mod-source-row[data-source-id="${escapeCssId(srcId)}"]`)?.classList.add("source-linked");
         });
     }
 
@@ -436,11 +441,18 @@ export class ModMatrixUI {
                 opt.selected = src.waveform === w;
                 wave.appendChild(opt);
             });
-            wave.onchange = () => this.editSource(src, () => { src.waveform = wave.value as Waveform; });
             // §2 — the Wave field has NO visible caption anymore: the dynamic
             // waveform glyph is the only lead-in (keep the glyph + select).
+            const glyph = this.waveformGlyph(src.waveform);
+            wave.onchange = () => {
+                const newWave = wave.value as Waveform;
+                this.editSource(src, () => { src.waveform = newWave; });
+                // Live-update the glyph path without full re-render
+                const path = glyph.querySelector("path");
+                if (path) path.setAttribute("d", WAVEFORM_PATHS[newWave]);
+            };
             const waveField = this.field(null, wave, "wave");
-            waveField.insertBefore(this.waveformGlyph(src.waveform), wave);
+            waveField.insertBefore(glyph, wave);
             row.appendChild(waveField);
 
             row.appendChild(this.renderModeToggle(src));
@@ -944,7 +956,7 @@ export class ModMatrixUI {
         const device = this.deviceLibrary.currentDevice;
         if (!device || !this.container) return;
         device.modulation.sources.forEach((src) => {
-            const row = this.container?.querySelector<HTMLElement>(`.mod-source-row[data-source-id="${src.id}"]`);
+            const row = this.container?.querySelector<HTMLElement>(`.mod-source-row[data-source-id="${escapeCssId(src.id)}"]`);
             if (!row) return;
             const referenced = device.modulation.slots.some((s) => s.enabled && s.sourceId === src.id);
             row.classList.toggle("on", referenced);

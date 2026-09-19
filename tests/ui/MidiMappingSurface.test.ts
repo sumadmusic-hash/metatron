@@ -134,8 +134,9 @@ describe("SurfaceUI — MIDI mapping management + scaling editor (C2 §7/§9)", 
 
         setNumber(field(root, "a", "min")!, "-0.7"); // clamp → 0
         expect(a.midiBindingDefinition?.min).toBe(0);
-        setNumber(field(root, "a", "min")!, "1.6");  // clamp → 1
-        expect(a.midiBindingDefinition?.min).toBe(1);
+        // min is clamped to max (0.9) to prevent min > max
+        setNumber(field(root, "a", "min")!, "1.6");  // clamp to max (0.9)
+        expect(a.midiBindingDefinition?.min).toBe(0.9);
         const callsAfterValidEdits = saveSpy.mock.calls.length;
         expect(callsAfterValidEdits).toBeGreaterThan(0);
 

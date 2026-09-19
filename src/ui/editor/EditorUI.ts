@@ -64,6 +64,12 @@ interface DragInfo {
  * control background colors, create/select/move/resize/rename/color groups,
  * group membership, and a snap toggle.
  */
+
+/** Escape a string for use as a CSS identifier in selectors. */
+function escapeCssId(id: string): string {
+    return CSS.escape(id);
+}
+
 export class EditorUI {
     private deviceLibrary: DeviceLibrary;
     private container!: HTMLElement;
@@ -1114,7 +1120,7 @@ export class EditorUI {
             // Member Controls move the same delta in the model; keep the DOM
             // elements in sync so the surface and the stored geometry match.
             device.getGroupControls(target.id).forEach(member => {
-                const memberEl = this.container.querySelector(`[data-ctl-id="${member.id}"]`) as HTMLElement | null;
+                const memberEl = this.container.querySelector(`[data-ctl-id="${escapeCssId(member.id)}"]`) as HTMLElement | null;
                 if (memberEl) this.applyControlLayout(memberEl, member);
             });
             this.syncGroupToolbar(target);
@@ -1181,10 +1187,10 @@ export class EditorUI {
         this.container.querySelectorAll(".control-wrapper.selected").forEach((n) => n.classList.remove("selected"));
         this.container.querySelectorAll(".group-box.selected").forEach((n) => n.classList.remove("selected"));
         if (this.selectedControlId) {
-            this.container.querySelector(`[data-ctl-id="${this.selectedControlId}"]`)?.classList.add("selected");
+            this.container.querySelector(`[data-ctl-id="${escapeCssId(this.selectedControlId)}"]`)?.classList.add("selected");
         }
         if (this.selectedGroupId) {
-            this.container.querySelector(`[data-grp-id="${this.selectedGroupId}"]`)?.classList.add("selected");
+            this.container.querySelector(`[data-grp-id="${escapeCssId(this.selectedGroupId)}"]`)?.classList.add("selected");
         }
     }
 

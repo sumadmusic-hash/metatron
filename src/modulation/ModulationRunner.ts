@@ -70,6 +70,13 @@ export class ModulationRunner {
      *  applyModDisplay DOM writes are skipped when the value did not change. */
     private readonly lastModValue = new Map<string, number>();
 
+    /** Snap-back generation guard: each writeControl increments the generation.
+     *  writeBaseValueToNexus captures the generation at start and only writes
+     *  if the generation hasn't changed (i.e. no newer mod write has started).
+     *  Prevents stale snap-backs from overwriting newer mod writes after
+     *  stop()+restart or enabled→disabled→enabled races. */
+    private readonly writeGeneration = new Map<string, number>();
+
     constructor(
         getDevice: () => Device | null,
         getBpm: () => number,
@@ -104,6 +111,7 @@ export class ModulationRunner {
         this.startTimeSec = performance.now() / 1000;
         this.lastWriteMsByControl.clear();
         this.lastProcessedDestinationIndex = 0;
+        this.writeGeneration.clear();
         this.rafId = requestAnimationFrame(this.loop);
     }
 
@@ -123,8 +131,29 @@ export class ModulationRunner {
         this.activeDestinationIds.clear();
         this.lastModValue.clear();
         this.inFlight.clear();
+        // writeGeneration NICHT hier leeren — die laufenden Snap-backs brauchen
+        // noch die Generation zum Vergleich. Wird beim nächsten start() geleert.
         // F2 — state zurücksetzen bei Stop: die per-control Write-Caps und der
         // Round-Robin-Cursor dürfen einen späteren Neustart nicht beeinflussen.
+        this.lastWriteMsByControl.clear();
+        this.lastProcessedDestinationIndex = 0;
+    }
+
+    /** Hard reset for device change: stops the runner WITHOUT running snap-backs.
+     *  Used when the device reference is about to change — the old device's
+     *  runner state must not write to the new device. */
+    public resetForDeviceChange(): void {
+        if (this.rafId !== null) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = null;
+        }
+        // Clear all state WITHOUT writing base values (which would hit the new device).
+        this.gestureTakeover.clear();
+        this.activeDestinationIds.forEach((id) => this.surfaceUI.applyModDisplay(id, null));
+        this.activeDestinationIds.clear();
+        this.lastModValue.clear();
+        this.inFlight.clear();
+        this.writeGeneration.clear();
         this.lastWriteMsByControl.clear();
         this.lastProcessedDestinationIndex = 0;
     }
@@ -253,7 +282,9 @@ export class ModulationRunner {
      *  Guards (Archiv / Takeover / Binding) laufen VOR dem Warten und machen
      *  doppelte Writes unmöglich; danach ist der Basiswert ein One-Shot ohne
      *  Per-Control-Cap-Verstoß, bewusst KEIN Recorder-Capture (Controller-
-     *  Move, keine Mod-Aufnahme). */
+     *  Move, keine Mod-Aufnahme).
+     *  Generation-Guard: nur schreiben, wenn keine neuere Mod-Write dazwischen-
+     *  gekommen ist (gleiche Generation). */
     private async writeBaseValueToNexus(controlId: string): Promise<void> {
         const device = this.getDevice();
         const control = device?.getControl(controlId);
@@ -262,7 +293,14 @@ export class ModulationRunner {
         if (!this.bindingManager.getActiveBinding(controlId)) return;
 
         const pending = this.inFlight.get(controlId);
+        const generationAtStart = this.writeGeneration.get(controlId) ?? 0;
         if (pending) await pending;
+
+        // Generation-Guard: wenn zwischen await und jetzt ein neuer writeControl
+        // gestartet wurde, ist die Generation gestiegen → Snap-back verwerfen.
+        if (this.writeGeneration.get(controlId) !== generationAtStart) {
+            return;
+        }
 
         const baseValue = control.value;
         this.nexusAdapter.beginSuppressEcho(controlId, baseValue);
@@ -292,6 +330,10 @@ export class ModulationRunner {
         if (Math.abs(value - baseValue) < DELTA_EPSILON) return false;
 
         this.lastWriteMsByControl.set(controlId, now);
+        // Increment generation for snap-back race protection
+        const nextGen = (this.writeGeneration.get(controlId) ?? 0) + 1;
+        this.writeGeneration.set(controlId, nextGen);
+
         this.nexusAdapter.beginSuppressEcho(controlId, value);
         const write = this.nexusAdapter.updateBoundControl(controlId, value).finally(() => {
             // R2 — Identitäts-Guard: löscht nur den EIGENEN Map-Eintrag (nach

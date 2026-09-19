@@ -200,4 +200,55 @@ describe("B55 — runner start-guard requires an enabled slot routing an EXISTIN
 
         vi.restoreAllMocks();
     });
+
+    it("Device-Wechsel: alter Runner wird hard-reset (ohne Snap-back), neuer startet sauber", () => {
+        // Device A: runnable, runner läuft
+        const { device: deviceA, ctrl: ctrlA } = makeDevice();
+        deviceA.modulation.slots[0].enabled = true;
+        deviceA.modulation.slots[0].destControlId = ctrlA.id;
+        deviceA.modulation.slots[0].sourceId = deviceA.modulation.sources[0].id;
+        const { app } = mount(deviceA);
+
+        const runner = (app as any).modRunner;
+        const startSpy = vi.spyOn(runner, "start");
+        const stopSpy = vi.spyOn(runner, "stop");
+        const resetSpy = vi.spyOn(runner, "resetForDeviceChange");
+
+        // Runner is running on Device A
+        expect((app as any).modRunnerState).toBe(true);
+        const startTimeSecA = (runner as any).startTimeSec;
+
+        // Create Device B (different ID, also runnable)
+        const { device: deviceB, ctrl: ctrlB } = makeDevice();
+        deviceB.name = "Device B"; // different name, will get different ID on load
+        deviceB.modulation.slots[0].enabled = true;
+        deviceB.modulation.slots[0].destControlId = ctrlB.id;
+        deviceB.modulation.slots[0].sourceId = deviceB.modulation.sources[0].id;
+
+        // Simulate device switch: load Device B into library
+        // This simulates what DeviceLibrary.loadDevice does - new instance, different ID
+        (app as any).deviceLibrary.currentDevice = deviceB;
+        (app as any).deviceLibrary.saveCurrentDevice();
+
+        // Call onDeviceChanged - should hard-reset old runner, then start new
+        (app as any).onDeviceChanged();
+
+        // resetForDeviceChange should have been called (hard reset without snap-back)
+        expect(resetSpy).toHaveBeenCalledTimes(1);
+        
+        // Old runner's startTimeSec should be replaced (new timebase)
+        expect((runner as any).startTimeSec).not.toBe(startTimeSecA);
+        expect((runner as any).startTimeSec).toBeGreaterThan(startTimeSecA);
+        
+        // Runner should be running on new device
+        expect((app as any).modRunnerState).toBe(true);
+        
+        // stop() should NOT have been called (resetForDeviceChange is used instead)
+        expect(stopSpy).not.toHaveBeenCalled();
+        
+        // But start() should have been called for the new device
+        expect(startSpy).toHaveBeenCalledTimes(1);
+
+        vi.restoreAllMocks();
+    });
 });

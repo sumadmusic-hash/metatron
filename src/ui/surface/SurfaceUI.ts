@@ -22,12 +22,19 @@ const KNOB_ARC_END = 0.75 * 2 * Math.PI * KNOB_RADIUS;
 
 export { KNOB_RADIUS, KNOB_ARC_END };
 
+/** Escape a string for use as a CSS identifier in selectors. */
+function escapeCssId(id: string): string {
+    return CSS.escape(id);
+}
+
 /**
  * USE-mode control surface. Controls are interactive here:
  * - knobs: vertical drag; switches: click to toggle
  * - per-control Nexus Learn (§23/§24) and MIDI Learn (§25-27) via a selection
  *   action bar (kept out of the normal layout to reduce visual clutter)
  * - external Nexus changes update the surface in place
+ * - MIDI Learn (§25-27) via a selection action bar (kept out of the normal layout
+ *   to reduce visual clutter)
  */
 export class SurfaceUI {
     private deviceLibrary: DeviceLibrary;
@@ -558,14 +565,20 @@ private container!: HTMLElement;
             input.onchange = () => {
                 const entered = String(input.value).trim();
                 const parsed = entered === "" ? NaN : Number(entered);
-                if (Number.isNaN(parsed)) { this.reRender(); return; } // revert + reset the visible field
+                if (Number.isNaN(parsed)) { this.reRender(); return; }
                 if (field === "exponent") {
-                    if (parsed <= 0) { this.reRender(); return; } // revert + reset the visible field
+                    if (parsed <= 0) { this.reRender(); return; }
                     apply({ exponent: parsed });
                 } else if (field === "min") {
-                    apply({ min: Math.min(1, Math.max(0, parsed)) });
+                    const clamped = Math.min(1, Math.max(0, parsed));
+                    // Ensure min <= max
+                    const currentMax = definition.max !== undefined ? definition.max : 1;
+                    apply({ min: Math.min(clamped, currentMax) });
                 } else {
-                    apply({ max: Math.min(1, Math.max(0, parsed)) });
+                    const clamped = Math.min(1, Math.max(0, parsed));
+                    // Ensure max >= min
+                    const currentMin = definition.min !== undefined ? definition.min : 0;
+                    apply({ max: Math.max(clamped, currentMin) });
                 }
             };
             wrap.appendChild(input);
@@ -633,7 +646,7 @@ private container!: HTMLElement;
         this.selectedControlId = id;
         this.container.querySelectorAll(".control-wrapper.selected").forEach((n) => n.classList.remove("selected"));
         if (id) {
-            this.container.querySelector(`[data-ctl-id="${id}"]`)?.classList.add("selected");
+            this.container.querySelector(`[data-ctl-id="${escapeCssId(id)}"]`)?.classList.add("selected");
         }
     }
 
@@ -644,6 +657,8 @@ private container!: HTMLElement;
 
         body.style.cursor = "ns-resize";
         body.addEventListener("pointerdown", (e) => {
+            // Only start drag on primary button (left click / primary touch)
+            if (e.button !== 0) return;
             e.preventDefault();
             dragging = true;
             startY = e.clientY;

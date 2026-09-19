@@ -1,5 +1,6 @@
 import { DeviceLibrary } from "../core/DeviceLibrary";
 import { Device } from "../core/model/Device";
+import { Control } from "../core/model/Control";
 import { NexusAdapter } from "../nexus/NexusAdapter";
 import { MidiAccess } from "../midi/MidiAccess";
 import { MidiMapping } from "../midi/MidiMapping";
@@ -66,6 +67,34 @@ const USER_AVATAR_SVG =
     '<circle cx="12" cy="8" r="4"/>' +
     '<path d="M4 20c0-4 3.6-6 8-6s8 2 8 6v1H4v-1z"/>' +
     '</svg>';
+
+/** Escape a string for use as a CSS identifier in selectors. */
+function escapeCssId(id: string): string {
+    return CSS.escape(id);
+}
+
+/** Minimal device stub for BindingManager/MidiMapping when no real device exists.
+ *  Satisfies the required interface (id, controls Map, getControl, modulation)
+ *  without being a real Device instance — never persisted, never added to library. */
+function createNullDevice(): Device {
+    const controls = new Map<string, Control>();
+    return {
+        id: "null-device",
+        name: "",
+        controls,
+        modulation: { version: 1, sources: [], slots: [] },
+        getControl: (id: string) => controls.get(id),
+        schemaVersion: 1,
+        groups: new Map(),
+        presets: new Map(),
+        MAX_ACTIVE_CONTROLS: 32,
+        morphMidi: undefined,
+        addControl: () => false,
+        getActiveControlCount: () => 0,
+        removeControl: () => false,
+        serialize: () => ({} as any),
+    } as unknown as Device;
+}
 
 export class AppUI {
     private root: HTMLElement;
@@ -136,17 +165,19 @@ export class AppUI {
         this.deviceLibrary = deviceLibrary;
         this.nexusAdapter = nexusAdapter;
         this.midiAccess = midiAccess;
-        this.bindingManager = bindingManager ?? new BindingManager(this.deviceLibrary.currentDevice ?? this.deviceLibrary.createNewDevice("My Device"));
+        const nullDevice = createNullDevice();
+        const device = this.deviceLibrary.currentDevice ?? nullDevice;
+        this.bindingManager = bindingManager ?? new BindingManager(device);
 
         // Session-scoped undo/redo (C1). Transient by design — no persistence.
         this.history = new DeviceHistory(this.deviceLibrary);
         this.history.onChange = () => this.syncHistoryButtons();
 
-        const device = this.deviceLibrary.currentDevice;
-        if (device) {
-            this.bindingManager.setDevice(device);
+        const currentDevice = this.deviceLibrary.currentDevice;
+        if (currentDevice) {
+            this.bindingManager.setDevice(currentDevice);
         }
-        this.midiMapping = new MidiMapping(device ?? this.deviceLibrary.createNewDevice("My Device"));
+        this.midiMapping = new MidiMapping(device);
 
         // M21.2: internal automation recording. The recorder is an ADDITIONAL
         // observer of the normal control-value path — the Audiotool write stays
@@ -414,7 +445,7 @@ export class AppUI {
     private setWriteRefused(controlId: string, refused: boolean) {
         if (refused) this.refusedControlIds.add(controlId);
         else this.refusedControlIds.delete(controlId);
-        const el = this.root.querySelector<HTMLElement>(`[data-ctl-id="${controlId}"]`);
+        const el = this.root.querySelector<HTMLElement>(`[data-ctl-id="${escapeCssId(controlId)}"]`);
         if (!el) return;
         el.classList.toggle(WRITE_REFUSED_CLASS, refused);
         if (refused) el.title = WRITE_REFUSED_TITLE;
@@ -731,33 +762,27 @@ export class AppUI {
 
     private onDeviceChanged() {
         const device = this.deviceLibrary.currentDevice;
+        
+        // 1. If there's a real device switch, hard-reset the runner FIRST
+        // (before changing the device reference) so its state doesn't leak
+        // to the new device. Uses a dedicated method that stops WITHOUT snap-backs.
+        const oldDevice = this.bindingManager.deviceRef;
+        const deviceChanged = device && oldDevice && oldDevice.id !== device.id;
+        if (deviceChanged) {
+            this.modRunner.resetForDeviceChange();
+            this.nexusAdapter.clearBoundControlSubscriptions();
+            this.modRunnerState = false;
+        }
+        
+        // 2. Now update the device reference
         if (device) {
-            // Real device switch (compared by id — `loadDevice` rehydrates a
-            // fresh instance even for the same device): drop the previous
-            // device's Nexus subscriptions BEFORE re-pointing the binding
-            // manager — a stale Nexus event for an old control id must never
-            // bleed into the newly active device. Same-device refreshes
-            // (preset load, undo/redo, rename) keep their live subscriptions.
-            // B1 — BindingManager.setDevice nutzt denselben ID-Begriff:
-            // "gleiche ID, neue Instanz" ist Rehydrierung (Bindings bleiben),
-            // abweichende ID ein echter Wechsel (Bindings werden geleert).
-            const deviceChanged = this.bindingManager.deviceRef.id !== device.id;
-            if (deviceChanged) {
-                this.nexusAdapter.clearBoundControlSubscriptions();
-                // §12 — only on a REAL device switch reset the runner state so
-                // it is (re)synced against the NEW device's matrix.
-                this.modRunnerState = false;
-            }
             this.bindingManager.setDevice(device);
             this.midiMapping.updateDevice(device);
         }
-        // FIX 6 + §12 — Runner-Lifecycle: nur bei tatsächlicher
-        // Runnability-Änderung starten/stoppen (LFO-Phase bleibt bei
-        // gleichbleibender Lauffähigkeit erhalten — §12).
+        
+        // 3. Sync runner against the NEW device's matrix
         this.syncModulationRunner();
         this.render();
-        // this.modMatrixUI.render() is redundant — AppUI.render() calls
-        // modMatrixUI.getContainer() which already invokes render().
     }
 
     /** Single source of truth for "the matrix can produce destinations"
