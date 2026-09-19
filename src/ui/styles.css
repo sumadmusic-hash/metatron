@@ -19,6 +19,34 @@
     --text-mut: #6e7681;
     --danger: #f87171;
     --rec-red: #ef4444;
+
+    /* ── Teil C: Modulation-Matrix Design-Tokens ────────────────────────────
+       Rein visuell. Akzent-Regel: rotation = teal (A), cross-column
+       source-linked ↔ Routing = sky-blue (B). Blickfang/Akzente immer via
+       --mm-accent-A/B, NIE der globale --accent-color (der folgt dem Modus). */
+    --mm-canvas: #0d1117;
+    --mm-panel: #161b22;
+    --mm-row: #0d1117;
+    --mm-border-strong: #30363d;
+    --mm-border-soft: #21262d;
+    --mm-radius-lg: 8px;
+    --mm-radius-md: 6px;
+    --mm-radius-sm: 4px;
+    --mm-radius-pill: 13px;
+    --mm-radius-cap: 6px;
+    --mm-text-strong: #f0f6fc;
+    --mm-text: #c9d1d9;
+    --mm-text-soft: #8b949e;
+    --mm-text-faint: #6e7681;
+    --mm-accent-A: #2dd4bf;
+    --mm-accent-A-solid: #0d9488;
+    --mm-accent-A-bg: #042f2e;
+    --mm-accent-B: #38bdf8;
+    --mm-accent-B-solid: #0284c7;
+    --mm-accent-B-bg: #0c4a6e;
+    --mm-off: #6e7681;
+    --mm-off-bg: #30363d;
+    --mm-off-panel: #161b22;
 }
 
 /* Mode-scoped accent palette: USE = teal, EDIT = sky blue. AppUI.render()
@@ -1818,14 +1846,18 @@ body {
 
 /* ── Phase 2b: Modulation Matrix Drawer ───────────────────────────────────── */
 
+/* ── Teil C: Modulation-Matrix-Redesign (rein visuell) ─────────────────────
+   Rotations-Akzente immer über --mm-accent-A (teal); cross-column
+   source-linked ↔ Routing ausschließlich --mm-accent-B (sky blue). */
+
 .mod-matrix-drawer {
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
     max-height: 0;
-    background: #191c23;
-    border-top: 1px solid var(--border-color);
+    background: var(--mm-canvas);
+    border-top: 1px solid var(--mm-border-strong);
     z-index: 200;
     overflow: hidden;
     transition: max-height 0.2s ease;
@@ -1845,7 +1877,7 @@ body {
  * (right) replaces the stacked-mode bottom divider. */
 .mod-matrix-drawer.open .mod-source-rack {
     border-bottom: none;
-    border-right: 1px solid var(--border-color);
+    border-right: 1px solid var(--mm-border-soft);
 }
 
 /* Each column scrolls independently to its own content height instead of
@@ -1864,7 +1896,7 @@ body {
     }
     .mod-matrix-drawer.open .mod-source-rack {
         border-right: none;
-        border-bottom: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--mm-border-soft);
     }
 }
 
@@ -1873,30 +1905,37 @@ body {
     align-items: center;
     justify-content: space-between;
     padding: 8px 16px;
-    border-bottom: 1px solid var(--border-color);
+    background: var(--mm-panel);
+    border-bottom: 1px solid var(--mm-border-strong);
 }
 
 .mod-matrix-title {
     font-size: 13px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--mm-text-strong);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
+/* CTA-Bake: primary action in the matrix — accent-A chassis + glow. */
 .mod-matrix-bake {
-    background: rgba(0, 229, 255, 0.1);
-    color: var(--text-secondary);
-    border: 1px solid rgba(0, 229, 255, 0.25);
-    padding: 4px 10px;
-    font-size: 12px;
-    border-radius: 4px;
+    background: var(--mm-accent-A-bg);
+    color: var(--mm-accent-A);
+    border: 1px solid var(--mm-accent-A-solid);
+    padding: 5px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    border-radius: var(--mm-radius-pill);
     cursor: pointer;
+    transition: background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
 }
 
 .mod-matrix-bake:hover {
-    background: rgba(0, 229, 255, 0.2);
-    color: var(--text-primary);
+    background: rgba(45, 212, 191, 0.16);
+    color: #e6fffa;
+    box-shadow: 0 0 10px rgba(45, 212, 191, 0.25);
 }
 
 /* Phase 3 — Bake-Dialog im Mod-Matrix-Look (zentriert, modal) */
@@ -1951,34 +1990,52 @@ body {
     z-index: 229;
 }
 
+/* Column cards: each column reads as a raised panel on the canvas. */
 .mod-source-rack,
 .mod-slot-matrix {
-    padding: 8px 16px;
+    padding: 10px 14px;
+    background: var(--mm-panel);
+    border-radius: var(--mm-radius-lg);
+    margin: 8px;
+    border: 1px solid var(--mm-border-soft);
 }
 
 .mod-source-rack {
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--mm-border-soft);
+}
+
+/* Recessed patch-bay backdrop sets ROUTING apart from the SOURCES rack. */
+.mod-slot-matrix {
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.18));
 }
 
 /* Section headers — Metatron caption language (uppercase, letter-spaced). */
 .mod-section-title {
     font-size: 11px;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--mm-text-strong);
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.12em;
     line-height: 1;
-    padding: 6px 0 8px;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    padding: 4px 2px 10px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-/* Caption + control column; single-line rows put the caption to the left. */
+/* Caption + control column as a soft capsule (Teil C C5). */
 .mod-field {
     display: flex;
     flex-direction: row;
     align-items: center;
     gap: 4px;
     flex: 0 0 auto;
+    padding: 2px 6px 2px 7px;
+    border: 1px solid var(--mm-border-soft);
+    border-radius: var(--mm-radius-sm);
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.mod-field:focus-within {
+    border-color: var(--mm-accent-A-solid);
 }
 
 .mod-field--check {
@@ -1989,77 +2046,110 @@ body {
     font-size: 9px;
     line-height: 1;
     font-weight: 500;
-    color: var(--text-secondary);
+    color: var(--mm-text-soft);
     text-transform: uppercase;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.5px;
     white-space: nowrap;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     cursor: pointer;
     user-select: none;
 }
 
-/* ── MatriX row cosmetics: every route row sits on a subtle raised card, the
-   active row carries an amber wash + spine (amber = modulation language),
-   inactive (gated) rows stay legible but dimmed. */
+/* ── Matrix row cosmetics: every route row sits on a subtle raised card, the
+   active row carries an accent-A wash + spine (teal = modulation language),
+   inactive (gated) rows stay legible but dimmed to the "off" palette. */
 .mod-source-row,
 .mod-slot-row {
     display: flex;
     align-items: center;
     gap: 8px;
     height: 42px;
+    min-height: 34px;
     box-sizing: border-box;
     padding: 4px 8px;
-    margin: 2px 0;
-    border-radius: 6px;
-    background: rgba(22, 26, 36, 0.55);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    margin: 4px 0;
+    border-radius: var(--mm-radius-md);
+    background: var(--mm-row);
+    border: 1px solid var(--mm-border-soft);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
     font-size: 12px;
-    color: var(--text-primary);
-    transition: opacity 0.15s ease, background-color 0.15s ease;
+    color: var(--mm-text);
+    transition: opacity 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
 }
 
-/* Active rows carry a slim amber spine + wash; inactive rows are dimmed. */
+/* Active rows carry a slim accent-A spine + wash; inactive rows are dimmed. */
 .mod-source-row.on,
 .mod-slot-row.on {
-    background: linear-gradient(90deg, rgba(255, 154, 0, 0.10), rgba(255, 200, 0, 0.02) 55%);
-    box-shadow: inset 2px 0 0 #ff9a00;
+    background: linear-gradient(90deg, rgba(45, 212, 191, 0.12), rgba(45, 212, 191, 0.02) 55%);
+    border-color: rgba(45, 212, 191, 0.35);
+    box-shadow: inset 2px 0 0 var(--mm-accent-A);
 }
 
 .mod-source-row.on > .mod-source-label,
 .mod-slot-row.on .mod-field-caption,
 .mod-slot-row.on .mod-route-cap {
-    color: var(--text-primary);
+    color: var(--mm-text-strong);
 }
 
 .mod-source-row.off,
 .mod-slot-row.off {
-    opacity: 0.45;
+    opacity: 0.5;
 }
 
+/* Source label as a compact chip (Teil C C4). */
 .mod-source-label {
     flex: 0 0 88px;
     width: 88px;
     min-width: 88px;
-    color: var(--text-secondary);
+    color: var(--mm-text-strong);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     line-height: 1.3;
-    padding-top: 1px;
+    padding: 2px 8px;
+    border-radius: var(--mm-radius-pill);
+    background: rgba(22, 27, 34, 0.9);
+    border: 1px solid var(--mm-border-strong);
+    font-weight: 600;
+    font-size: 10.5px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+
+.mod-source-row.on > .mod-source-label {
+    color: var(--mm-accent-A);
+    border-color: rgba(45, 212, 191, 0.4);
+    background: var(--mm-accent-A-bg);
 }
 
 .mod-source-row input,
 .mod-source-row select,
 .mod-slot-row input,
 .mod-slot-row select {
-    background: rgba(0, 0, 0, 0.25);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.35);
+    color: var(--mm-text);
+    border: 1px solid var(--mm-border-strong);
+    border-radius: var(--mm-radius-sm);
     padding: 3px 6px;
     font-size: 12px;
     box-sizing: border-box;
     height: 25px;
+    transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.mod-source-row input:hover,
+.mod-source-row select:hover,
+.mod-slot-row input:hover,
+.mod-slot-row select:hover {
+    border-color: var(--mm-accent-A-solid);
+}
+
+.mod-source-row input:focus,
+.mod-source-row select:focus,
+.mod-slot-row input:focus,
+.mod-slot-row select:focus {
+    border-color: var(--mm-accent-A-solid);
+    box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.25);
 }
 
 .mod-source-row input[type="checkbox"],
@@ -2074,7 +2164,7 @@ body {
     cursor: pointer;
 }
 
-/* Routing ON — pill toggle matching the optimized SVG mockup.
+/* Routing ON — pill toggle matching the optimized SVG mockup (Teil C C8).
  * The real <input type="checkbox"> stays in the DOM, clickable and
  * keyboard-operable; only its drawing is replaced. Pseudo-elements do not
  * render on inputs, so the sliding nub is a background radial-gradient whose
@@ -2089,10 +2179,10 @@ body {
     height: 20px;
     margin: 0;
     padding: 0;
-    border: 1px solid #272d3f;
+    border: 1px solid var(--mm-border-strong);
     border-radius: 10px;
-    background-color: #222838;
-    background-image: radial-gradient(circle, #6c7890 0 38%, #4a5060 100%);
+    background-color: var(--mm-off-bg);
+    background-image: radial-gradient(circle, var(--mm-off) 0 38%, #4a5060 100%);
     background-size: 16px 16px;
     background-repeat: no-repeat;
     background-position: 1px center;
@@ -2101,15 +2191,15 @@ body {
 }
 
 .mod-slot-row input[type="checkbox"].mod-slot-enable:checked {
-    background-color: rgba(0, 229, 255, 0.15);
-    border-color: rgba(0, 229, 255, 0.35);
+    background-color: var(--mm-accent-A-bg);
+    border-color: var(--mm-accent-A-solid);
     background-image: radial-gradient(circle, #cfeef2 0 38%, #8ab8c0 100%);
     background-position: 21px center;
-    box-shadow: 0 0 6px rgba(0, 229, 255, 0.3);
+    box-shadow: 0 0 6px rgba(45, 212, 191, 0.35);
 }
 
 .mod-slot-row input[type="checkbox"].mod-slot-enable:focus-visible {
-    outline: 1px solid var(--accent-color);
+    outline: 2px solid var(--mm-accent-A);
     outline-offset: 2px;
 }
 
@@ -2118,16 +2208,52 @@ body {
     width: 100px;
 }
 
-/* FREE | SYNC segment toggle (subtle look, matching the SVG mockup): the
-   active half gets a teal tint + cyan border instead of a full accent fill;
-   the inactive half stays dimmed. */
+/* Waveform glyph (C9): a mini sine-squiggle lead-in on the Wave field. The
+   <select> itself keeps its native behaviour + custom caret arrow. */
+.mod-field--wave {
+    position: relative;
+    padding-left: 14px;
+}
+
+.mod-field--wave::before {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 50%;
+    width: 8px;
+    height: 7px;
+    transform: translateY(-50%);
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 7'%3E%3Cpath d='M0 3.5h1.2l.9-2.6 1.4 4.4 1.3-3.4.9 1.6H8' fill='none' stroke='%232dd4bf' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-size: 8px 7px;
+    background-repeat: no-repeat;
+}
+
+/* Capsule fields (C10): Macro source / note division reads as pill chips. */
+.mod-source-row .mod-source-macro,
+.mod-source-row .mod-source-division {
+    border-radius: var(--mm-radius-pill);
+    background-color: rgba(4, 47, 46, 0.55);
+    border-color: var(--mm-accent-A-solid);
+    color: var(--mm-accent-A);
+    font-weight: 600;
+}
+
+.mod-source-row .mod-source-smooth,
+.mod-source-row .mod-source-drift {
+    border-radius: var(--mm-radius-pill);
+    background-color: rgba(0, 0, 0, 0.4);
+    text-align: center;
+}
+
+/* FREE | SYNC segment pill (Teil C C6): the active half gets the accent-A
+   fill + border; the inactive half stays dimmed. */
 .mod-seg {
     display: inline-flex;
     height: 25px;
-    border: 1px solid #202432;
-    border-radius: 4px;
+    border: 1px solid var(--mm-border-soft);
+    border-radius: var(--mm-radius-sm);
     overflow: hidden;
-    background: #151821;
+    background: var(--mm-row);
 }
 
 .mod-seg-btn {
@@ -2135,29 +2261,29 @@ body {
     align-items: center;
     justify-content: center;
     border: 0;
-    background: #181c26;
-    color: #5c677d;
+    background: transparent;
+    color: var(--mm-text-faint);
     font-size: 10.5px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    padding: 0 6px;
+    padding: 0 8px;
     cursor: pointer;
     transition: background 0.12s ease, color 0.12s ease;
 }
 
 .mod-seg-btn + .mod-seg-btn {
-    border-left: 1px solid #202432;
+    border-left: 1px solid var(--mm-border-soft);
 }
 
 .mod-seg-btn:hover {
-    color: #8892b0;
+    color: var(--mm-text-soft);
 }
 
 .mod-seg-btn.active {
-    background: rgba(0, 168, 181, 0.35);
-    color: #00e5ff;
-    box-shadow: inset 0 0 0 1px rgba(0, 229, 255, 0.7);
+    background: var(--mm-accent-A-bg);
+    color: var(--mm-accent-A);
+    box-shadow: inset 0 0 0 1px var(--mm-accent-A-solid);
 }
 
 /* FREE-mode Hz: number readout (with explicit Hz unit) + compact slider. */
@@ -2202,17 +2328,12 @@ body {
 
 /* ---------- Routing section ---------- */
 
-/* Recessed patch-bay backdrop sets ROUTING apart from the SOURCES rack. */
-.mod-slot-matrix {
-    background: rgba(0, 0, 0, 0.18);
-}
-
 .mod-route-cap {
     flex: 0 0 auto;
     font-size: 10.5px;
     line-height: 1;
     font-weight: 500;
-    color: var(--text-secondary);
+    color: var(--mm-text-faint);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -2220,7 +2341,7 @@ body {
 }
 
 .mod-route-cap--src {
-    width: 42px;
+    width: 34px;
 }
 
 .mod-route-cap--dest {
@@ -2235,12 +2356,26 @@ body {
     width: 18px;
 }
 
+/* Route arrow (C9): accent-A chevron on a slim connector chip. The "→" glyph
+   stays a text node (aria-hidden) — only its drawing changes. */
 .mod-route-arrow {
-    color: var(--accent-color);
+    color: var(--mm-accent-A);
     font-size: 13px;
     line-height: 1;
     flex: 0 0 auto;
     user-select: none;
+    padding: 0 5px;
+    border-radius: var(--mm-radius-cap);
+    background: rgba(45, 212, 191, 0.08);
+    border: 1px solid rgba(45, 212, 191, 0.22);
+    font-weight: 700;
+}
+
+.mod-source-row.off .mod-route-arrow,
+.mod-slot-row.off .mod-route-arrow {
+    color: var(--mm-off);
+    background: transparent;
+    border-color: var(--mm-border-soft);
 }
 
 .mod-route-on {
@@ -2275,7 +2410,19 @@ body {
 }
 
 .mod-slot-amount {
-    width: 48px;
+    width: 44px;
+}
+
+/* C7 — signed readout badge ("+23" next to the "%" unit; plain number input
+   stays untouched). */
+.mod-slot-amount-signed {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--mm-accent-A);
+    font-variant-numeric: tabular-nums;
+    min-width: 24px;
+    text-align: right;
+    user-select: none;
 }
 
 /* ---------------------------------------------------------------------------
@@ -2291,9 +2438,9 @@ body {
     appearance: none;
     height: 6px;
     margin: 0;
-    border: 1px solid var(--border-color);
-    border-radius: 3px;
-    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid var(--mm-border-strong);
+    border-radius: var(--mm-radius-sm);
+    background: rgba(0, 0, 0, 0.5);
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55);
     cursor: pointer;
     outline: none;
@@ -2302,16 +2449,16 @@ body {
 .mod-source-row .mod-source-rate-slider::-webkit-slider-runnable-track,
 .mod-slot-row .mod-slot-amount-slider::-webkit-slider-runnable-track {
     height: 6px;
-    border-radius: 3px;
-    background-color: rgba(0, 0, 0, 0.45);
-    /* Three-stop fill: transparent on BOTH flanks, cyan exactly from
+    border-radius: var(--mm-radius-sm);
+    background-color: rgba(0, 0, 0, 0.5);
+    /* Three-stop fill: transparent on BOTH flanks, accent-A exactly from
      * --mod-fill-start to --mod-fill-end. Without the leading transparent
      * stop the gradient would paint the fill all the way back to 0%, which
      * breaks the bipolar amount fill (negative values and value 0). */
     background-image: linear-gradient(
         to right,
         transparent var(--mod-fill-start, 0%),
-        rgba(0, 229, 255, 0.45) var(--mod-fill-start, 0%) var(--mod-fill-end, 0%),
+        rgba(45, 212, 191, 0.5) var(--mod-fill-start, 0%) var(--mod-fill-end, 0%),
         transparent var(--mod-fill-end, 0%)
     );
 }
@@ -2326,24 +2473,24 @@ body {
     border-radius: 50%;
     border: 1px solid rgba(255, 255, 255, 0.18);
     background:
-        radial-gradient(circle at 50% 50%, var(--accent-color) 0 1.5px, transparent 2px),
+        radial-gradient(circle at 50% 50%, var(--mm-accent-A) 0 1.5px, transparent 2px),
         radial-gradient(circle at 35% 30%, #3a3f47 0%, #1c1f24 55%, #101216 100%);
     box-shadow:
-        0 0 4px rgba(0, 229, 255, 0.3),
+        0 0 4px rgba(45, 212, 191, 0.3),
         0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 .mod-source-row .mod-source-rate-slider::-moz-range-track,
 .mod-slot-row .mod-slot-amount-slider::-moz-range-track {
     height: 6px;
-    border-radius: 3px;
-    background-color: rgba(0, 0, 0, 0.45);
-    /* Three-stop fill: transparent on BOTH flanks, cyan exactly from
+    border-radius: var(--mm-radius-sm);
+    background-color: rgba(0, 0, 0, 0.5);
+    /* Three-stop fill: transparent on BOTH flanks, accent-A exactly from
      * --mod-fill-start to --mod-fill-end (see webkit rule above). */
     background-image: linear-gradient(
         to right,
         transparent var(--mod-fill-start, 0%),
-        rgba(0, 229, 255, 0.45) var(--mod-fill-start, 0%) var(--mod-fill-end, 0%),
+        rgba(45, 212, 191, 0.5) var(--mod-fill-start, 0%) var(--mod-fill-end, 0%),
         transparent var(--mod-fill-end, 0%)
     );
     border: none;
@@ -2356,19 +2503,19 @@ body {
     border-radius: 50%;
     border: 1px solid rgba(255, 255, 255, 0.18);
     background:
-        radial-gradient(circle at 50% 50%, var(--accent-color) 0 1.5px, transparent 2px),
+        radial-gradient(circle at 50% 50%, var(--mm-accent-A) 0 1.5px, transparent 2px),
         radial-gradient(circle at 35% 30%, #3a3f47 0%, #1c1f24 55%, #101216 100%);
     box-shadow:
-        0 0 4px rgba(0, 229, 255, 0.3),
+        0 0 4px rgba(45, 212, 191, 0.3),
         0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 .mod-rate .mod-source-rate,
 .mod-slot-row .mod-slot-amount {
     background: rgba(0, 0, 0, 0.55);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 3px;
-    color: var(--text-primary);
+    border: 1px solid var(--mm-border-strong);
+    border-radius: var(--mm-radius-sm);
+    color: var(--mm-text-strong);
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.02em;
     text-align: center;
@@ -2484,18 +2631,19 @@ body {
 /* Mod matrix density: row hover affordance + secondary-colored units. */
 .mod-source-row:hover,
 .mod-slot-row:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(240, 246, 252, 0.035);
+    border-color: var(--mm-border-strong);
 }
 
 .mod-source-row.on:hover,
 .mod-slot-row.on:hover {
-    background: linear-gradient(90deg, rgba(0, 229, 255, 0.12), transparent 45%);
+    background: linear-gradient(90deg, rgba(45, 212, 191, 0.14), transparent 45%);
 }
 
 .mod-rate-unit,
 .mod-route-cap,
 .mod-source-label {
-    color: var(--text-secondary);
+    color: var(--mm-text-faint);
     font-variant-numeric: tabular-nums;
 }
 
@@ -2757,8 +2905,17 @@ body {
     padding-right: 22px;
 }
 
-/* Cross-column highlight: riding source row mirrors the linked routing row. */
+/* Cross-column highlight (Akzent-Regel B): the riding source row mirrors the
+   linked routing row EXCLUSIVELY in accent-B (sky blue) — teal (A) bleibt den
+   aktiven Zeilen vorbehalten. */
 .mod-source-row.source-linked {
-    background: rgba(0, 229, 255, 0.05);
-    box-shadow: inset 2px 0 0 var(--accent-color);
+    background: rgba(56, 189, 248, 0.07);
+    box-shadow: inset 2px 0 0 var(--mm-accent-B);
+    border-color: var(--mm-accent-B-solid);
+}
+
+.mod-source-row.source-linked > .mod-source-label {
+    color: var(--mm-accent-B);
+    border-color: var(--mm-accent-B-solid);
+    background: var(--mm-accent-B-bg);
 }

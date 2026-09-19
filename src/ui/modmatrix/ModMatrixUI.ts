@@ -396,7 +396,7 @@ export class ModMatrixUI {
                 wave.appendChild(opt);
             });
             wave.onchange = () => this.editSource(src, () => { src.waveform = wave.value as Waveform; });
-            row.appendChild(this.field("Wave", wave));
+            row.appendChild(this.field("Wave", wave, "wave"));
 
             row.appendChild(this.renderModeToggle(src));
             row.appendChild(this.renderFrequencyField(src));
@@ -588,6 +588,7 @@ export class ModMatrixUI {
         slider.addEventListener("input", () => {
             num.value = String(Number(slider.value));
             updateAmountFill();
+            renderBadge();
         });
         slider.addEventListener("change", () => {
             const v = Number(slider.value);
@@ -605,15 +606,29 @@ export class ModMatrixUI {
         num.max = "100";
         num.step = "1";
         num.value = String(Math.round(slot.amount * 100));
+        // C7 — signed readout ("−23 %" / "+23 %") as a pure-presentation badge.
+        // The real number input keeps its raw signed value untouched: only the
+        // badge reshapes the text with an explicit "+" for positive amounts.
+        const badge = document.createElement("span");
+        badge.className = "mod-slot-amount-signed";
+        badge.setAttribute("aria-hidden", "true");
+        const renderBadge = (): void => {
+            const v = Number(num.value);
+            badge.innerText = (Number.isFinite(v) && v > 0 ? "+" : "") + String(Math.round(v));
+        };
+        renderBadge();
         num.onchange = () => {
             const raw = Number(num.value);
             const clamped = Number.isFinite(raw) ? Math.max(-100, Math.min(100, raw)) : 0;
             num.value = String(clamped);
             slider.value = String(clamped);
             updateAmountFill();
+            renderBadge();
             this.editSlot(slot, () => { slot.amount = clamped / 100; });
         };
         wrap.appendChild(num);
+
+        wrap.appendChild(badge);
 
         const unit = document.createElement("span");
         unit.className = "mod-route-cap";
