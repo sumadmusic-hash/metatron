@@ -19,6 +19,7 @@ describe('DeviceLibrary — Phase B library CRUD (§47/§48)', () => {
 
     beforeEach(() => {
         (globalThis as any).localStorage = new FakeStorage();
+        Storage.resetCache();
         library = new DeviceLibrary();
     });
 
@@ -86,6 +87,7 @@ describe('DeviceLibrary — Phase B library CRUD (§47/§48)', () => {
 describe('most-recently-used device note (I18 §13) — app-start restore', () => {
     beforeEach(() => {
         (globalThis as any).localStorage = new FakeStorage();
+        Storage.resetCache();
     });
 
     it('resolveStartupDeviceId prefers the last-active note over insertion order', () => {

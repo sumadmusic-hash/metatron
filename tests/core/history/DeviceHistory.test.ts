@@ -34,6 +34,7 @@ function addKnob(device: Device, name: string, x: number, y: number): Control {
 
 beforeEach(() => {
     (globalThis as any).localStorage = new FakeStorage();
+    Storage.resetCache();
 });
 
 describe("DeviceHistory — capture/restore exactness (C1 scope)", () => {

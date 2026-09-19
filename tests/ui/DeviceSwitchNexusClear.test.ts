@@ -6,6 +6,7 @@ import { NexusAdapter } from "../../src/nexus/NexusAdapter";
 import { MidiAccess } from "../../src/midi/MidiAccess";
 import { BindingManager } from "../../src/core/BindingManager";
 import { AppUI } from "../../src/ui/AppUI";
+import { Storage } from "../../src/persistence/Storage";
 
 /** Two persisted devices; A is active in the app instance. */
 function mount(active: Device, other: Device): { root: HTMLElement; adapter: NexusAdapter } {
@@ -36,6 +37,7 @@ function click(el: HTMLElement) {
 beforeEach(() => {
     document.body.innerHTML = "";
     localStorage.clear();
+    Storage.resetCache();
 });
 
 describe("Nexus lifecycle on device switch (P3)", () => {

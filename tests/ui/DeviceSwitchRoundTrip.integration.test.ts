@@ -30,6 +30,7 @@ import { NexusAdapter } from "../../src/nexus/NexusAdapter";
 import { MidiAccess } from "../../src/midi/MidiAccess";
 import { BindingManager } from "../../src/core/BindingManager";
 import { AppUI } from "../../src/ui/AppUI";
+import { Storage } from "../../src/persistence/Storage";
 
 const settle = (ms = 60) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -38,6 +39,7 @@ const tick = () => settle();
 beforeEach(() => {
     document.body.innerHTML = "";
     localStorage.clear();
+    Storage.resetCache();
 });
 
 describe("Device switch round trip A→B→A — no automatic Nexus reconnection (confirmed semantics)", () => {

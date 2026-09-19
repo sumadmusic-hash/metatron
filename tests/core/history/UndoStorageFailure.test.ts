@@ -45,6 +45,7 @@ function failNthWrite(nth: number) {
 beforeEach(() => {
     storage = new FakeStorage();
     (globalThis as any).localStorage = storage;
+    Storage.resetCache();
 });
 
 describe("DeviceHistory — transactional apply() on StorageError (P2)", () => {
