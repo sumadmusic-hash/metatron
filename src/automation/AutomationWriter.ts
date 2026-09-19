@@ -21,7 +21,7 @@
  * (partial success is allowed); the remaining tracks are still written.
  */
 
-import { secondsToTicks, Ticks } from "@audiotool/nexus/utils";
+import { secondsToTicks } from "@audiotool/nexus/utils";
 import { TargetType, getSchemaLocationDetails } from "@audiotool/nexus/document";
 import type { SyncedDocument } from "@audiotool/nexus";
 import type { BindingManager } from "../core/BindingManager";
@@ -256,12 +256,18 @@ export async function writeAutomationRecording(
     }
 
     const created: { controlId: string; trackId: string; collectionId: string; regionId: string; eventCount: number }[] = [];
-    // M22.0 — shared region duration for all tracks in this take: derived
-    // from the common `recording.durationSeconds` (set once at STOP) so every
-    // AutomationRegion gets the same length regardless of where the last
-    // event of an individual control lands.
+    // M22.0 — shared region duration for all tracks in this take.
+    // For Bake: exact takeTicks (no extra beat). For Live Recording with
+    // an event exactly at durationSeconds: minimal 1-tick headroom.
     const takeTicks = Math.max(0, secondsToTicks(recording.durationSeconds, recording.projectBpm));
-    const regionTicks = Math.max(1, takeTicks + Ticks.Beat);
+
+    // Check if any track has a sample exactly at durationSeconds (Live Recording end event)
+    const hasEndEvent = recording.tracks.some((track) =>
+        track.samples.some((s) => s.timeSeconds === recording.durationSeconds)
+    );
+    const regionTicks = hasEndEvent
+        ? Math.max(1, takeTicks + 1) // minimal 1-tick headroom for end event
+        : Math.max(1, takeTicks); // exact duration for Bake
 
     // Check document connection before starting transaction
     if (!document.connected) {
@@ -297,19 +303,18 @@ export async function writeAutomationRecording(
                         slope: 0,
                     });
                 }
-                // M22.0 — region duration is the shared take length (computed
-                // once above); the per-control last event only determines the
-                // events written into the collection, never the region window.
-                // regionTicks sticks out one beat beyond the take end so a
-                // final event at exactly durationSeconds sits strictly inside.
+                // M22.0 — region duration matches takeTicks for Bake (exact).
+                // Only if a Live Recording has an event exactly at durationSeconds
+                // we add minimal 1-tick headroom so the end event sits strictly inside.
                 const region = t.create("automationRegion", {
                     region: {
                         positionTicks: recording.startTick,
                         durationTicks: regionTicks,
                         collectionOffsetTicks: 0,
                         loopOffsetTicks: 0,
-                        // Deliberately coupled to durationTicks — matches the
-                        // pre-M22.0 writer behavior (loop over the same span).
+                        // regionTicks = takeTicks for Bake (exact duration).
+                        // If Live Recording has an event exactly at durationSeconds:
+                        // minimal 1-tick headroom so the end event sits strictly inside.
                         loopDurationTicks: regionTicks,
                     },
                     track: track.location,

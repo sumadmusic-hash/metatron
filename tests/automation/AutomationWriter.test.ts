@@ -133,8 +133,8 @@ describe("M21.2 — writeAutomationRecording offline", () => {
 
         const region: any = regions[0];
         expect(region.fields.region.fields.positionTicks.value).toBe(Ticks.Bars(2)); // startTick applied
-        // duration = last event tick + one beat of headroom
-        expect(region.fields.region.fields.durationTicks.value).toBe(15360 + Ticks.Beat);
+        // duration = takeTicks + 1 tick headroom (since sample at exact durationSeconds)
+        expect(region.fields.region.fields.durationTicks.value).toBe(15361);
         expect(region.fields.region.fields.collectionOffsetTicks.value).toBe(0);
         // events stay collection-local (all below the region window start)
         expect(positions.every((p: number) => p < Ticks.Bars(2))).toBe(true);
@@ -338,8 +338,10 @@ describe("M21.2 — writeAutomationRecording offline", () => {
 describe("M22.0 — shared take duration for every AutomationRegion", () => {
     const BPM = 120;
 
-    const takeRegionTicks = (durationSeconds: number) =>
-        Math.max(1, secondsToTicks(durationSeconds, BPM) + Ticks.Beat);
+    // New behavior: exact takeTicks for recordings without end event,
+    // takeTicks + 1 for recordings with event at exact durationSeconds.
+    const takeRegionTicks = (durationSeconds: number, hasEndEvent = false) =>
+        Math.max(1, secondsToTicks(durationSeconds, BPM) + (hasEndEvent ? 1 : 0));
 
     const regionDurations = (regions: any[]): number[] =>
         regions.map((r) => r.fields.region.fields.durationTicks.value);
@@ -394,7 +396,7 @@ describe("M22.0 — shared take duration for every AutomationRegion", () => {
         expect(result.createdTracks).toBe(2);
         const d = regionDurations(regions);
         expect(new Set(d).size).toBe(1);
-        expect(d[0]).toBe(takeRegionTicks(2));
+        expect(d[0]).toBe(takeRegionTicks(2, true));
     });
 
     it("2. three tracks → all identical region duration", async () => {
@@ -428,7 +430,7 @@ describe("M22.0 — shared take duration for every AutomationRegion", () => {
         expect(regions).toHaveLength(3);
         const d = regionDurations(regions);
         expect(new Set(d).size).toBe(1);
-        expect(d[0]).toBe(takeRegionTicks(10));
+        expect(d[0]).toBe(takeRegionTicks(10, false));
     });
 
     it("3. a single early event still yields a full-take region", async () => {
@@ -443,7 +445,7 @@ describe("M22.0 — shared take duration for every AutomationRegion", () => {
             { durationSeconds: 10 }
         );
         expect(regions).toHaveLength(1);
-        expect(regionDurations(regions)[0]).toBe(takeRegionTicks(10));
+        expect(regionDurations(regions)[0]).toBe(takeRegionTicks(10, false));
     });
 
     it("4. a control first moved late still yields a full-take region", async () => {
@@ -462,7 +464,7 @@ describe("M22.0 — shared take duration for every AutomationRegion", () => {
             { durationSeconds: 10 }
         );
         expect(regions).toHaveLength(1);
-        expect(regionDurations(regions)[0]).toBe(takeRegionTicks(10));
+        expect(regionDurations(regions)[0]).toBe(takeRegionTicks(10, true));
         const positions = events.map((e: any) => e.fields.positionTicks.value);
         expect(positions).toEqual([secondsToTicks(9, BPM), secondsToTicks(9.5, BPM), secondsToTicks(10, BPM)]);
     });
@@ -479,7 +481,7 @@ describe("M22.0 — shared take duration for every AutomationRegion", () => {
             { durationSeconds: 10 }
         );
         const duration = regionDurations(regions)[0];
-        expect(duration).toBe(takeRegionTicks(10));
+        expect(duration).toBe(takeRegionTicks(10, true));
         const lastEventTick = Math.max(...events.map((e: any) => e.fields.positionTicks.value));
         expect(lastEventTick).toBe(secondsToTicks(10, BPM));
         expect(lastEventTick).toBeLessThan(duration);
@@ -487,7 +489,7 @@ describe("M22.0 — shared take duration for every AutomationRegion", () => {
         expect(regions[0].fields.region.fields.loopDurationTicks.value).toBe(duration);
     });
 
-    it("6. durationSeconds = 0 → still a valid positive region (one beat)", async () => {
+    it("6. durationSeconds = 0 → still a valid positive region (one tick)", async () => {
         const { regions } = await writeWith(
             [
                 {
@@ -499,7 +501,8 @@ describe("M22.0 — shared take duration for every AutomationRegion", () => {
             { durationSeconds: 0 }
         );
         expect(regions).toHaveLength(1);
-        expect(regionDurations(regions)[0]).toBe(Math.max(1, 0 + Ticks.Beat));
+        // durationSeconds=0 → takeTicks=0, Math.max(1, 0) = 1 tick
+        expect(regionDurations(regions)[0]).toBe(1);
         expect(regionDurations(regions)[0]).toBeGreaterThan(0);
     });
 
@@ -580,7 +583,9 @@ describe("M22.0 — shared take duration for every AutomationRegion", () => {
             { durationSeconds: 6 }
         );
         const durations = regionDurations(regions);
-        for (const d of durations) expect(d).toBe(secondsToTicks(6, BPM) + Ticks.Beat);
+        // Track "a" has event at 6s (end), track "b" has event at 0s (not at end).
+        // Since at least one track has end event, region gets +1 tick headroom.
+        for (const d of durations) expect(d).toBe(takeRegionTicks(6, true));
     });
 });
 describe("B68/F5 — sampled values are converted into the Audiotool-tapered automation space", () => {
