@@ -36,7 +36,8 @@ export interface ModulationSurfaceUI {
  *    and a live user gesture (gestureTakeover) suspends its writes.
  *  - FIX 8 + F2 (Write-Cap): writes of each control are capped at
  *    WRITE_INTERVAL_MS (per-control, not global) and guarded by an in-flight
- *    set so a slow Nexus write never piles up. A tick may apply at most
+ *    MAP (R2 — Promise je Ziel, der Snap-back hängt sich an die Reihenfolge
+ *    an) so a slow Nexus write never piles up. A tick may apply at most
  *    MAX_WRITES_PER_TICK destinations; surplus ones roll over via round-robin
  *    so the whole matrix — not just the first destination — gets written.
  *  - FIX 1 (Echo-Guard): every Nexus write is preceded by
@@ -58,7 +59,11 @@ export class ModulationRunner {
     /** F2 — round-robin cursor: which destination the next tick starts writing
      *  at, so no destination is systematically starved at the tick frontier. */
     private lastProcessedDestinationIndex = 0;
-    private readonly inFlight = new Set<string>();
+    /** R2 — laufende Nexus-Writes je Ziel als PROMISE-Referenz (Set → Map),
+     *  damit der Snap-back sich an das hängende Write hängen und den Basiswert
+     *  erst NACH dem Mod-Write schreiben kann — ein später auflösender
+     *  Mod-Wert überschreibt den kontrollierten Basiswert nie wieder. */
+    private readonly inFlight = new Map<string, Promise<unknown>>();
     private readonly activeDestinationIds = new Set<string>();
     private readonly gestureTakeover = new Map<string, boolean>();
     /** B42 — last displayed modulated value per control, so redundant
@@ -239,20 +244,24 @@ export class ModulationRunner {
         this.lastProcessedDestinationIndex = idx;
     }
 
-    /** B3 — schreibt den Basiswert eines Ziels genau einmal nach Nexus, wenn
+    /** R2 — Snap-back schreibt den Basiswert eines Ziels nach Nexus, wenn
      *  dieses aufhört moduliert zu werden (stop(), Matrix-Deaktivierung,
-     *  Ziel-Verschwinden): fire-and-forget, bewusst NICHT durch die
-     *  Mod-Fahrspuren (Per-Control-Cap / inFlight) blockiert — ein Snap-back
-     *  ist ein One-Shot und darf nie von den Throttles verschluckt werden.
-     *  Guards: nur aktives Binding, nicht archiviert, nicht im Gesture-
-     *  Takeover. Kein Recorder-Capture: der Snap-back ist ein Controller-Move,
-     *  keine Mod-Aufnahme. */
-    private writeBaseValueToNexus(controlId: string): void {
+     *  Ziel-Verschwinden). HÄNGT sich an das hängende Mod-Write-Promise an:
+     *  der Basiswert landet erst, wenn der letzte Mod-Write wirklich durch
+     *  ist — keine veraltete Mod-Nachzügler-Write mehr nach dem Snap-back.
+     *  Guards (Archiv / Takeover / Binding) laufen VOR dem Warten und machen
+     *  doppelte Writes unmöglich; danach ist der Basiswert ein One-Shot ohne
+     *  Per-Control-Cap-Verstoß, bewusst KEIN Recorder-Capture (Controller-
+     *  Move, keine Mod-Aufnahme). */
+    private async writeBaseValueToNexus(controlId: string): Promise<void> {
         const device = this.getDevice();
         const control = device?.getControl(controlId);
         if (!control || control.archived) return;
         if (this.gestureTakeover.get(controlId)) return;
         if (!this.bindingManager.getActiveBinding(controlId)) return;
+
+        const pending = this.inFlight.get(controlId);
+        if (pending) await pending;
 
         const baseValue = control.value;
         this.nexusAdapter.beginSuppressEcho(controlId, baseValue);
@@ -282,11 +291,16 @@ export class ModulationRunner {
         if (Math.abs(value - baseValue) < DELTA_EPSILON) return false;
 
         this.lastWriteMsByControl.set(controlId, now);
-        this.inFlight.add(controlId);
         this.nexusAdapter.beginSuppressEcho(controlId, value);
-        this.nexusAdapter.updateBoundControl(controlId, value).finally(() => {
-            this.inFlight.delete(controlId);
+        const write = this.nexusAdapter.updateBoundControl(controlId, value).finally(() => {
+            // R2 — Identitäts-Guard: löscht nur den EIGENEN Map-Eintrag (nach
+            // stop()+Neustart hängt dort ein frisches Promise, das nicht
+            // weggeräumt werden darf).
+            if (this.inFlight.get(controlId) === write) {
+                this.inFlight.delete(controlId);
+            }
         });
+        this.inFlight.set(controlId, write);
         return true;
     }
 }

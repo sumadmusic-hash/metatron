@@ -480,7 +480,12 @@ describe("ModulationRunner — Takeover-Klemmfalle", () => {
  * ------------------------------------------------------------------ */
 
 describe("ModulationRunner — B3 Snap-back", () => {
-    it("stop() schreibt den Basiswert jedes aktiven Ziels einmal nach Nexus", () => {
+    // R2 — der Snap-back hängt sich jetzt an ein hängendes Write-Promise an;
+    // mit sofort auflösendem Mock heißt das: der Basis-Write landet im
+    // Microtask nach stop()/tick(). Eine Makrotask-Flush räumt das sauber.
+    const flushWrites = async () => new Promise((r) => setTimeout(r, 0));
+
+    it("stop() schreibt den Basiswert jedes aktiven Ziels einmal nach Nexus", async () => {
         const device = makeModDevice();
         const { runner, adapter } = makeRunner(device, "IDLE");
 
@@ -491,8 +496,10 @@ describe("ModulationRunner — B3 Snap-back", () => {
         expect(adapter.updateBoundControl).toHaveBeenCalledTimes(1);
 
         runner.stop();
+        await flushWrites();
         // Der Snap-back passiert µs nach dem Mod-Write — die 33-ms-Fahrspur
-        // würde ihn schlucken; B3 umgeht sie bewusst (fire-and-forget).
+        // würde ihn schlucken; er umgeht sie bewusst (One-Shot ohne Cap),
+        // landet aber erst nach dem hängenden Mod-Write (R2).
         expect(adapter.updateBoundControl).toHaveBeenCalledTimes(2);
         const [id, value] = adapter.updateBoundControl.mock.calls.at(-1);
         expect(id).toBe("cutoff");
@@ -500,7 +507,7 @@ describe("ModulationRunner — B3 Snap-back", () => {
         expect(adapter.beginSuppressEcho).toHaveBeenLastCalledWith("cutoff", 0.5);
     });
 
-    it("verschwundenes Ziel bekommt seinen Basiswert (Ziel-weg-Schleife)", () => {
+    it("verschwundenes Ziel bekommt seinen Basiswert (Ziel-weg-Schleife)", async () => {
         const device = new Device("Runner");
         const c1 = new Control("knob", "Cutoff", { x: 0, y: 0 }, "c1");
         c1.value = 0.5;
@@ -527,6 +534,7 @@ describe("ModulationRunner — B3 Snap-back", () => {
 
         matrix.slots[0].enabled = false;
         (runner as any).tick(600); // c1 verschwindet aus destinations
+        await flushWrites();
 
         expect(runner.isModulated("c1")).toBe(false);
         expect(runner.isModulated("c2")).toBe(true);
@@ -536,7 +544,7 @@ describe("ModulationRunner — B3 Snap-back", () => {
         expect(surface.applyModDisplay).toHaveBeenCalledWith("c1", null);
     });
 
-    it("Matrix-Deaktivierung schreibt die Basiswerte (Frühabbruch)", () => {
+    it("Matrix-Deaktivierung schreibt die Basiswerte (Frühabbruch)", async () => {
         const device = makeModDevice();
         const { runner, adapter, surface } = makeRunner(device, "IDLE");
 
@@ -546,6 +554,7 @@ describe("ModulationRunner — B3 Snap-back", () => {
 
         device.modulation.slots[0].enabled = false;
         (runner as any).tick(600); // Frühabbruch, kein aktiver Slot mehr
+        await flushWrites();
 
         expect(runner.isModulated("cutoff")).toBe(false);
         const [id, value] = adapter.updateBoundControl.mock.calls.at(-1);
@@ -613,6 +622,48 @@ describe("ModulationRunner — B3 Snap-back", () => {
         // Basiswert zurückgezogen — der User besitzt den Wert gerade.
         expect(adapter.updateBoundControl).not.toHaveBeenCalled();
         expect(adapter.beginSuppressEcho).not.toHaveBeenCalled();
+    });
+
+    it("R2 — Snap-back reiht sich HINTER einen hängenden Mod-Write (letzter Wert ist der Basiswert)", async () => {
+        const device = makeModDevice();
+
+        // updateBoundControl löst erst nach manuellem Signal auf — der
+        // Mod-Write bleibt über stop() hinaus hängend.
+        let releaseModWrite: (v: boolean) => void = () => {};
+        const modWrite = new Promise<boolean>((resolve) => { releaseModWrite = resolve; });
+        const adapter = mockAdapter();
+        (adapter.updateBoundControl as any).mockReturnValueOnce(modWrite);
+
+        const bm = mockBindingManager();
+        const recorder = mockRecorder("IDLE");
+        const surface = mockSurfaceUI();
+        const runner = new ModulationRunner(
+            () => device,
+            () => 120,
+            adapter,
+            bm,
+            recorder as any,
+            surface
+        );
+
+        runner.start();
+        (runner as any).startTimeSec = 0;
+        (runner as any).tick(450); // Mod-Write startet und bleibt in-flight
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(1);
+
+        runner.stop();
+        await flushWrites();
+        // Solange der Mod-Write hängt, darf der Snap-back nicht gefeuert haben:
+        // ohne die Promise-Kette liefe BEIDES sofort und der späte Mod-Write
+        // käme NACH dem Basiswert an — exakt der B3-Endzustand, nur seltener.
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(1);
+
+        releaseModWrite(true);
+        await flushWrites();
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(2);
+        const [id, value] = adapter.updateBoundControl.mock.calls.at(-1);
+        expect(id).toBe("cutoff");
+        expect(value).toBe(0.5); // Basiswert zuletzt geschrieben
     });
 });
 
