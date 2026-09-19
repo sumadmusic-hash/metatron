@@ -157,4 +157,47 @@ describe("B55 — runner start-guard requires an enabled slot routing an EXISTIN
 
         vi.restoreAllMocks();
     });
+
+    it("§12 — Same-ID-Rehydrierung (Preset-Load / Undo / Rename) startet Runner NICHT neu, solange Matrix runnable bleibt", () => {
+        const { device, ctrl } = makeDevice();
+        device.modulation.slots[0].enabled = true;
+        device.modulation.slots[0].destControlId = ctrl.id;
+        device.modulation.slots[0].sourceId = device.modulation.sources[0].id;
+        const { app } = mount(device);
+
+        const runner = (app as any).modRunner;
+        const startSpy = vi.spyOn(runner, "start");
+        const stopSpy = vi.spyOn(runner, "stop");
+
+        // Runner is running
+        expect((app as any).modRunnerState).toBe(true);
+        const initialStartTimeSec = (runner as any).startTimeSec;
+
+        // Simulate Same-ID-Rehydrierung: gleiche Device-ID, aber neue Instanz
+        // (wie Preset-Load, Undo, Redo, Rename)
+        // onDeviceChanged() darf modRunnerState NICHT auf false setzen
+        // → syncModulationRunner() darf NICHT stop()/start() aufrufen
+        (app as any).onDeviceChanged();
+
+        // Runner darf NICHT neu gestartet werden
+        expect(startSpy).not.toHaveBeenCalled();
+        expect(stopSpy).not.toHaveBeenCalled();
+        // LFO-Zeitbasis (startTimeSec) muss erhalten bleiben
+        expect((runner as any).startTimeSec).toBe(initialStartTimeSec);
+        expect((app as any).modRunnerState).toBe(true);
+
+        // Aber: tatsächlicher runnable → non-runnable Wechsel stoppt den Runner noch
+        device.modulation.slots.forEach((s) => { s.enabled = false; });
+        (app as any).onDeviceChanged(); // geht durch onDeviceChanged → syncModulationRunner
+        expect(stopSpy).toHaveBeenCalledTimes(1);
+        expect((app as any).modRunnerState).toBe(false);
+
+        // Und: non-runnable → runnable startet den Runner wieder
+        device.modulation.slots[0].enabled = true;
+        (app as any).onDeviceChanged();
+        expect(startSpy).toHaveBeenCalledTimes(1);
+        expect((app as any).modRunnerState).toBe(true);
+
+        vi.restoreAllMocks();
+    });
 });

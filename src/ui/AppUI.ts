@@ -741,22 +741,23 @@ export class AppUI {
             // B1 — BindingManager.setDevice nutzt denselben ID-Begriff:
             // "gleiche ID, neue Instanz" ist Rehydrierung (Bindings bleiben),
             // abweichende ID ein echter Wechsel (Bindings werden geleert).
-            if (this.bindingManager.deviceRef.id !== device.id) {
+            const deviceChanged = this.bindingManager.deviceRef.id !== device.id;
+            if (deviceChanged) {
                 this.nexusAdapter.clearBoundControlSubscriptions();
+                // §12 — only on a REAL device switch reset the runner state so
+                // it is (re)synced against the NEW device's matrix.
+                this.modRunnerState = false;
             }
             this.bindingManager.setDevice(device);
             this.midiMapping.updateDevice(device);
-            // §12 — device switch resets the remembered state so the runner is
-            // (re)synced against the NEW device's matrix.
-            this.modRunnerState = false;
         }
-        // FIX 6 + §12 — Runner-Lifecycle bei JEDEM Wechsel/Klärungsvorgang via
-        // syncModulationRunner: nur bei tatsächlicher Zustandsänderung
-        // starten/stoppen (LFO-Phase bleibt bei gleichbleibender Lauffähigkeit
-        // erhalten — §12).
+        // FIX 6 + §12 — Runner-Lifecycle: nur bei tatsächlicher
+        // Runnability-Änderung starten/stoppen (LFO-Phase bleibt bei
+        // gleichbleibender Lauffähigkeit erhalten — §12).
         this.syncModulationRunner();
         this.render();
-        this.modMatrixUI.render();
+        // this.modMatrixUI.render() is redundant — AppUI.render() calls
+        // modMatrixUI.getContainer() which already invokes render().
     }
 
     /** Single source of truth for "the matrix can produce destinations"
