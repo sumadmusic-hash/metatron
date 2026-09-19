@@ -173,9 +173,9 @@ describe("ModulationRunner — Capture-Arbitration", () => {
         expect(recorder.capture).not.toHaveBeenCalled();
     });
 
-    it("RECORDING captures ONLY values writeControl actually applies (S2 regression)", () => {
+    it("RECORDING captures values when a write request is dispatched (S2 regression)", () => {
         // F2: the write-cap is PER-CONTROL, so two enabled destinations in one
-        // tick are both served and both captured (recorded == applied, FIX S2).
+        // tick dispatch write requests and are both captured (request == captured).
         // The pre-F2 global cap starved everything but the first destination.
         const device = new Device("Runner");
         const c1 = new Control("knob", "Cutoff", { x: 0, y: 0 }, "c1");
@@ -282,10 +282,28 @@ describe("ModulationRunner — Capture-Arbitration", () => {
 
         // Second tick happens µs later: the value is still off-base, so the
         // write is ATTEMPTED but the per-control 33 ms cap blocks it (and with
-        // it the capture — recorded == applied).
+        // it the capture; only dispatched requests are captured).
         (runner as any).tick(performance.now());
         expect(adapter.updateBoundControl).toHaveBeenCalledTimes(1);
         expect(recorder.capture).toHaveBeenCalledTimes(1);
+    });
+
+    it("REC capture does not wait for the async Nexus transaction to resolve", () => {
+        const device = makeModDevice();
+        let resolveWrite: ((ok: boolean) => void) | undefined;
+        const { runner, recorder, adapter } = makeRunner(device, "RECORDING");
+        vi.spyOn(adapter, "updateBoundControl").mockImplementation(
+            () => new Promise<boolean>((resolve) => { resolveWrite = resolve; }),
+        );
+
+        runner.start();
+        (runner as any).tick(performance.now());
+
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(1);
+        expect(recorder.capture).toHaveBeenCalledTimes(1);
+        expect((runner as any).inFlight.size).toBe(1);
+
+        resolveWrite?.(true);
     });
 
     it("B2 — a constant modulated value (square wave) is NOT lost after the first blocked frame", () => {

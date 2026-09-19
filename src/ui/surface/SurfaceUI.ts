@@ -224,6 +224,9 @@ private container!: HTMLElement;
     public refreshModulationStates(): void {
         const device = this.deviceLibrary.currentDevice;
         if (!device) return;
+        // EDIT mode never renders the surface — preset loads must not crash on
+        // a missing container. No-op until the surface exists.
+        if (!this.container) return;
         this.container.querySelectorAll<HTMLElement>(".control-wrapper[data-ctl-id]").forEach((el) => {
             const controlId = el.dataset.ctlId;
             if (!controlId) return;

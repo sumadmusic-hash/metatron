@@ -8,6 +8,8 @@ import { renderMatrixToRecording, MAX_BAKE_BARS } from "../../modulation/BakeRen
 import { writeAutomationRecording, readTempoBpm } from "../../automation/AutomationWriter";
 import { Toast } from "../Toast";
 
+const MATRIX_SAVE_DEBOUNCE_MS = 100;
+
 export interface ModMatrixUIDeps {
     deviceLibrary: { currentDevice?: Device; saveCurrentDevice(): void };
     bindingManager: BindingManager;
@@ -67,6 +69,8 @@ export class ModMatrixUI {
      *  state, `change` (release/blur) records EXACTLY ONE undo step — writes
      *  happen in real time without flooding the undo history. */
     private liveGesture?: { device: Device; before: ReturnType<DeviceHistory["captureDeviceState"]> };
+    private matrixSaveTimer?: ReturnType<typeof setTimeout>;
+    private pendingMatrixSaveDevice?: Device;
 
     constructor({ deviceLibrary, history, bindingManager, nexusAdapter, onMatrixChange }: ModMatrixUIDeps) {
         this.deviceLibrary = deviceLibrary;
@@ -107,6 +111,7 @@ export class ModMatrixUI {
             return;
         }
 
+        this.flushMatrixSave();
         this.container.innerHTML = "";
         this.container.classList.toggle("open", this.drawerOpen);
         // A rebuild drops any in-flight slider gesture's DOM — never commit a
@@ -184,9 +189,9 @@ export class ModMatrixUI {
     }
 
     /** Persistent cross-column marking: ONLY an ENABLED routing row (.on)
-     *  surfaces its source on the left via .source-linked. Transient
-     *  hover/focus is tracked separately in bindActiveTracking and may ADD a
-     *  link, but the persistent `.on`-driven state never depends on it. */
+     *  surfaces its source on the left via .source-linked. Hover/focus state
+     *  is intentionally excluded: .source-linked is the persisted matrix
+     *  truth, not a transient routing-selection marker. */
     public highlightCrossColumn(): void {
         const rack = this.container?.querySelector(".mod-source-rack");
         const matrix = this.container?.querySelector(".mod-slot-matrix");
@@ -203,59 +208,35 @@ export class ModMatrixUI {
     }
 
     /** Transient hover/focus tracking on slot rows (delegated, rebuilt each
-     *  render). data-active is cleared as the pointer/focus leaves. The
-     *  transient link is applied DIRECTLY here (not through highlightCrossColumn)
-     *  so it can never strip a persistent `.on`-driven source-linked state:
-     *  unlinking breaks only when no ENABLED slot still routes that source. */
+     *  render). It updates only `data-active`; .source-linked is reserved for
+     *  enabled matrix routes. relatedTarget guards avoid clearing/re-setting
+     *  the row state while moving between children of the same route row. */
     private bindActiveTracking(): void {
-        const rack = this.container?.querySelector(".mod-source-rack");
         const matrix = this.container?.querySelector(".mod-slot-matrix");
-        const device = this.deviceLibrary.currentDevice;
-        if (!matrix || !rack || !device) return;
+        if (!matrix) return;
         const rowOf = (t: EventTarget | null): HTMLElement | null =>
             t instanceof Element ? t.closest<HTMLElement>(".mod-slot-row") : null;
-        const sourceRowOf = (row: HTMLElement): HTMLElement | null => {
-            const slot = device.modulation.slots.find((s) => s.id === row.dataset.slotId);
-            if (!slot) return null;
-            return rack.querySelector<HTMLElement>(`.mod-source-row[data-source-id="${slot.sourceId}"]`);
-        };
-        const link = (row: HTMLElement): void => sourceRowOf(row)?.classList.add("source-linked");
-        const unlink = (row: HTMLElement): void => {
-            const slot = device.modulation.slots.find((s) => s.id === row.dataset.slotId);
-            const sourceRow = sourceRowOf(row);
-            if (!slot || !sourceRow) return;
-            const stillPersistent = device.modulation.slots.some(
-                (s) => s.enabled && s.sourceId === slot.sourceId,
-            );
-            if (!stillPersistent) sourceRow.classList.remove("source-linked");
-        };
+        const relatedRowOf = (e: Event): HTMLElement | null =>
+            rowOf((e as MouseEvent | FocusEvent).relatedTarget);
         matrix.addEventListener("pointerover", (e) => {
             const row = rowOf(e.target);
-            if (row) {
-                row.dataset.active = "true";
-                link(row);
-            }
+            if (!row || relatedRowOf(e) === row) return;
+            row.dataset.active = "true";
         });
         matrix.addEventListener("pointerout", (e) => {
             const row = rowOf(e.target);
-            if (row) {
-                delete row.dataset.active;
-                unlink(row);
-            }
+            if (!row || relatedRowOf(e) === row) return;
+            delete row.dataset.active;
         });
         matrix.addEventListener("focusin", (e) => {
             const row = rowOf(e.target);
-            if (row) {
-                row.dataset.active = "true";
-                link(row);
-            }
+            if (!row || relatedRowOf(e) === row) return;
+            row.dataset.active = "true";
         });
         matrix.addEventListener("focusout", (e) => {
             const row = rowOf(e.target);
-            if (row) {
-                delete row.dataset.active;
-                unlink(row);
-            }
+            if (!row || relatedRowOf(e) === row) return;
+            delete row.dataset.active;
         });
     }
 
@@ -661,15 +642,27 @@ export class ModMatrixUI {
         // Live gesture: write slot.amount on EVERY input (the runner reads
         // device.modulation live → the modulation depth reacts in real time).
         // The undo history is committed exactly once on gesture end (release).
+        let amountGestureFlushed = false;
         const commitAmount = (): void => {
+            amountGestureFlushed = false;
             const v = Number(slider.value);
             updateAmountFill();
             renderBadge();
             const device = this.deviceLibrary.currentDevice;
             if (device) this.liveEdit(device, () => { slot.amount = v / 100; });
         };
+        const finishAmountGesture = (): void => {
+            this.flushMatrixSave();
+            this.commitLiveEdit();
+            amountGestureFlushed = true;
+        };
         slider.addEventListener("input", commitAmount);
-        slider.addEventListener("change", () => { commitAmount(); this.commitLiveEdit(); });
+        slider.addEventListener("change", () => {
+            if (!amountGestureFlushed) commitAmount();
+            finishAmountGesture();
+        });
+        slider.addEventListener("pointerup", finishAmountGesture);
+        slider.addEventListener("pointercancel", finishAmountGesture);
         wrap.appendChild(slider);
 
         // C7 — signed readout ("−23 %" / "+23 %") as a pure-presentation badge,
@@ -834,15 +827,27 @@ export class ModMatrixUI {
         updateFreqFill();
         // Live gesture for the FREE rate: write src.rateHz on every input so
         // the LFO speed reacts in real time; ONE undo step on release.
+        let rateGestureFlushed = false;
         const commitRate = (): void => {
+            rateGestureFlushed = false;
             const v = Number(slider.value);
             rate.value = String(v);
             updateFreqFill();
             const device = this.deviceLibrary.currentDevice;
             if (device) this.liveEdit(device, () => { src.rateHz = v; });
         };
+        const finishRateGesture = (): void => {
+            this.flushMatrixSave();
+            this.commitLiveEdit();
+            rateGestureFlushed = true;
+        };
         slider.addEventListener("input", commitRate);
-        slider.addEventListener("change", () => { commitRate(); this.commitLiveEdit(); });
+        slider.addEventListener("change", () => {
+            if (!rateGestureFlushed) commitRate();
+            finishRateGesture();
+        });
+        slider.addEventListener("pointerup", finishRateGesture);
+        slider.addEventListener("pointercancel", finishRateGesture);
 
         const wrap = document.createElement("div");
         wrap.className = "mod-rate";
@@ -882,19 +887,20 @@ export class ModMatrixUI {
     }
 
     /**
-     * Live slider write (rate/depth): mutates + persists on EVERY `input` so
-     * the engine hears the change in real time (the runner reads
-     * device.modulation live each frame). No onMatrixChange here — rate/depth
-     * never alter WHICH destination is modulated, and the surface's live arc
-     * is driven by the runner itself. The undo snapshot stays deferred to a
-     * single commitLiveEdit() on gesture end.
+     * Live slider write (rate/depth): mutates on EVERY `input` so the engine
+     * hears the change in real time (the runner reads device.modulation live
+     * each frame). Persistence is queued/debounced because localStorage is
+     * synchronous and serializes the whole device. No onMatrixChange here —
+     * rate/depth never alter WHICH destination is modulated, and the surface's
+     * live arc is driven by the runner itself. The undo snapshot stays deferred
+     * to a single commitLiveEdit() on gesture end.
      */
     private liveEdit(device: Device, mutate: () => void): void {
         if (!this.liveGesture) {
             this.liveGesture = { device, before: this.history.captureDeviceState(device) };
         }
         mutate();
-        this.persist(device);
+        this.scheduleMatrixSave(device);
     }
 
     /** End of a slider gesture: ONE history action for the whole drag. */
@@ -904,6 +910,28 @@ export class ModMatrixUI {
         this.liveGesture = undefined;
         const after = this.history.captureDeviceState(g.device);
         this.history.recordDeviceAction("matrix.edit", g.device, g.before, after);
+    }
+
+    private scheduleMatrixSave(device: Device): void {
+        if (this.pendingMatrixSaveDevice && this.pendingMatrixSaveDevice.id !== device.id) {
+            this.flushMatrixSave();
+        }
+        this.pendingMatrixSaveDevice = device;
+        if (this.matrixSaveTimer !== undefined) {
+            clearTimeout(this.matrixSaveTimer);
+        }
+        this.matrixSaveTimer = setTimeout(() => this.flushMatrixSave(), MATRIX_SAVE_DEBOUNCE_MS);
+    }
+
+    public flushMatrixSave(): void {
+        if (this.matrixSaveTimer !== undefined) {
+            clearTimeout(this.matrixSaveTimer);
+            this.matrixSaveTimer = undefined;
+        }
+        const pending = this.pendingMatrixSaveDevice;
+        if (!pending) return;
+        this.pendingMatrixSaveDevice = undefined;
+        this.persist(pending);
     }
 
     /**

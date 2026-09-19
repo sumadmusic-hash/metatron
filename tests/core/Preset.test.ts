@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Device } from "../../src/core/model/Device";
 import { Control } from "../../src/core/model/Control";
+import type { Waveform } from "../../src/core/modulation/ModulationTypes";
 
 describe("Preset management — create / load / rename / delete (§6, §20)", () => {
     function deviceWithControls(): Device {
@@ -67,5 +68,134 @@ describe("Preset management — create / load / rename / delete (§6, §20)", ()
         const pa = a.savePreset("A-only");
         b.addPreset(pa as any); // rejected: wrong device
         expect(b.presets.size).toBe(0);
+    });
+
+    function deviceWithMatrix(): { device: Device; control: Control } {
+        const device = new Device("Matrix Host");
+        const control = new Control("knob", "Cutoff", { x: 0, y: 0 }, "cutoff");
+        control.value = 0.42;
+        device.addControl(control);
+        const src = device.modulation.sources[0];
+        src.waveform = "triangle";
+        src.rateHz = 3.5;
+        src.bpmSync = true;
+        src.noteDivision = 16;
+        src.phase = 0.25;
+        const slot = device.modulation.slots[0];
+        slot.enabled = true;
+        slot.sourceId = src.id;
+        slot.destControlId = control.id;
+        slot.amount = 0.6;
+        return { device, control };
+    }
+
+    it("savePreset captures a complete modulation matrix snapshot", () => {
+        const { device, control } = deviceWithMatrix();
+        const preset = device.savePreset("Matrix A");
+
+        expect(preset.modulation).toBeDefined();
+        const src = preset.modulation!.sources[0];
+        const slot = preset.modulation!.slots[0];
+        expect(src.waveform).toBe<Waveform>("triangle");
+        expect(src.rateHz).toBe(3.5);
+        expect(src.bpmSync).toBe(true);
+        expect(src.noteDivision).toBe(16);
+        expect(src.phase).toBe(0.25);
+        expect(slot.enabled).toBe(true);
+        expect(slot.sourceId).toBe(src.id);
+        expect(slot.destControlId).toBe(control.id);
+        expect(slot.amount).toBe(0.6);
+    });
+
+    it("preset modulation snapshots are deep copies in both directions", () => {
+        const { device } = deviceWithMatrix();
+        const preset = device.savePreset("Deep");
+
+        device.modulation.sources[0].waveform = "saw";
+        device.modulation.slots[0].amount = -0.2;
+        expect(preset.modulation!.sources[0].waveform).toBe("triangle");
+        expect(preset.modulation!.slots[0].amount).toBe(0.6);
+
+        preset.modulation!.sources[0].rateHz = 10;
+        preset.modulation!.slots[0].enabled = false;
+        expect(device.modulation.sources[0].rateHz).toBe(3.5);
+        expect(device.modulation.slots[0].enabled).toBe(true);
+    });
+
+    it("loadPreset restores the exact saved matrix among multiple presets", () => {
+        const { device } = deviceWithMatrix();
+        const presetA = device.savePreset("A");
+
+        device.modulation.sources[0].waveform = "square";
+        device.modulation.sources[0].rateHz = 8;
+        device.modulation.sources[0].bpmSync = false;
+        device.modulation.slots[0].sourceId = "mod2";
+        device.modulation.slots[0].amount = -0.5;
+        const presetB = device.savePreset("B");
+
+        device.loadPreset(presetA.id);
+        expect(device.modulation.sources[0].waveform).toBe("triangle");
+        expect(device.modulation.sources[0].rateHz).toBe(3.5);
+        expect(device.modulation.sources[0].bpmSync).toBe(true);
+        expect(device.modulation.slots[0].sourceId).toBe("mod1");
+        expect(device.modulation.slots[0].amount).toBe(0.6);
+
+        device.loadPreset(presetB.id);
+        expect(device.modulation.sources[0].waveform).toBe("square");
+        expect(device.modulation.sources[0].rateHz).toBe(8);
+        expect(device.modulation.sources[0].bpmSync).toBe(false);
+        expect(device.modulation.slots[0].sourceId).toBe("mod2");
+        expect(device.modulation.slots[0].amount).toBe(-0.5);
+    });
+
+    it("serialized presets keep their matrix snapshot loadable after deserialize", () => {
+        const { device } = deviceWithMatrix();
+        const preset = device.savePreset("Persisted");
+        const restored = Device.deserialize(device.serialize());
+
+        restored.modulation.sources[0].waveform = "sine";
+        restored.modulation.slots[0].enabled = false;
+        restored.loadPreset(preset.id);
+
+        expect(restored.modulation.sources[0].waveform).toBe("triangle");
+        expect(restored.modulation.sources[0].rateHz).toBe(3.5);
+        expect(restored.modulation.slots[0].enabled).toBe(true);
+        expect(restored.modulation.slots[0].amount).toBe(0.6);
+    });
+
+    it("legacy presets without modulation leave the current matrix unchanged", () => {
+        const { device } = deviceWithMatrix();
+        const preset = device.savePreset("Legacy");
+        const legacy = preset.serialize() as { modulation?: unknown };
+        delete legacy.modulation;
+        const restored = Device.deserialize({ ...device.serialize(), presets: [legacy] });
+
+        restored.modulation.sources[0].waveform = "sampleHold";
+        restored.modulation.slots[0].amount = -0.75;
+        restored.loadPreset(preset.id);
+
+        expect(restored.presets.get(preset.id)?.modulation).toBeUndefined();
+        expect(restored.modulation.sources[0].waveform).toBe("sampleHold");
+        expect(restored.modulation.slots[0].amount).toBe(-0.75);
+    });
+
+    it("corrupt preset modulation is discarded while the rest of the preset still loads", () => {
+        const { device, control } = deviceWithMatrix();
+        const preset = device.savePreset("Corrupt");
+        const corrupt = {
+            ...preset.serialize(),
+            controlValues: { [control.id]: 0.12 },
+            modulation: { sources: Array(50).fill({}), slots: [] },
+        };
+        const restored = Device.deserialize({ ...device.serialize(), presets: [corrupt] });
+        const restoredControl = restored.getControl(control.id)!;
+        restoredControl.value = 0.99;
+        restored.modulation.slots[0].amount = -0.33;
+
+        restored.loadPreset(preset.id);
+
+        expect(restored.presets.get(preset.id)?.modulation).toBeUndefined();
+        expect(restoredControl.value).toBe(0.12);
+        expect(restored.modulation.slots[0].amount).toBe(-0.33);
     });
 });

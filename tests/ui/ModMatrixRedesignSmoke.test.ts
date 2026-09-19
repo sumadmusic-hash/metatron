@@ -123,8 +123,8 @@ describe("CSS-Guard — Bug 1 (dynamische LFO-Wellenform) + Bug 3 (kein Oranger 
         expect(STYLES).not.toMatch(/\.mod-field--wave::before/);
     });
 
-    it("Bug 1 - der Glyph folgt der Zeilenhelligkeit (teal auf aktiven Zeilen)", () => {
-        expect(STYLES).toMatch(/\.mod-source-row\.on \.mod-wave-glyph \{[\s\S]*?(#2dd4bf|--mm-accent-A)/);
+    it("Bug 1 - der Glyph folgt dem echten source-linked Zustand (sky blue)", () => {
+        expect(STYLES).toMatch(/\.mod-source-row\.source-linked \.mod-wave-glyph \{[\s\S]*?(#38bdf8|--mm-accent-B)/);
     });
 
     it("Bug 3 - der modulierte Knob faerbt NICHT mehr den ganzen Ring orange", () => {
@@ -179,8 +179,10 @@ describe("Aufräum-Auftrag (1-20) — Captions, Label-Geometrie, Fader, Sticky, 
         expect(STYLES).toMatch(/\.mod-slot-row\.on \{[\s\S]*?rgba\(45, 212, 191/);
         // Die Label-Chip-Line bleibt neutral — kein .on-spezifischer teal-Chip.
         expect(STYLES).not.toMatch(/\.mod-source-row\.on > \.mod-source-label/);
-        // Der Wave-Glyph folgt weiterhin der Zeilen-Helligkeit (teal auf .on).
-        expect(STYLES).toMatch(/\.mod-source-row\.on \.mod-wave-glyph \{[\s\S]*?(#2dd4bf|--mm-accent-A)/);
+        // Der Wave-Glyph ist ebenfalls Teil des source-linked Signals (sky blue).
+        expect(STYLES).toMatch(/\.mod-source-row\.source-linked \.mod-wave-glyph \{[\s\S]*?(#38bdf8|--mm-accent-B)/);
+        expect(STYLES).not.toMatch(/\.mod-source-row\.on \.mod-wave-glyph \{[\s\S]*?(#2dd4bf|--mm-accent-A)/);
+        expect(STYLES).not.toMatch(/\.mod-source-row\.on:hover/);
     });
 
     it("§4 — highlightCrossColumn stützt sich NUR auf .mod-slot-row.on", () => {

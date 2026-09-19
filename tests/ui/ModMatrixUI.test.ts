@@ -222,7 +222,52 @@ function lookupLabelFor(root: HTMLElement, input: Element): HTMLLabelElement | n
         expect(src2.classList.contains("source-linked")).toBe(false);
     });
 
-    it("O1 - hover/focus (data-active) links DIRECTLY; a transient unlink ever strips persistent links", () => {
+    it("source-linked is persistent matrix state only; disabled hover/focus never links a source", () => {
+        const device = makeDevice();
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+        const slotRow = container.querySelector<HTMLElement>('.mod-slot-row[data-slot-id="slot1"]')!;
+        const srcRow = container.querySelector<HTMLElement>('.mod-source-row[data-source-id="mod1"]')!;
+        const destSel = container.querySelector<HTMLElement>("#mod-slot-dest-slot1")!;
+
+        slotRow.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+        expect(slotRow.dataset.active).toBe("true");
+        expect(srcRow.classList.contains("source-linked")).toBe(false);
+
+        slotRow.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
+        expect(slotRow.dataset.active).toBeUndefined();
+        expect(srcRow.classList.contains("source-linked")).toBe(false);
+
+        destSel.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+        expect(slotRow.dataset.active).toBe("true");
+        expect(srcRow.classList.contains("source-linked")).toBe(false);
+
+        destSel.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+        expect(slotRow.dataset.active).toBeUndefined();
+        expect(srcRow.classList.contains("source-linked")).toBe(false);
+    });
+
+    it("intra-row pointer moves do not flicker the transient active state", () => {
+        const device = makeDevice();
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+        const slotRow = container.querySelector<HTMLElement>('.mod-slot-row[data-slot-id="slot1"]')!;
+        const srcSelect = container.querySelector<HTMLElement>("#mod-slot-src-slot1")!;
+        const destSelect = container.querySelector<HTMLElement>("#mod-slot-dest-slot1")!;
+
+        srcSelect.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, relatedTarget: null }));
+        expect(slotRow.dataset.active).toBe("true");
+
+        srcSelect.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, relatedTarget: destSelect }));
+        expect(slotRow.dataset.active).toBe("true");
+        destSelect.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, relatedTarget: srcSelect }));
+        expect(slotRow.dataset.active).toBe("true");
+
+        destSelect.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, relatedTarget: document.body }));
+        expect(slotRow.dataset.active).toBeUndefined();
+    });
+
+    it("persistent source-linked survives hover/focus churn and clears immediately on disable", () => {
         const device = makeDevice();
         device.modulation.slots[0].enabled = true; // persistent link via .on
         const { ui } = makeDeps(device);
@@ -230,34 +275,25 @@ function lookupLabelFor(root: HTMLElement, input: Element): HTMLLabelElement | n
         ui.highlightCrossColumn();
         const slotRow = container.querySelector<HTMLElement>('.mod-slot-row[data-slot-id="slot1"]')!;
         const srcRow = container.querySelector<HTMLElement>('.mod-source-row[data-source-id="mod1"]')!;
-        const src2 = container.querySelector<HTMLElement>('.mod-source-row[data-source-id="mod2"]')!;
 
-        // Hover (slot1 -> mod1): links mod1 directly — no highlightCrossColumn() call.
-        slotRow.dispatchEvent(new Event("pointerover", { bubbles: true }));
+        slotRow.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
         expect(slotRow.dataset.active).toBe("true");
         expect(srcRow.classList.contains("source-linked")).toBe(true);
 
-        // Focus-in on the slot's dest select has the same effect.
         const destSel = container.querySelector<HTMLElement>("#mod-slot-dest-slot1")!;
-        destSel.dispatchEvent(new Event("focusin", { bubbles: true }));
+        destSel.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
         expect(slotRow.dataset.active).toBe("true");
         expect(srcRow.classList.contains("source-linked")).toBe(true);
 
-        // Pointerout: transient link releases — but slot1 is ENABLED, so its
-        // persistent .on-driven link MUST survive (never stripped by hover).
-        destSel.dispatchEvent(new Event("focusout", { bubbles: true }));
-        slotRow.dispatchEvent(new Event("pointerout", { bubbles: true }));
+        destSel.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+        slotRow.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
         expect(slotRow.dataset.active).toBeUndefined();
         expect(srcRow.classList.contains("source-linked")).toBe(true);
 
-        // Disable the enabled slot: the persistent route is gone -> hover-out
-        // may now unlink for that source.
-        device.modulation.slots[0].enabled = false;
-        ui.highlightCrossColumn();
-        src2.classList.add("source-linked"); // transient elsewhere
-        slotRow.dispatchEvent(new Event("pointerout", { bubbles: true }));
+        const chk = container.querySelector<HTMLInputElement>("#mod-slot-enable-slot1")!;
+        chk.checked = false;
+        chk.dispatchEvent(new Event("change", { bubbles: true }));
         expect(srcRow.classList.contains("source-linked")).toBe(false);
-        expect(src2.classList.contains("source-linked")).toBe(true);
     });
 });
 
@@ -662,8 +698,32 @@ describe("ModMatrixUI — Bug 5 aktiver LFO wird sofort markiert", () => {
         srcSel.dispatchEvent(new Event("change", { bubbles: true }));
 
         expect(src1.classList.contains("on")).toBe(false);
+        expect(src1.classList.contains("source-linked")).toBe(false);
         expect(src2.classList.contains("on")).toBe(true);
         expect(src2.classList.contains("source-linked")).toBe(true);
+    });
+
+    it("source-linked remains while any enabled slot still routes the same source", () => {
+        const device = makeDevice();
+        device.modulation.slots[0].enabled = true;
+        device.modulation.slots[0].sourceId = "mod1";
+        device.modulation.slots[1].enabled = true;
+        device.modulation.slots[1].sourceId = "mod1";
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+        ui.highlightCrossColumn();
+        const src1 = container.querySelector<HTMLElement>('.mod-source-row[data-source-id="mod1"]')!;
+        expect(src1.classList.contains("source-linked")).toBe(true);
+
+        const slot1 = container.querySelector<HTMLInputElement>("#mod-slot-enable-slot1")!;
+        slot1.checked = false;
+        slot1.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(src1.classList.contains("source-linked")).toBe(true);
+
+        const slot2 = container.querySelector<HTMLInputElement>("#mod-slot-enable-slot2")!;
+        slot2.checked = false;
+        slot2.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(src1.classList.contains("source-linked")).toBe(false);
     });
 });
 
@@ -708,6 +768,80 @@ describe("ModMatrixUI — Bug 5 Live-Slider (Echtzeit ohne Undo-Flut)", () => {
         expect(device.modulation.sources[0].rateHz).toBe(4.5);
         // number readout follows live
         expect(container.querySelector<HTMLInputElement>("#mod-src-rate-mod1")!.value).toBe("4.5");
+    });
+
+    it("live slider persistence is debounced while the model updates immediately", () => {
+        vi.useFakeTimers();
+        try {
+            const device = makeDevice();
+            const { deviceLibrary, ui } = makeDeps(device);
+            const container = mount(ui);
+            const slider = container.querySelector<HTMLInputElement>("#mod-slot-amount-slider-slot1")!;
+
+            slider.value = "20";
+            slider.dispatchEvent(new Event("input", { bubbles: true }));
+            slider.value = "70";
+            slider.dispatchEvent(new Event("input", { bubbles: true }));
+
+            expect(device.modulation.slots[0].amount).toBe(0.7);
+            expect(deviceLibrary.saveCurrentDevice).not.toHaveBeenCalled();
+
+            vi.advanceTimersByTime(99);
+            expect(deviceLibrary.saveCurrentDevice).not.toHaveBeenCalled();
+
+            vi.advanceTimersByTime(1);
+            expect(deviceLibrary.saveCurrentDevice).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("pointer release flushes the final live-slider value and still records one undo step", () => {
+        vi.useFakeTimers();
+        try {
+            const device = makeDevice();
+            const { deviceLibrary, history, ui } = makeDeps(device);
+            const container = mount(ui);
+            const slider = container.querySelector<HTMLInputElement>("#mod-src-rate-slider-mod1")!;
+
+            slider.value = "2";
+            slider.dispatchEvent(new Event("input", { bubbles: true }));
+            slider.value = "5";
+            slider.dispatchEvent(new Event("input", { bubbles: true }));
+            expect(device.modulation.sources[0].rateHz).toBe(5);
+            expect(deviceLibrary.saveCurrentDevice).not.toHaveBeenCalled();
+
+            slider.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+            expect(deviceLibrary.saveCurrentDevice).toHaveBeenCalledTimes(1);
+            expect(history.canUndoOnCurrentDevice).toBe(true);
+
+            vi.advanceTimersByTime(200);
+            expect(deviceLibrary.saveCurrentDevice).toHaveBeenCalledTimes(1);
+
+            slider.dispatchEvent(new Event("change", { bubbles: true }));
+            expect(deviceLibrary.saveCurrentDevice).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("render flushes a pending live-slider matrix save before rebuilding", () => {
+        vi.useFakeTimers();
+        try {
+            const device = makeDevice();
+            const { deviceLibrary, ui } = makeDeps(device);
+            const container = mount(ui);
+            const slider = container.querySelector<HTMLInputElement>("#mod-slot-amount-slider-slot1")!;
+
+            slider.value = "35";
+            slider.dispatchEvent(new Event("input", { bubbles: true }));
+            expect(deviceLibrary.saveCurrentDevice).not.toHaveBeenCalled();
+
+            ui.render();
+            expect(deviceLibrary.saveCurrentDevice).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("commitLiveEdit does not clobber a separate refresh() rebuild", () => {

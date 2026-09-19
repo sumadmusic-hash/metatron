@@ -265,8 +265,13 @@ export class AppUI {
         });
 
         window.addEventListener("keydown", this.handleKeydown);
-        window.addEventListener("beforeunload", this.flushValueSave);
+        window.addEventListener("beforeunload", this.flushPendingSaves);
     }
+
+    private flushPendingSaves = (): void => {
+        this.flushValueSave();
+        this.modMatrixUI.flushMatrixSave();
+    };
 
     /** F3 — tear the whole UI down: remove every global window listener
      *  registered in the constructor, flush the trailing value-path save,
@@ -277,10 +282,10 @@ export class AppUI {
         this.destroyed = true;
 
         window.removeEventListener("keydown", this.handleKeydown);
-        window.removeEventListener("beforeunload", this.flushValueSave);
+        window.removeEventListener("beforeunload", this.flushPendingSaves);
 
-        // Persist any trailing debounced value path save BEFORE the DOM goes.
-        this.flushValueSave();
+        // Persist any trailing debounced saves BEFORE the DOM goes.
+        this.flushPendingSaves();
         this.stopElapsedTimer();
         // Phase 2 (FIX 6) — stop the runner rAF loop before the DOM goes.
         this.modRunner?.stop();
@@ -799,6 +804,9 @@ export class AppUI {
         // P4 — a pending value-path save is flushed before the DOM is rebuilt
         // (covers mode switch + device switch, both surface changes here).
         this.flushValueSave();
+        // Matrix live sliders have their own persistence queue because they
+        // mutate the modulation model in real time without using the value path.
+        this.modMatrixUI.flushMatrixSave();
         // M21.8 — the elapsed interval belongs to the previous DOM; tear it
         // down before every rebuild. buildAutomationStrip restarts it only
         // while RECORDING.

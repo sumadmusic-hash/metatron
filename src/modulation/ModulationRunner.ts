@@ -34,12 +34,12 @@ export interface ModulationSurfaceUI {
  *  - FIX 2 (Capture-Arbitration): while a destination is modulated, its
  *    recording capture happens HERE (only while the recorder is RECORDING),
  *    and a live user gesture (gestureTakeover) suspends its writes.
- *  - FIX 8 + F2 (Write-Cap): writes of each control are capped at
+ *  - FIX 8 + F2 (Write-Cap): write requests for each control are capped at
  *    WRITE_INTERVAL_MS (per-control, not global) and guarded by an in-flight
  *    MAP (R2 — Promise je Ziel, der Snap-back hängt sich an die Reihenfolge
- *    an) so a slow Nexus write never piles up. A tick may apply at most
- *    MAX_WRITES_PER_TICK destinations; surplus ones roll over via round-robin
- *    so the whole matrix — not just the first destination — gets written.
+     *    an) so a slow Nexus write never piles up. A tick may dispatch at most
+     *    MAX_WRITES_PER_TICK destinations; surplus ones roll over via round-robin
+     *    so the whole matrix — not just the first destination — gets served.
  *  - FIX 1 (Echo-Guard): every Nexus write is preceded by
  *    beginSuppressEcho, so the round-trip event is absorbed by the adapter.
  */
@@ -218,9 +218,10 @@ export class ModulationRunner {
             writable.push([controlId, value]);
         }
 
-        // Phase 2 — F2 round-robin writes, capped by MAX_WRITES_PER_TICK.
+        // Phase 2 — F2 round-robin write requests, capped by MAX_WRITES_PER_TICK.
         // Started at the last tick's cursor so every destination is served
-        // fairly; recorder capture is keyed to ACTUAL writes only (FIX S2).
+        // fairly; recorder capture is keyed to accepted write requests only:
+        // the Nexus promise is intentionally not awaited in the rAF loop.
         const total = writable.length;
         if (total === 0) return;
         let writesThisTick = 0;
@@ -268,15 +269,15 @@ export class ModulationRunner {
         this.nexusAdapter.updateBoundControl(controlId, baseValue);
     }
 
-    /** Writes a modulated value to Nexus (F2 per-control write-cap +
+    /** Dispatches a modulated value to Nexus (F2 per-control write-cap +
      *  in-flight guard + delta-epsilon jitter gate). The echo of this write is
-     *  suppressed via beginSuppressEcho (FIX 1). */
-    /** Returns true iff the value was ACTUALLY written to Nexus (i.e. passed
-     *  the per-control write-cap, the delta-epsilon gate Reports, the archive
-     *  guard, the binding guard and the in-flight guard). Returns false when
-     *  any of those gates blocked the write. FIX S2: recording may ONLY capture
-     *  a value that was really applied — so tick() keys its recorder.capture()
-     *  off this return value (captured == angewendet). */
+     *  suppressed via beginSuppressEcho (FIX 1).
+     *
+     *  Returns true iff a write request was accepted and dispatched to Nexus.
+     *  It deliberately does NOT mean the async Nexus transaction has completed:
+     *  awaiting that promise here would block the rAF path on external latency.
+     *  Recording follows the same non-blocking semantics: captured == request
+     *  dispatched after all local gates passed. */
     private writeControl(controlId: string, value: number, baseValue: number): boolean {
         if (this.inFlight.has(controlId)) return false;
 

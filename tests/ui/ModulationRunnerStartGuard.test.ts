@@ -115,4 +115,46 @@ describe("B55 — runner start-guard requires an enabled slot routing an EXISTIN
         expect(stopSpy).toHaveBeenCalledTimes(1);
         vi.restoreAllMocks();
     });
+
+    it("Matrix bleibt runnable → kein unnötiger restart (LFO-Phase und rAF bleiben aktiv)", () => {
+        const { device, ctrl } = makeDevice();
+        device.modulation.slots[0].enabled = true;
+        device.modulation.slots[0].destControlId = ctrl.id;
+        device.modulation.slots[0].sourceId = device.modulation.sources[0].id;
+        const { app } = mount(device);
+
+        const runner = (app as any).modRunner;
+        const startSpy = vi.spyOn(runner, "start");
+        const stopSpy = vi.spyOn(runner, "stop");
+
+        // Matrix is already running
+        expect((app as any).modRunnerState).toBe(true);
+
+        // Edits that keep the matrix runnable
+        device.modulation.slots[0].amount = 0.8;
+        app.render();
+        device.modulation.sources[0].rateHz = 7;
+        (app as any).syncModulationRunner();
+        device.modulation.sources[0].waveform = "saw";
+        (app as any).syncModulationRunner();
+
+        // Runner must NOT have been restarted (0 extra start calls, 0 stop calls)
+        expect(startSpy).not.toHaveBeenCalled();
+        expect(stopSpy).not.toHaveBeenCalled();
+        expect((app as any).modRunnerState).toBe(true);
+
+        // Only transitioning to not-runnable stops it
+        device.modulation.slots.forEach((s) => { s.enabled = false; });
+        (app as any).syncModulationRunner();
+        expect(stopSpy).toHaveBeenCalledTimes(1);
+        expect((app as any).modRunnerState).toBe(false);
+
+        // Only transitioning to runnable starts it
+        device.modulation.slots[0].enabled = true;
+        (app as any).syncModulationRunner();
+        expect(startSpy).toHaveBeenCalledTimes(1);
+        expect((app as any).modRunnerState).toBe(true);
+
+        vi.restoreAllMocks();
+    });
 });
