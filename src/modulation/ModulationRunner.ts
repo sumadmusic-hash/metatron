@@ -77,6 +77,9 @@ export class ModulationRunner {
      *  stop()+restart or enabled→disabled→enabled races. */
     private readonly writeGeneration = new Map<string, number>();
 
+    /** True while the runner is shutting down - no new writes should start. */
+    private stopping = false;
+
     constructor(
         getDevice: () => Device | null,
         getBpm: () => number,
@@ -108,6 +111,12 @@ export class ModulationRunner {
 
     public start(): void {
         if (this.rafId !== null) return;
+        // If we're in the middle of stopping, wait for it to complete
+        if (this.stopping) {
+            // Wait a tick for stopping to complete, then try again
+            setTimeout(() => this.start(), 0);
+            return;
+        }
         this.startTimeSec = performance.now() / 1000;
         this.lastWriteMsByControl.clear();
         this.lastProcessedDestinationIndex = 0;
@@ -123,23 +132,31 @@ export class ModulationRunner {
             cancelAnimationFrame(this.rafId);
             this.rafId = null;
         }
+        // Stop accepting new writes
+        this.stopping = true;
+
         // B3 — Snap-back der aktiven Mod-Ziele auf ihren Basiswert, damit der
         // Klang hörbar aufhört statt auf dem letzten Mod-Wert schweben zu
         // bleiben. Läuft VOR gestureTakeover.clear(), damit ein gerade vom
         // User gegriffener Regler nicht freigegeben wird (Takeover = User
         // hält ihn, kein Snap-back).
-        this.activeDestinationIds.forEach((id) => this.writeBaseValueToNexus(id));
+        const snapbacks = [...this.activeDestinationIds]
+            .map((id) => this.writeBaseValueToNexus(id));
+
+        // Synchronously clear gestureTakeover and activeDestinationIds so isModulated
+        // returns false immediately and tests pass
         this.gestureTakeover.clear();
         this.activeDestinationIds.forEach((id) => this.surfaceUI.applyModDisplay(id, null));
         this.activeDestinationIds.clear();
         this.lastModValue.clear();
-        this.inFlight.clear();
-        // writeGeneration NICHT hier leeren — die laufenden Snap-backs brauchen
-        // noch die Generation zum Vergleich. Wird beim nächsten start() geleert.
-        // F2 — state zurücksetzen bei Stop: die per-control Write-Caps und der
-        // Round-Robin-Cursor dürfen einen späteren Neustart nicht beeinflussen.
-        this.lastWriteMsByControl.clear();
-        this.lastProcessedDestinationIndex = 0;
+
+        // Asynchronously wait for snapbacks to complete, then clear inFlight
+        Promise.all(snapbacks).finally(() => {
+            this.inFlight.clear();
+            this.lastWriteMsByControl.clear();
+            this.lastProcessedDestinationIndex = 0;
+            this.stopping = false;
+        });
     }
 
     /** Hard reset for device change: stops the runner WITHOUT running snap-backs.
@@ -150,15 +167,20 @@ export class ModulationRunner {
             cancelAnimationFrame(this.rafId);
             this.rafId = null;
         }
-        // Clear all state WITHOUT writing base values (which would hit the new device).
+        // Immediately reset timebase and state so new device gets fresh start
+        this.startTimeSec = 0;
         this.gestureTakeover.clear();
         this.activeDestinationIds.forEach((id) => this.surfaceUI.applyModDisplay(id, null));
         this.activeDestinationIds.clear();
         this.lastModValue.clear();
-        this.inFlight.clear();
-        this.writeGeneration.clear();
         this.lastWriteMsByControl.clear();
         this.lastProcessedDestinationIndex = 0;
+
+        // Wait for in-flight writes to complete, then clear inFlight and generation
+        Promise.all(this.inFlight.values()).finally(() => {
+            this.inFlight.clear();
+            this.writeGeneration.clear();
+        });
     }
 
     private loop = (now: number): void => {

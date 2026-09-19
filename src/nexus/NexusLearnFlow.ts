@@ -75,8 +75,23 @@ export class NexusLearnFlow {
         this.activeControlId = control.id;
         this.deps.onStateChanged();
 
+        // Capture document identity at learn start to prevent cross-project leakage
+        const documentId = (document as any).id;
+
         try {
             const result = await this.activeLearn.startLearn({ timeoutMs: 60000 });
+            
+            // Guard: verify document hasn't changed during learn (project switch/reconnect)
+            const currentDocument = this.deps.getDocument();
+            if (!currentDocument || (currentDocument as any).id !== documentId) {
+                // Document changed during learn — discard result
+                this.activeLearn = null;
+                this.activeControlId = null;
+                this.deps.onStateChanged();
+                Toast.show("Learn discarded: project/document changed", "info");
+                return;
+            }
+
             if (this.activeControlId !== control.id) {
                 // User switched target mid-learning; drop this result.
                 this.activeLearn = null;

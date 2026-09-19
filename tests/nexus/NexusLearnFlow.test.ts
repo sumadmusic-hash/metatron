@@ -99,7 +99,7 @@ describe("NexusLearnFlow — shared learn flow (P3.2)", () => {
         await flow.learn(control);
 
         expect(harness.created).toHaveLength(1);
-        expect(deps.getDocument).toHaveBeenCalledOnce();
+        expect(deps.getDocument).toHaveBeenCalledTimes(2);
         expect(deps.applyLearnResult).toHaveBeenCalledWith(control.id, expect.objectContaining({ entityId: "E1" }));
         expect(deps.subscribeBoundControl).toHaveBeenCalledWith(control.id);
         expect(deps.saveCurrentDevice).toHaveBeenCalledTimes(1);
