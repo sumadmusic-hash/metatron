@@ -79,7 +79,7 @@ describe("B55 — runner start-guard requires an enabled slot routing an EXISTIN
         expect((app as any).matrixRunnable(device)).toBe(true);
     });
 
-    it("render stops an idle slot-only runner and starts it once the source resolves", () => {
+    it("render startet/stoppt den Runner nur bei Zustandswechsel (§12), nicht bei jedem render", () => {
         const { device, ctrl } = makeDevice();
         device.modulation.slots[0].enabled = true;
         device.modulation.slots[0].destControlId = ctrl.id;
@@ -90,13 +90,29 @@ describe("B55 — runner start-guard requires an enabled slot routing an EXISTIN
         const stopSpy = vi.spyOn(runner, "stop");
         const startSpy = vi.spyOn(runner, "start");
 
+        // Nicht-lauffähig ZUSTAND unverändert → render ruft weder start noch stop.
         app.render();
-        expect(stopSpy).toHaveBeenCalled();
         expect(startSpy).not.toHaveBeenCalled();
+        expect(stopSpy).not.toHaveBeenCalled();
 
+        // Quelle aufgelöst → Zustandswechsel → genau EIN Start.
         device.modulation.slots[0].sourceId = device.modulation.sources[0].id;
         app.render();
-        expect(startSpy).toHaveBeenCalled();
+        expect(startSpy).toHaveBeenCalledTimes(1);
+        expect(stopSpy).not.toHaveBeenCalled();
+
+        // Runner läuft tatsächlich (rAF aktiv).
+        const rafId = (runner as any).rafId as number | null;
+        expect(rafId).not.toBeNull();
+
+        // Rückbau → Zustandswechsel → genau EIN Stopp.
+        device.modulation.slots[0].sourceId = "ghost-source";
+        app.render();
+        expect(stopSpy).toHaveBeenCalledTimes(1);
+
+        // Stabiler nicht-lauffähiger Zustand → weiterer render bleibt ein No-Op.
+        app.render();
+        expect(stopSpy).toHaveBeenCalledTimes(1);
         vi.restoreAllMocks();
     });
 });

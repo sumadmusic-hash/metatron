@@ -76,6 +76,9 @@ export function captureDeviceState(device: Device): DeviceStatePatch {
             name: p.name,
             deviceId: p.deviceId,
             controlValues: { ...p.controlValues },
+            // §10 — trusted in-memory snapshot, cloned so the patch never
+            // aliases the live preset matrix.
+            modulation: p.modulation ? cloneModulationMatrix(p.modulation) : undefined,
         };
     });
 
@@ -148,6 +151,7 @@ export function restoreDeviceState(device: Device, patch: DeviceStatePatch): voi
         if (preset) {
             preset.name = data.name;
             preset.controlValues = { ...data.controlValues };
+            preset.modulation = data.modulation ? cloneModulationMatrix(data.modulation) : undefined;
         } else {
             device.presets.set(id, Preset.deserialize(data));
         }

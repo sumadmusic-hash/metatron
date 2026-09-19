@@ -38,12 +38,14 @@ beforeEach(() => {
 });
 
 describe("C11 — Elementtypen und geschützte Namen bleiben unangetastet", () => {
-    it("Routing-Slots behalten select/range/number/checkbox-Naturen", () => {
+    it("Routing-Slots behalten select/range/badge/checkbox-Naturen", () => {
         const root = mount();
         expect(root.querySelector(".mod-slot-source")!.tagName).toBe("SELECT");
         expect(root.querySelector(".mod-slot-dest")!.tagName).toBe("SELECT");
         expect(root.querySelector<HTMLInputElement>(".mod-slot-amount-slider")!.type).toBe("range");
-        expect(root.querySelector<HTMLInputElement>(".mod-slot-amount")!.type).toBe("number");
+        // §6 — das read-only number-Input ist weg; das signed-Badge bleibt span.
+        expect(root.querySelector(".mod-slot-amount")).toBeNull();
+        expect(root.querySelector<HTMLElement>(".mod-slot-amount-signed")!.tagName).toBe("SPAN");
         expect(root.querySelector<HTMLInputElement>(".mod-slot-enable")!.type).toBe("checkbox");
     });
 
@@ -62,7 +64,8 @@ describe("C11 — Elementtypen und geschützte Namen bleiben unangetastet", () =
         expect(firstSlot.querySelector("#mod-slot-src-slot1")).toBeTruthy();
         expect(firstSlot.querySelector("#mod-slot-dest-slot1")).toBeTruthy();
         expect(firstSlot.querySelector("#mod-slot-amount-slider-slot1")).toBeTruthy();
-        expect(firstSlot.querySelector("#mod-slot-amount-slot1")).toBeTruthy();
+        // §6 — der entfernte number-Input existiert nicht mehr.
+        expect(firstSlot.querySelector("#mod-slot-amount-slot1")).toBeNull();
         expect(firstSlot.querySelector("#mod-slot-enable-slot1")).toBeTruthy();
         const firstSrc = root.querySelector('.mod-source-row[data-source-id="mod1"]')!;
         expect(firstSrc).toBeTruthy();
@@ -71,18 +74,20 @@ describe("C11 — Elementtypen und geschützte Namen bleiben unangetastet", () =
         expect(firstSrc.querySelector("#mod-src-sync-mod1")).toBeTruthy();
     });
 
-    it("der Slider setzt die fill-Variablen (bipolar), das %-Readout bleibt unberührt", () => {
+    it("der Slider setzt die fill-Variablen (bipolar), das signed-Badge folgt live", () => {
         const root = mount();
         const slider = root.querySelector<HTMLInputElement>(".mod-slot-amount-slider")!;
-        const num = root.querySelector<HTMLInputElement>(".mod-slot-amount")!;
         slider.value = "60";
         slider.dispatchEvent(new Event("input", { bubbles: true }));
         expect(slider.style.getPropertyValue("--mod-fill-start")).toBe("50%");
         expect(slider.style.getPropertyValue("--mod-fill-end")).toBe("80%");
-        // num.value bleibt die rohe Zahl — das signed-Badge ist rein optisch.
-        expect(num.value).toBe("60");
+        // §6/§7 — das signed-Badge ist die einzige %-Anzeige und folgt direkt
+        // dem Fader-Wert.
         const badge = root.querySelector<HTMLElement>(".mod-slot-amount-signed");
         expect(badge?.textContent).toBe("+60");
+        slider.value = "-35";
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(badge?.textContent).toBe("-35");
     });
 });
 
@@ -128,5 +133,105 @@ describe("CSS-Guard — Bug 1 (dynamische LFO-Wellenform) + Bug 3 (kein Oranger 
         expect(STYLES).not.toMatch(/\.knob-body\.modulated \.knob-led-ring/);
         // Die Amberspanne lebt ausschliesslich im .knob-mod-ring.
         expect(STYLES).toContain(".knob-mod-ring");
+    });
+});
+
+describe("Aufräum-Auftrag (1-20) — Captions, Label-Geometrie, Fader, Sticky, Akzent-Regel", () => {
+    it("es gibt KEINE 'Wave'/'Mode'/'Phase'-Captions mehr, nur 'Freq' + φ-Symbol", () => {
+        const root = mount();
+        const caps = Array.from(root.querySelectorAll<HTMLElement>(".mod-field-caption")).map((c) => c.textContent?.trim());
+        expect(caps).toContain("Freq");
+        expect(caps).toContain("φ");
+        expect(caps).not.toContain("Wave");
+        expect(caps).not.toContain("Mode");
+        expect(caps).not.toContain("Phase");
+        expect(caps.some((t) => t === "Freq")).toBe(true);
+    });
+
+    it("der LFO-Wave/Mode-Bereich führt weiterhin Glyph + Free|Sync-Segment", () => {
+        const root = mount();
+        const src = root.querySelector('.mod-source-row[data-source-id="mod1"]')!;
+        expect(src.querySelector(".mod-wave-glyph")).toBeTruthy();
+        expect(src.querySelector("#mod-src-sync-mod1")).toBeTruthy();
+        expect(src.querySelector(".mod-seg-btn")).toBeTruthy();
+    });
+
+    it("§1 — Source-Label ist 64px breit (keine 88px mehr)", () => {
+        expect(STYLES).toMatch(/\.mod-source-label \{[\s\S]*?flex: 0 0 64px/);
+        expect(STYLES).toMatch(/\.mod-source-label \{[\s\S]*?width: 64px/);
+    });
+
+    it("§1 — Rows füllen die Spaltenbreite aus (width 100%, min-width 0)", () => {
+        expect(STYLES).toMatch(/\.mod-source-row,\s*\n\.mod-slot-row \{[\s\S]*?width: 100%;/);
+        expect(STYLES).toMatch(/\.mod-source-row,\s*\n\.mod-slot-row \{[\s\S]*?min-width: 0;/);
+    });
+
+    it("§1/§8 — Rate- und Amount-Fader laufen über die volle Faderauflage (width: 100%)", () => {
+        expect(STYLES).toMatch(/\.mod-source-row \.mod-source-rate-slider \{[\s\S]*?width: 100%;/);
+        expect(STYLES).toMatch(/\.mod-slot-row \.mod-slot-amount-slider \{[\s\S]*?width: 100%;/);
+        expect(STYLES).toMatch(/\.mod-amount \{[\s\S]*?flex: 1 1 0%;/);
+    });
+
+    it("§3 — nur ROUTING-Zeilen tragen die teal-Active-Wash, Source-Zeilen nie", () => {
+        // Kein kombiniertes Selektoren-Paar mehr (.mod-source-row.on, .mod-slot-row.on).
+        expect(STYLES).not.toMatch(/\.mod-source-row\.on,\s*\n\.mod-slot-row\.on/);
+        expect(STYLES).not.toMatch(/\.mod-source-row\.on \{[^\n]*rgba\(45, 212, 191/);
+        expect(STYLES).toMatch(/\.mod-slot-row\.on \{[\s\S]*?rgba\(45, 212, 191/);
+        // Die Label-Chip-Line bleibt neutral — kein .on-spezifischer teal-Chip.
+        expect(STYLES).not.toMatch(/\.mod-source-row\.on > \.mod-source-label/);
+        // Der Wave-Glyph folgt weiterhin der Zeilen-Helligkeit (teal auf .on).
+        expect(STYLES).toMatch(/\.mod-source-row\.on \.mod-wave-glyph \{[\s\S]*?(#2dd4bf|--mm-accent-A)/);
+    });
+
+    it("§4 — highlightCrossColumn stützt sich NUR auf .mod-slot-row.on", () => {
+        const root = mount();
+        const chk = root.querySelector<HTMLInputElement>("#mod-slot-enable-slot1")!;
+        chk.checked = true;
+        chk.dispatchEvent(new Event("change", { bubbles: true }));
+        const srcRow = root.querySelector('.mod-source-row[data-source-id="mod1"]');
+        expect(srcRow?.classList.contains("source-linked")).toBe(true);
+        expect(root.querySelector('.mod-source-row[data-source-id="mod1"]')?.classList.contains("on")).toBe(true);
+    });
+
+    it("§5 — source-linked bleibt full-width (Gradient + beide Spines + Label-Pill)", () => {
+        expect(STYLES).toMatch(/\.mod-source-row\.source-linked \{[\s\S]*?inset 2px 0 0 var\(--mm-accent-B\), inset -2px 0 0 var\(--mm-accent-B-solid\)/);
+        expect(STYLES).toMatch(/\.mod-source-row\.source-linked > \.mod-source-label \{/);
+    });
+
+    it("§7 — Routing trägt 'Amt' statt 'Amount'", () => {
+        const root = mount();
+        const caps = Array.from(root.querySelectorAll<HTMLElement>(".mod-route-cap")).map((c) => c.textContent?.trim());
+        expect(caps).toContain("Amt");
+        expect(caps).not.toContain("Amount");
+    });
+
+    it("§8 — der Amount-Fader deckt den vollen Bipolarweg ab (min/mid/max)", () => {
+        const root = mount();
+        const device = new Device("Travel");
+        const ui = new ModMatrixUI({
+            deviceLibrary: { currentDevice: device, saveCurrentDevice: () => {} },
+            bindingManager: new BindingManager(device),
+            nexusAdapter: new NexusAdapter(),
+            history: new DeviceHistory({ currentDevice: device, saveCurrentDevice: () => {} } as never),
+        });
+        const container = ui.getContainer();
+        const slider = container.querySelector<HTMLInputElement>("#mod-slot-amount-slider-slot1")!;
+        expect(slider.min).toBe("-100");
+        expect(slider.max).toBe("100");
+        slider.value = "-100";
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(device.modulation.slots[0].amount).toBe(-1);
+        slider.value = "0";
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(device.modulation.slots[0].amount).toBe(0);
+        slider.value = "100";
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(device.modulation.slots[0].amount).toBe(1);
+        document.body.innerHTML = "";
+    });
+
+    it("§9 — Section-Titles sind stikky in den Scroll-Spalten", () => {
+        expect(STYLES).toMatch(/\.mod-section-title \{[\s\S]*?position: sticky;/);
+        expect(STYLES).toMatch(/\.mod-section-title \{[\s\S]*?top: 0;/);
     });
 });

@@ -58,6 +58,9 @@ export interface PresetStatePatch {
     name: string;
     deviceId: string;
     controlValues: Record<string, number>;
+    /** Matrix snapshot captured with the preset (§10). undefined for legacy
+     *  presets that never captured a matrix. */
+    modulation?: ModulationMatrixConfig;
 }
 
 export interface DeviceStatePatch {

@@ -99,6 +99,13 @@ export class AppUI {
     private recorder: AutomationRecorder;
     private modRunner: ModulationRunner;
 
+    /** §12 — runner runnability remembered between syncs. ModulationRunner.start()
+     *  resets the LFO time base, so any matrix edit that leaves the matrix
+     *  runnable must NOT silently restart (and phase-reset) the runner.
+     *  start()/stop() are idempotent, so tracking the last-known state is
+     *  sufficient: sync only on an actual change. */
+    private modRunnerState = false;
+
     // P4 — the VALUE path (MIDI stream / surface drag / Nexus sync) debounces
     // its persistence: a burst of rapid value changes collapses into one
     // trailing save. The last value is ALWAYS persisted — a pending save is
@@ -249,7 +256,12 @@ export class AppUI {
             // Bug 2 — matrix edits (route on/off, dest, source) push the new
             // modulated state onto the ALREADY RENDERED surface without a full
             // re-render (which would destroy selection/DOM refs/gestures).
-            onMatrixChange: () => this.surfaceUI.refreshModulationStates(),
+            // §12 — same moment: runner start/stop on a REAL change; as long as
+            // the matrix stays runnable the LFO keeps running (no phase reset).
+            onMatrixChange: () => {
+                this.surfaceUI.refreshModulationStates();
+                this.syncModulationRunner();
+            },
         });
 
         window.addEventListener("keydown", this.handleKeydown);
@@ -272,6 +284,7 @@ export class AppUI {
         this.stopElapsedTimer();
         // Phase 2 (FIX 6) — stop the runner rAF loop before the DOM goes.
         this.modRunner?.stop();
+        this.modRunnerState = false;
         this.editorUI.destroy();
         this.root.innerHTML = "";
     }
@@ -689,6 +702,26 @@ export class AppUI {
                 );
             }
         });
+    // §10/§12 — the preset may carry a matrix snapshot (already applied by
+        // Device.loadPreset): refresh the amber mod marks on the LIVE surface
+        // and re-sync the runner against the loaded routing.
+        this.surfaceUI.refreshModulationStates();
+        this.syncModulationRunner();
+    }
+
+    /** §12 — single entry point for the runner lifecycle. Starts/stops the
+     *  runner ONLY when the matrix's runnability actually changed; keeps the
+     *  LFO phase/sync intact while the matrix stays runnable across edits. */
+    private syncModulationRunner(): void {
+        const device = this.deviceLibrary.currentDevice;
+        const runnable = this.matrixRunnable(device);
+        if (runnable === this.modRunnerState) return;
+        this.modRunnerState = runnable;
+        if (runnable) {
+            this.modRunner?.start();
+        } else {
+            this.modRunner?.stop();
+        }
     }
 
     private onDeviceChanged() {
@@ -708,13 +741,15 @@ export class AppUI {
             }
             this.bindingManager.setDevice(device);
             this.midiMapping.updateDevice(device);
+            // §12 — device switch resets the remembered state so the runner is
+            // (re)synced against the NEW device's matrix.
+            this.modRunnerState = false;
         }
-        // FIX 6 — Runner-Lifecycle: bei JEDEM Device-Wechsel stoppen (auch wenn
-        // kein Device bleibt), nur für eine modulierungsfähige Matrix starten.
-        this.modRunner?.stop();
-        if (this.matrixRunnable(device)) {
-            this.modRunner?.start();
-        }
+        // FIX 6 + §12 — Runner-Lifecycle bei JEDEM Wechsel/Klärungsvorgang via
+        // syncModulationRunner: nur bei tatsächlicher Zustandsänderung
+        // starten/stoppen (LFO-Phase bleibt bei gleichbleibender Lauffähigkeit
+        // erhalten — §12).
+        this.syncModulationRunner();
         this.render();
         this.modMatrixUI.render();
     }
@@ -1104,14 +1139,8 @@ export class AppUI {
         this.root.appendChild(this.modMatrixUI.getContainer());
         this.root.appendChild(contentRow);
 
-        // FIX 6 — start the runner when a modulatable matrix is live after
-        // every render; otherwise keep it stopped (FIX B55: also requires an
-        // enabled source — a slot-only matrix would idle-scan in vain).
-        const modDevice = this.deviceLibrary.currentDevice;
-        if (this.matrixRunnable(modDevice)) {
-            this.modRunner?.start();
-        } else {
-            this.modRunner?.stop();
-        }
+        // §12 — the runner lifecycle is owned by syncModulationRunner (starts
+        // on a runnable matrix, otherwise keeps it stopped; FIX 6 + FIX B55).
+        this.syncModulationRunner();
     }
 }

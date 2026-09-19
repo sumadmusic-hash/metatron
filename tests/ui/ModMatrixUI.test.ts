@@ -222,22 +222,42 @@ function lookupLabelFor(root: HTMLElement, input: Element): HTMLLabelElement | n
         expect(src2.classList.contains("source-linked")).toBe(false);
     });
 
-    it("O1 - hover/focus (data-active) transiently links the source row", () => {
+    it("O1 - hover/focus (data-active) links DIRECTLY; a transient unlink ever strips persistent links", () => {
         const device = makeDevice();
+        device.modulation.slots[0].enabled = true; // persistent link via .on
         const { ui } = makeDeps(device);
         const container = mount(ui);
+        ui.highlightCrossColumn();
         const slotRow = container.querySelector<HTMLElement>('.mod-slot-row[data-slot-id="slot1"]')!;
         const srcRow = container.querySelector<HTMLElement>('.mod-source-row[data-source-id="mod1"]')!;
+        const src2 = container.querySelector<HTMLElement>('.mod-source-row[data-source-id="mod2"]')!;
 
+        // Hover (slot1 -> mod1): links mod1 directly — no highlightCrossColumn() call.
         slotRow.dispatchEvent(new Event("pointerover", { bubbles: true }));
         expect(slotRow.dataset.active).toBe("true");
-        ui.highlightCrossColumn();
         expect(srcRow.classList.contains("source-linked")).toBe(true);
 
+        // Focus-in on the slot's dest select has the same effect.
+        const destSel = container.querySelector<HTMLElement>("#mod-slot-dest-slot1")!;
+        destSel.dispatchEvent(new Event("focusin", { bubbles: true }));
+        expect(slotRow.dataset.active).toBe("true");
+        expect(srcRow.classList.contains("source-linked")).toBe(true);
+
+        // Pointerout: transient link releases — but slot1 is ENABLED, so its
+        // persistent .on-driven link MUST survive (never stripped by hover).
+        destSel.dispatchEvent(new Event("focusout", { bubbles: true }));
         slotRow.dispatchEvent(new Event("pointerout", { bubbles: true }));
         expect(slotRow.dataset.active).toBeUndefined();
+        expect(srcRow.classList.contains("source-linked")).toBe(true);
+
+        // Disable the enabled slot: the persistent route is gone -> hover-out
+        // may now unlink for that source.
+        device.modulation.slots[0].enabled = false;
         ui.highlightCrossColumn();
+        src2.classList.add("source-linked"); // transient elsewhere
+        slotRow.dispatchEvent(new Event("pointerout", { bubbles: true }));
         expect(srcRow.classList.contains("source-linked")).toBe(false);
+        expect(src2.classList.contains("source-linked")).toBe(true);
     });
 });
 

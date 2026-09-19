@@ -8,7 +8,7 @@ import {
     parseModulationMatrix,
     serializeModulationMatrix,
 } from "../modulation/ModulationMatrix";
-import { createDefaultMatrix } from "../modulation/ModulationTypes";
+import { cloneModulationMatrix, createDefaultMatrix } from "../modulation/ModulationTypes";
 import type { ModulationMatrixConfig } from "../modulation/ModulationTypes";
 import { GROUP_PADDING, migratedGroupRect } from "../../ui/geometry";
 
@@ -195,6 +195,13 @@ export class Device {
                 }
             }
         });
+
+        // §10 — a preset carrying a modulation snapshot replaces the WHOLE
+        // current matrix with its own copy; legacy presets (no snapshot) leave
+        // the device matrix untouched.
+        if (preset.modulation) {
+            this.modulation = cloneModulationMatrix(preset.modulation);
+        }
     }
 
     public savePreset(presetName: string): Preset {
@@ -204,6 +211,9 @@ export class Device {
                 preset.controlValues[control.id] = control.value;
             }
         });
+        // §10 — snapshot the CURRENT matrix into the preset (deep copy so
+        // later matrix edits can never leak into the stored preset).
+        preset.modulation = cloneModulationMatrix(this.modulation);
         this.addPreset(preset);
         return preset;
     }

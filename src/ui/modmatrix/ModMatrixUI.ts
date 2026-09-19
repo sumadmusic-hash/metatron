@@ -183,8 +183,10 @@ export class ModMatrixUI {
         });
     }
 
-    /** A routing row that is enabled (.on) or currently hovered/focused
-     *  ([data-active]) surfaces its source on the left via .source-linked. */
+    /** Persistent cross-column marking: ONLY an ENABLED routing row (.on)
+     *  surfaces its source on the left via .source-linked. Transient
+     *  hover/focus is tracked separately in bindActiveTracking and may ADD a
+     *  link, but the persistent `.on`-driven state never depends on it. */
     public highlightCrossColumn(): void {
         const rack = this.container?.querySelector(".mod-source-rack");
         const matrix = this.container?.querySelector(".mod-slot-matrix");
@@ -193,7 +195,7 @@ export class ModMatrixUI {
         rack.querySelectorAll<HTMLElement>(".mod-source-row.source-linked").forEach((r) => {
             r.classList.remove("source-linked");
         });
-        matrix.querySelectorAll<HTMLElement>(".mod-slot-row.on, .mod-slot-row[data-active='true']").forEach((slotRow) => {
+        matrix.querySelectorAll<HTMLElement>(".mod-slot-row.on").forEach((slotRow) => {
             const srcId = device.modulation.slots.find((s) => s.id === slotRow.dataset.slotId)?.sourceId;
             if (!srcId) return;
             rack.querySelector<HTMLElement>(`.mod-source-row[data-source-id="${srcId}"]`)?.classList.add("source-linked");
@@ -201,27 +203,59 @@ export class ModMatrixUI {
     }
 
     /** Transient hover/focus tracking on slot rows (delegated, rebuilt each
-     *  render). data-active is cleared as the pointer/focus leaves. */
+     *  render). data-active is cleared as the pointer/focus leaves. The
+     *  transient link is applied DIRECTLY here (not through highlightCrossColumn)
+     *  so it can never strip a persistent `.on`-driven source-linked state:
+     *  unlinking breaks only when no ENABLED slot still routes that source. */
     private bindActiveTracking(): void {
+        const rack = this.container?.querySelector(".mod-source-rack");
         const matrix = this.container?.querySelector(".mod-slot-matrix");
-        if (!matrix) return;
+        const device = this.deviceLibrary.currentDevice;
+        if (!matrix || !rack || !device) return;
         const rowOf = (t: EventTarget | null): HTMLElement | null =>
             t instanceof Element ? t.closest<HTMLElement>(".mod-slot-row") : null;
+        const sourceRowOf = (row: HTMLElement): HTMLElement | null => {
+            const slot = device.modulation.slots.find((s) => s.id === row.dataset.slotId);
+            if (!slot) return null;
+            return rack.querySelector<HTMLElement>(`.mod-source-row[data-source-id="${slot.sourceId}"]`);
+        };
+        const link = (row: HTMLElement): void => sourceRowOf(row)?.classList.add("source-linked");
+        const unlink = (row: HTMLElement): void => {
+            const slot = device.modulation.slots.find((s) => s.id === row.dataset.slotId);
+            const sourceRow = sourceRowOf(row);
+            if (!slot || !sourceRow) return;
+            const stillPersistent = device.modulation.slots.some(
+                (s) => s.enabled && s.sourceId === slot.sourceId,
+            );
+            if (!stillPersistent) sourceRow.classList.remove("source-linked");
+        };
         matrix.addEventListener("pointerover", (e) => {
             const row = rowOf(e.target);
-            if (row) row.dataset.active = "true";
+            if (row) {
+                row.dataset.active = "true";
+                link(row);
+            }
         });
         matrix.addEventListener("pointerout", (e) => {
             const row = rowOf(e.target);
-            if (row) delete row.dataset.active;
+            if (row) {
+                delete row.dataset.active;
+                unlink(row);
+            }
         });
         matrix.addEventListener("focusin", (e) => {
             const row = rowOf(e.target);
-            if (row) row.dataset.active = "true";
+            if (row) {
+                row.dataset.active = "true";
+                link(row);
+            }
         });
         matrix.addEventListener("focusout", (e) => {
             const row = rowOf(e.target);
-            if (row) delete row.dataset.active;
+            if (row) {
+                delete row.dataset.active;
+                unlink(row);
+            }
         });
     }
 
@@ -422,8 +456,9 @@ export class ModMatrixUI {
                 wave.appendChild(opt);
             });
             wave.onchange = () => this.editSource(src, () => { src.waveform = wave.value as Waveform; });
-            const waveField = this.field("Wave", wave, "wave");
-            // Bug 1 — the lead-in glyph must mirror the ACTUAL waveform.
+            // §2 — the Wave field has NO visible caption anymore: the dynamic
+            // waveform glyph is the only lead-in (keep the glyph + select).
+            const waveField = this.field(null, wave, "wave");
             waveField.insertBefore(this.waveformGlyph(src.waveform), wave);
             row.appendChild(waveField);
 
@@ -439,7 +474,9 @@ export class ModMatrixUI {
             phase.step = "0.01";
             phase.value = String(src.phase);
             phase.onchange = () => this.editSource(src, () => { src.phase = Number(phase.value); });
-            row.appendChild(this.field("Phase", phase));
+            // §2 — the Phase caption is replaced by the φ symbol (visible only;
+            // the 0..1 phase value + processing are unchanged).
+            row.appendChild(this.field("φ", phase));
         }
 
         if (src.type === "macro") {
@@ -566,7 +603,7 @@ export class ModMatrixUI {
 
         const amtCap = document.createElement("span");
         amtCap.className = "mod-route-cap mod-route-cap--amt";
-        amtCap.innerText = "Amount";
+        amtCap.innerText = "Amt";
         row.appendChild(amtCap);
 
         row.appendChild(this.renderAmountControl(slot));
@@ -600,7 +637,9 @@ export class ModMatrixUI {
     }
 
     /** Bipolar amount control in percent (-100% … +100%); the data model keeps
-     *  `amount ∈ [-1, +1]` — the UI translates for display and back on write. */
+     *  `amount ∈ [-1, +1]` — the UI translates for display and back on write.
+     *  §6 — the read-only text entry is gone; the signed badge mirrors the
+     *  slider directly, the fader owns the whole gesture. */
     private renderAmountControl(slot: ModSlot): HTMLElement {
         const wrap = document.createElement("div");
         wrap.className = "mod-amount";
@@ -624,7 +663,6 @@ export class ModMatrixUI {
         // The undo history is committed exactly once on gesture end (release).
         const commitAmount = (): void => {
             const v = Number(slider.value);
-            num.value = String(v);
             updateAmountFill();
             renderBadge();
             const device = this.deviceLibrary.currentDevice;
@@ -634,36 +672,16 @@ export class ModMatrixUI {
         slider.addEventListener("change", () => { commitAmount(); this.commitLiveEdit(); });
         wrap.appendChild(slider);
 
-        const num = document.createElement("input");
-        num.type = "number";
-        num.id = `mod-slot-amount-${slot.id}`;
-        num.className = "mod-slot-amount";
-        num.min = "-100";
-        num.max = "100";
-        num.step = "1";
-        num.value = String(Math.round(slot.amount * 100));
-        // C7 — signed readout ("−23 %" / "+23 %") as a pure-presentation badge.
-        // The real number input keeps its raw signed value untouched: only the
-        // badge reshapes the text with an explicit "+" for positive amounts.
+        // C7 — signed readout ("−23 %" / "+23 %") as a pure-presentation badge,
+        // fed straight from the slider's live value.
         const badge = document.createElement("span");
         badge.className = "mod-slot-amount-signed";
         badge.setAttribute("aria-hidden", "true");
         const renderBadge = (): void => {
-            const v = Number(num.value);
+            const v = Number(slider.value);
             badge.innerText = (Number.isFinite(v) && v > 0 ? "+" : "") + String(Math.round(v));
         };
         renderBadge();
-        num.onchange = () => {
-            const raw = Number(num.value);
-            const clamped = Number.isFinite(raw) ? Math.max(-100, Math.min(100, raw)) : 0;
-            num.value = String(clamped);
-            slider.value = String(clamped);
-            updateAmountFill();
-            renderBadge();
-            this.editSlot(slot, () => { slot.amount = clamped / 100; });
-        };
-        wrap.appendChild(num);
-
         wrap.appendChild(badge);
 
         const unit = document.createElement("span");
@@ -675,14 +693,18 @@ export class ModMatrixUI {
     }
 
     /** Caption + control column using Metatron's caption language (small,
-     *  uppercase, letter-spaced label stacked above the control). */
-    private field(caption: string, control: HTMLElement, mod = ""): HTMLElement {
+     *  uppercase, letter-spaced label stacked above the control). Pass
+     *  `caption = null` for caption-less fields (§2: the LFO Wave/Mode fields
+     *  render only their dynamic glyph/segment — no visible caption). */
+    private field(caption: string | null, control: HTMLElement, mod = ""): HTMLElement {
         const label = document.createElement("label");
         label.className = "mod-field" + mod.split(/\s+/).filter(Boolean).map((m) => ` mod-field--${m}`).join("");
-        const cap = document.createElement("span");
-        cap.className = "mod-field-caption";
-        cap.innerText = caption;
-        label.appendChild(cap);
+        if (caption !== null) {
+            const cap = document.createElement("span");
+            cap.className = "mod-field-caption";
+            cap.innerText = caption;
+            label.appendChild(cap);
+        }
         label.appendChild(control);
         return label;
     }
@@ -718,7 +740,8 @@ export class ModMatrixUI {
 
     /** FREE | SYNC segment toggle — replaces the old bare SYNC checkbox.
      *  Toggling only flips bpmSync; rateHz/noteDivision are kept as-is and no
-     *  BPM<->Hz conversion happens (existing data semantics preserved). */
+     *  BPM<->Hz conversion happens (existing data semantics preserved).
+     *  §2 — the field carries NO visible "Mode" caption anymore. */
     private renderModeToggle(src: ModSource): HTMLElement {
         const seg = document.createElement("div");
         seg.className = "mod-seg";
@@ -740,7 +763,7 @@ export class ModMatrixUI {
         syncBtn.onclick = () => this.setBpmSync(src, true);
         seg.appendChild(syncBtn);
 
-        return this.field("Mode", seg);
+        return this.field(null, seg);
     }
 
     private setBpmSync(src: ModSource, sync: boolean): void {
@@ -775,7 +798,7 @@ export class ModMatrixUI {
                 division.appendChild(opt);
             }
             division.onchange = () => this.editSource(src, () => { src.noteDivision = Number(division.value); });
-            return this.field("Freq", division);
+            return this.field("Freq", division, "grow");
         }
 
         const rate = document.createElement("input");
@@ -829,7 +852,7 @@ export class ModMatrixUI {
         unit.innerText = "Hz";
         wrap.appendChild(unit);
         wrap.appendChild(slider);
-        return this.field("Freq", wrap);
+        return this.field("Freq", wrap, "grow");
     }
 
     /** Apply a single source mutation as ONE undoable device-scope action. */

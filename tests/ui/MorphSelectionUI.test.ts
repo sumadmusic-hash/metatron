@@ -224,10 +224,11 @@ describe("M12 — Morph A/B selection UI state", () => {
         const json = JSON.stringify(device.serialize());
         expect(json).not.toContain("morph");
         (device.serialize() as Record<string, unknown>);
-        // Persisted preset objects stay {:id, :name, :deviceId, :controlValues}
+        // Persisted preset objects stay {id, name, deviceId, controlValues} +
+        // the §10 matrix snapshot ({id, name, deviceId, controlValues, modulation}).
         [...device.presets.values()].forEach((p) => {
             const keys = Object.keys(p.serialize()).sort();
-            expect(keys).toEqual(["controlValues", "deviceId", "id", "name"]);
+            expect(keys).toEqual(["controlValues", "deviceId", "id", "modulation", "name"]);
         });
     });
 
