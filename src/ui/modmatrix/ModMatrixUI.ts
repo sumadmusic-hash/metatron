@@ -13,7 +13,24 @@ export interface ModMatrixUIDeps {
     bindingManager: BindingManager;
     nexusAdapter: NexusAdapter;
     history: DeviceHistory;
+    /** Fired after every matrix edit (route on/off, dest, source, amount,
+     *  LFO/rate) so owner UIs can sync derived state WITHOUT re-rendering.
+     *  AppUI uses it to push the new modulated state onto the SurfaceUI. */
+    onMatrixChange?: () => void;
 }
+
+/** Per-waveform mini icon, mirrored from the design reference (SVG zum
+ *  LFO-Bereich): a small labelled vector glyph inside the Wave field. The
+ *  paths are pairwise distinct so a rendered waveform is immediately
+ *  identifiable — never a shared static squiggle. */
+const WAVEFORM_PATHS: Record<Waveform, string> = {
+    sine: "M0 5 Q2 1 4 5 T8 5 T12 5 T16 5",
+    triangle: "M1 7 L8 1 L15 7",
+    saw: "M1 7 L6 3 L6 7",
+    square: "M0 7 L0 2 L8 2 L8 7 L16 7",
+    sampleHold: "M0 2 H6 V7 H10 V3 H16 V8",
+    smoothRandom: "M0 6 L4 3 L8 7 L12 2 L16 6",
+};
 
 export function sourceLabel(src: ModSource, _index: number): string {
     const typeTag = src.type === "lfo" ? "LFO" : src.type === "macro" ? "MACRO" : "RND";
@@ -41,16 +58,22 @@ export class ModMatrixUI {
     private readonly history: DeviceHistory;
     private readonly bindingManager: BindingManager;
     private readonly nexusAdapter: NexusAdapter;
+    private readonly onMatrixChange?: () => void;
 
     private container?: HTMLElement;
     private drawerOpen = false;
     private rowObserver?: ResizeObserver;
+    /** Live slider gesture (rate/depth): the first `input` snapshots the
+     *  state, `change` (release/blur) records EXACTLY ONE undo step — writes
+     *  happen in real time without flooding the undo history. */
+    private liveGesture?: { device: Device; before: ReturnType<DeviceHistory["captureDeviceState"]> };
 
-    constructor({ deviceLibrary, history, bindingManager, nexusAdapter }: ModMatrixUIDeps) {
+    constructor({ deviceLibrary, history, bindingManager, nexusAdapter, onMatrixChange }: ModMatrixUIDeps) {
         this.deviceLibrary = deviceLibrary;
         this.history = history;
         this.bindingManager = bindingManager;
         this.nexusAdapter = nexusAdapter;
+        this.onMatrixChange = onMatrixChange;
     }
 
     public getContainer(): HTMLElement {
@@ -86,6 +109,9 @@ export class ModMatrixUI {
 
         this.container.innerHTML = "";
         this.container.classList.toggle("open", this.drawerOpen);
+        // A rebuild drops any in-flight slider gesture's DOM — never commit a
+        // stale snapshot against a fresh row set.
+        this.liveGesture = undefined;
 
         const header = document.createElement("div");
         header.className = "mod-matrix-header";
@@ -396,7 +422,10 @@ export class ModMatrixUI {
                 wave.appendChild(opt);
             });
             wave.onchange = () => this.editSource(src, () => { src.waveform = wave.value as Waveform; });
-            row.appendChild(this.field("Wave", wave, "wave"));
+            const waveField = this.field("Wave", wave, "wave");
+            // Bug 1 — the lead-in glyph must mirror the ACTUAL waveform.
+            waveField.insertBefore(this.waveformGlyph(src.waveform), wave);
+            row.appendChild(waveField);
 
             row.appendChild(this.renderModeToggle(src));
             row.appendChild(this.renderFrequencyField(src));
@@ -548,9 +577,14 @@ export class ModMatrixUI {
         enable.className = "mod-slot-enable";
         enable.checked = slot.enabled;
         enable.onchange = () => {
-            this.editSlot(slot, () => { slot.enabled = enable.checked; });
-            row.classList.toggle("on", enable.checked);
-            row.classList.toggle("off", !enable.checked);
+            // Row class first-class inside the mutation: syncActiveMarking()
+            // (called by editSlot) must read the UPDATED .on/.off state for
+            // its cross-column highlightAllActiveColumns.
+            this.editSlot(slot, () => {
+                slot.enabled = enable.checked;
+                row.classList.toggle("on", enable.checked);
+                row.classList.toggle("off", !enable.checked);
+            });
         };
 
         const onGroup = document.createElement("span");
@@ -585,17 +619,19 @@ export class ModMatrixUI {
             setSliderFill(slider, Math.min(50, pos), Math.max(50, pos));
         };
         updateAmountFill();
-        slider.addEventListener("input", () => {
-            num.value = String(Number(slider.value));
-            updateAmountFill();
-            renderBadge();
-        });
-        slider.addEventListener("change", () => {
+        // Live gesture: write slot.amount on EVERY input (the runner reads
+        // device.modulation live → the modulation depth reacts in real time).
+        // The undo history is committed exactly once on gesture end (release).
+        const commitAmount = (): void => {
             const v = Number(slider.value);
             num.value = String(v);
             updateAmountFill();
-            this.editSlot(slot, () => { slot.amount = v / 100; });
-        });
+            renderBadge();
+            const device = this.deviceLibrary.currentDevice;
+            if (device) this.liveEdit(device, () => { slot.amount = v / 100; });
+        };
+        slider.addEventListener("input", commitAmount);
+        slider.addEventListener("change", () => { commitAmount(); this.commitLiveEdit(); });
         wrap.appendChild(slider);
 
         const num = document.createElement("input");
@@ -649,6 +685,28 @@ export class ModMatrixUI {
         label.appendChild(cap);
         label.appendChild(control);
         return label;
+    }
+
+    /** Bug 1 — trues, dynamisches Waveform-Icon: eines von sechs eindeutigen
+     *  Inline-SVG-Pfaden, ausgewählt anhand von src.waveform. Reiner
+     *  Presenter — die Waveform-Auswahl und Persistenz bleiben unangetastet. */
+    private waveformGlyph(waveform: Waveform): SVGSVGElement {
+        const ns = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(ns, "svg");
+        svg.classList.add("mod-wave-glyph");
+        svg.setAttribute("viewBox", "0 0 16 10");
+        svg.setAttribute("width", "16");
+        svg.setAttribute("height", "10");
+        svg.setAttribute("aria-hidden", "true");
+        const path = document.createElementNS(ns, "path");
+        path.setAttribute("d", WAVEFORM_PATHS[waveform]);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", "currentColor");
+        path.setAttribute("stroke-width", "1.2");
+        path.setAttribute("stroke-linecap", "round");
+        path.setAttribute("stroke-linejoin", "round");
+        svg.appendChild(path);
+        return svg;
     }
 
     private sectionTitle(text: string): HTMLElement {
@@ -751,16 +809,17 @@ export class ModMatrixUI {
             setSliderFill(slider, 0, pct);
         };
         updateFreqFill();
-        slider.addEventListener("input", () => {
-            rate.value = String(Number(slider.value));
-            updateFreqFill();
-        });
-        slider.addEventListener("change", () => {
+        // Live gesture for the FREE rate: write src.rateHz on every input so
+        // the LFO speed reacts in real time; ONE undo step on release.
+        const commitRate = (): void => {
             const v = Number(slider.value);
             rate.value = String(v);
             updateFreqFill();
-            this.editSource(src, () => { src.rateHz = v; });
-        });
+            const device = this.deviceLibrary.currentDevice;
+            if (device) this.liveEdit(device, () => { src.rateHz = v; });
+        };
+        slider.addEventListener("input", commitRate);
+        slider.addEventListener("change", () => { commitRate(); this.commitLiveEdit(); });
 
         const wrap = document.createElement("div");
         wrap.className = "mod-rate";
@@ -782,6 +841,8 @@ export class ModMatrixUI {
         const after = this.history.captureDeviceState(device);
         this.history.recordDeviceAction("matrix.edit", device, before, after);
         this.persist(device);
+        this.onMatrixChange?.();
+        this.syncActiveMarking();
     }
 
     /** Apply a single slot mutation as ONE undoable device-scope action. */
@@ -793,6 +854,52 @@ export class ModMatrixUI {
         const after = this.history.captureDeviceState(device);
         this.history.recordDeviceAction("matrix.edit", device, before, after);
         this.persist(device);
+        this.onMatrixChange?.();
+        this.syncActiveMarking();
+    }
+
+    /**
+     * Live slider write (rate/depth): mutates + persists on EVERY `input` so
+     * the engine hears the change in real time (the runner reads
+     * device.modulation live each frame). No onMatrixChange here — rate/depth
+     * never alter WHICH destination is modulated, and the surface's live arc
+     * is driven by the runner itself. The undo snapshot stays deferred to a
+     * single commitLiveEdit() on gesture end.
+     */
+    private liveEdit(device: Device, mutate: () => void): void {
+        if (!this.liveGesture) {
+            this.liveGesture = { device, before: this.history.captureDeviceState(device) };
+        }
+        mutate();
+        this.persist(device);
+    }
+
+    /** End of a slider gesture: ONE history action for the whole drag. */
+    private commitLiveEdit(): void {
+        const g = this.liveGesture;
+        if (!g) return;
+        this.liveGesture = undefined;
+        const after = this.history.captureDeviceState(g.device);
+        this.history.recordDeviceAction("matrix.edit", g.device, g.before, after);
+    }
+
+    /**
+     * Bug 5 — active-source marking must follow a routing edit IMMEDIATELY,
+     * without a full re-render (which would steal focus from the edited
+     * control): recompute each source row's on/off + the cross-column
+     * highlight from the CURRENT matrix state.
+     */
+    private syncActiveMarking(): void {
+        const device = this.deviceLibrary.currentDevice;
+        if (!device || !this.container) return;
+        device.modulation.sources.forEach((src) => {
+            const row = this.container?.querySelector<HTMLElement>(`.mod-source-row[data-source-id="${src.id}"]`);
+            if (!row) return;
+            const referenced = device.modulation.slots.some((s) => s.enabled && s.sourceId === src.id);
+            row.classList.toggle("on", referenced);
+            row.classList.toggle("off", !referenced);
+        });
+        this.highlightCrossColumn();
     }
 
     private persist(device: Device): void {

@@ -20,7 +20,7 @@ function makeDevice(): Device {
     return new Device("ModMatrix");
 }
 
-function makeDeps(device: Device) {
+function makeDeps(device: Device, opts: { onMatrixChange?: () => void } = {}) {
     const deviceLibrary = { currentDevice: device, saveCurrentDevice: vi.fn() };
     const history = new DeviceHistory(deviceLibrary as never);
     const ui = new ModMatrixUI({
@@ -28,6 +28,7 @@ function makeDeps(device: Device) {
         bindingManager: new BindingManager(device),
         nexusAdapter: new NexusAdapter(),
         history,
+        onMatrixChange: opts.onMatrixChange,
     });
     return { deviceLibrary, history, ui };
 }
@@ -495,5 +496,218 @@ describe("ModMatrixUI — dead-reference selects and rate clamping", () => {
         expect(device.modulation.sources[0].rateHz).toBe(4.5);
         expect(rate.value).toBe("4.5");
         expect(slider.value).toBe("4.5");
+    });
+});
+
+/* ------------------------------------------------------------------ *
+ *  Bug 1 — LFO-Waveform: echte, dynamische Welle
+ * ------------------------------------------------------------------ */
+
+describe("ModMatrixUI — Bug 1 LFO-Waveform-Glyph (echte, dynamische Welle)", () => {
+    const WAVEFORMS = ["sine", "triangle", "saw", "square", "sampleHold", "smoothRandom"] as const;
+
+    it("renders a real inline-SVG glyph per waveform, all pairwise distinct", () => {
+        const device = makeDevice();
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+        const distinct = new Set<string>();
+        WAVEFORMS.forEach((waveform, i) => {
+            device.modulation.sources[i].waveform = waveform;
+            ui.render();
+            const row = container.querySelector<HTMLElement>(`.mod-source-row[data-source-id="mod${i + 1}"]`)!;
+            const glyph = row.querySelector(".mod-wave-glyph");
+            expect(glyph).toBeTruthy(); // real element, NOT the old CSS-only squiggle
+            expect(glyph!.tagName).toBe("svg");
+            const d = glyph!.querySelector("path")?.getAttribute("d");
+            expect(d).toBeTruthy();
+            distinct.add(d!);
+        });
+        expect(distinct.size).toBe(WAVEFORMS.length);
+    });
+
+    it("the glyph mirrors the ACTUAL selected waveform and follows edits", () => {
+        const device = makeDevice();
+        const control = new Control("knob", "Cutoff");
+        device.addControl(control);
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+        const row = container.querySelector<HTMLElement>(`.mod-source-row[data-source-id="mod1"]`)!;
+        const glyphD = () => row.querySelector(".mod-wave-glyph path")?.getAttribute("d");
+
+        const before = glyphD();
+        const select = row.querySelector<HTMLSelectElement>("#mod-src-wave-mod1")!;
+        select.value = "saw";
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+
+        // Persistence unchanged (editSource) …
+        expect(device.modulation.sources[0].waveform).toBe("saw");
+        // … and the freshly rendered row carries the new waveform's glyph.
+        ui.render();
+        const rowAfter = container.querySelector<HTMLElement>(`.mod-source-row[data-source-id="mod1"]`)!;
+        const after = rowAfter.querySelector(".mod-wave-glyph path")?.getAttribute("d");
+        expect(after).toBeTruthy();
+        expect(after).not.toBe(before);
+    });
+});
+
+/* ------------------------------------------------------------------ *
+ *  Bug 2 — drei jeder Matrix-Edit wird via onMatrixChange gespiegelt
+ * ------------------------------------------------------------------ */
+
+describe("ModMatrixUI — Bug 2 meldet jeden Matrix-Edit an onMatrixChange", () => {
+    it("slot enable (checkbox) fires the sync callback", () => {
+        const device = makeDevice();
+        const onMatrixChange = vi.fn();
+        const { ui } = makeDeps(device, { onMatrixChange });
+        const container = mount(ui);
+
+        const chk = container.querySelector<HTMLInputElement>("#mod-slot-enable-slot1")!;
+        chk.checked = true;
+        chk.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(device.modulation.slots[0].enabled).toBe(true);
+        expect(onMatrixChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("destination change fires the sync callback", () => {
+        const device = makeDevice();
+        const control = new Control("knob", "Cutoff");
+        device.addControl(control);
+        const onMatrixChange = vi.fn();
+        const { ui } = makeDeps(device, { onMatrixChange });
+        const container = mount(ui);
+
+        const dest = container.querySelector<HTMLSelectElement>("#mod-slot-dest-slot1")!;
+        dest.value = control.id;
+        dest.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(device.modulation.slots[0].destControlId).toBe(control.id);
+        expect(onMatrixChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("source edit (waveform) fires the sync callback", () => {
+        const device = makeDevice();
+        const onMatrixChange = vi.fn();
+        const { ui } = makeDeps(device, { onMatrixChange });
+        const container = mount(ui);
+
+        const wave = container.querySelector<HTMLSelectElement>("#mod-src-wave-mod1")!;
+        wave.value = "triangle";
+        wave.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(device.modulation.sources[0].waveform).toBe("triangle");
+        expect(onMatrixChange).toHaveBeenCalledTimes(1);
+    });
+});
+
+/* ------------------------------------------------------------------ *
+ *  Bug 5 — Sofort-Markierung des aktiven LFO (ohne Re-Render)
+ * ------------------------------------------------------------------ */
+
+describe("ModMatrixUI — Bug 5 aktiver LFO wird sofort markiert", () => {
+    it("enabling a routing marks the source row IMMEDIATELY + links it", () => {
+        const device = makeDevice();
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+        const src1 = container.querySelector<HTMLElement>('.mod-source-row[data-source-id="mod1"]')!;
+        expect(src1.classList.contains("on")).toBe(false);
+
+        const chk = container.querySelector<HTMLInputElement>("#mod-slot-enable-slot1")!;
+        chk.checked = true;
+        chk.dispatchEvent(new Event("change", { bubbles: true }));
+
+        // without ui.render() the left-column marking is already there
+        expect(src1.classList.contains("on")).toBe(true);
+        expect(src1.classList.contains("off")).toBe(false);
+        expect(src1.classList.contains("source-linked")).toBe(true);
+
+        chk.checked = false;
+        chk.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(src1.classList.contains("on")).toBe(false);
+        expect(src1.classList.contains("source-linked")).toBe(false);
+    });
+
+    it("switching a slot's source moves the active marking instantly", () => {
+        const device = makeDevice();
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+        const src1 = container.querySelector<HTMLElement>('.mod-source-row[data-source-id="mod1"]')!;
+        const src2 = container.querySelector<HTMLElement>('.mod-source-row[data-source-id="mod2"]')!;
+
+        const chk = container.querySelector<HTMLInputElement>("#mod-slot-enable-slot1")!;
+        chk.checked = true;
+        chk.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(src1.classList.contains("on")).toBe(true);
+        expect(src2.classList.contains("on")).toBe(false);
+
+        const srcSel = container.querySelector<HTMLSelectElement>("#mod-slot-src-slot1")!;
+        srcSel.value = "mod2";
+        srcSel.dispatchEvent(new Event("change", { bubbles: true }));
+
+        expect(src1.classList.contains("on")).toBe(false);
+        expect(src2.classList.contains("on")).toBe(true);
+        expect(src2.classList.contains("source-linked")).toBe(true);
+    });
+});
+
+/* ------------------------------------------------------------------ *
+ *  Bug 5 — LFO-Speed (free) + Mod-Depth live in Echtzeit (1 Undo pro Geste)
+ * ------------------------------------------------------------------ */
+
+describe("ModMatrixUI — Bug 5 Live-Slider (Echtzeit ohne Undo-Flut)", () => {
+    it("depth slider writes slot.amount on EVERY input; ONE undo step on release", () => {
+        const device = makeDevice();
+        const { history, ui } = makeDeps(device);
+        const container = mount(ui);
+        const slider = container.querySelector<HTMLInputElement>("#mod-slot-amount-slider-slot1")!;
+        expect(history.canUndoOnCurrentDevice).toBe(false);
+
+        slider.value = "40";
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(device.modulation.slots[0].amount).toBe(0.4); // real-time write-through
+
+        slider.value = "60";
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(device.modulation.slots[0].amount).toBe(0.6);
+        // still mid-gesture → no undo entry yet (one snapshot, deferred commit)
+        expect(history.canUndoOnCurrentDevice).toBe(false);
+
+        slider.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(history.canUndoOnCurrentDevice).toBe(true); // exactly ONE gesture entry
+    });
+
+    it("free-rate slider writes src.rateHz on EVERY input", () => {
+        const device = makeDevice();
+        const { ui } = makeDeps(device);
+        const container = mount(ui);
+        const slider = container.querySelector<HTMLInputElement>("#mod-src-rate-slider-mod1")!;
+
+        slider.value = "2";
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(device.modulation.sources[0].rateHz).toBe(2); // live, before any change event
+
+        slider.value = "4.5";
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(device.modulation.sources[0].rateHz).toBe(4.5);
+        // number readout follows live
+        expect(container.querySelector<HTMLInputElement>("#mod-src-rate-mod1")!.value).toBe("4.5");
+    });
+
+    it("commitLiveEdit does not clobber a separate refresh() rebuild", () => {
+        const device = makeDevice();
+        const { history, ui } = makeDeps(device);
+        const container = mount(ui);
+        const slider = container.querySelector<HTMLInputElement>("#mod-slot-amount-slider-slot1")!;
+
+        slider.value = "25";
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        slider.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(history.canUndoOnCurrentDevice).toBe(true);
+        expect(device.modulation.slots[0].amount).toBe(0.25);
+
+        ui.refresh(); // rebuild (control create/delete/rename path) after a gesture
+        const freshSlider = container.querySelector<HTMLInputElement>("#mod-slot-amount-slider-slot1")!;
+        freshSlider.value = "-20";
+        freshSlider.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(device.modulation.slots[0].amount).toBe(-0.2);
+        freshSlider.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(history.canUndoOnCurrentDevice).toBe(true); // still exactly one per gesture
     });
 });

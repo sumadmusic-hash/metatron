@@ -246,6 +246,10 @@ export class AppUI {
             bindingManager: this.bindingManager,
             nexusAdapter: this.nexusAdapter,
             history: this.history,
+            // Bug 2 — matrix edits (route on/off, dest, source) push the new
+            // modulated state onto the ALREADY RENDERED surface without a full
+            // re-render (which would destroy selection/DOM refs/gestures).
+            onMatrixChange: () => this.surfaceUI.refreshModulationStates(),
         });
 
         window.addEventListener("keydown", this.handleKeydown);

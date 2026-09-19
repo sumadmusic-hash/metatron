@@ -734,4 +734,49 @@ describe("SurfaceUI.applyModDisplay — idle-Toggle", () => {
         surface.applyModDisplay("cutoff", null);
         expect(modRing!.classList.contains("idle")).toBe(true);
     });
+
+    it("Bug 2/3 — refreshModulationStates paints ONLY the mod-ring; the base value ring stays cyan", async () => {
+        const { SurfaceUI } = await import("../../../src/ui/surface/SurfaceUI");
+        const { DeviceLibrary } = await import("../../../src/core/DeviceLibrary");
+        const { NexusAdapter } = await import("../../../src/nexus/NexusAdapter");
+        const { MidiAccess } = await import("../../../src/midi/MidiAccess");
+        const { MidiMapping } = await import("../../../src/midi/MidiMapping");
+
+        const lib = new DeviceLibrary();
+        const device = makeModDevice(); // slot1 → cutoff, enabled
+        lib.currentDevice = device;
+        lib.saveCurrentDevice();
+
+        const surface = new SurfaceUI(
+            lib,
+            new NexusAdapter(),
+            new MidiAccess(),
+            new BindingManager(device),
+            new MidiMapping(device),
+            () => {},
+            () => {},
+        );
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        surface.render(root);
+
+        // Bug 2/3 — a matrix edit pushed through the onMatrixChange path must
+        // NOT re-render and must NOT recolour the whole knob ring: the amber
+        // "modulation active" state stays on the knob-body (presence) + mod-ring
+        // (range) exclusively, the base value ring stays cyan.
+        surface.refreshModulationStates();
+        expect(root.querySelectorAll(".knob-svg-ring.modulated").length).toBe(0);
+        expect(root.querySelectorAll(".knob-led-ring.modulated").length).toBe(0);
+        const modRing = root.querySelector<HTMLElement>(".knob-mod-ring");
+        expect(modRing).toBeTruthy();
+        expect(root.querySelector<HTMLElement>(".knob-body.modulated")).toBeTruthy();
+        expect(modRing!.classList.contains("idle")).toBe(true);
+
+        // Turn the route off (matrix edit) → the state clears immediately and
+        // the mod ring idles again — without any runner interaction.
+        device.modulation.slots[0].enabled = false;
+        surface.refreshModulationStates();
+        expect(root.querySelector<HTMLElement>(".knob-body.modulated")).toBeNull();
+        expect(modRing!.classList.contains("idle")).toBe(true);
+    });
 });

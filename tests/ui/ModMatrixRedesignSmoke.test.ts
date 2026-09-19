@@ -109,3 +109,24 @@ describe("C11 — CSS-Guard: Design-Tokens, Layout-Geometrie und Akzent-Regel", 
         expect(STYLES).toMatch(/\.mod-slot-row\.on \{[\s\S]*?(#2dd4bf|--mm-accent-A)/);
     });
 });
+
+describe("CSS-Guard — Bug 1 (dynamische LFO-Wellenform) + Bug 3 (kein Oranger Vollring)", () => {
+    it("Bug 1 - der Wave-Field hat KEINEN statischen ::before-Squiggle mehr", () => {
+        // Der Glyph ist jetzt ein echtes, dynamisches Inline-SVG (.mod-wave-glyph)
+        // pro Waveform — keine CSS-only-Lösung mit Data-URI.
+        expect(STYLES).toContain(".mod-wave-glyph");
+        expect(STYLES).not.toMatch(/\.mod-field--wave::before/);
+    });
+
+    it("Bug 1 - der Glyph folgt der Zeilenhelligkeit (teal auf aktiven Zeilen)", () => {
+        expect(STYLES).toMatch(/\.mod-source-row\.on \.mod-wave-glyph \{[\s\S]*?(#2dd4bf|--mm-accent-A)/);
+    });
+
+    it("Bug 3 - der modulierte Knob faerbt NICHT mehr den ganzen Ring orange", () => {
+        // Keine Vollring-Recolour mehr auf led-Ring oder SVG-Ring.
+        expect(STYLES).not.toMatch(/\.knob-body\.modulated \.knob-svg-ring/);
+        expect(STYLES).not.toMatch(/\.knob-body\.modulated \.knob-led-ring/);
+        // Die Amberspanne lebt ausschliesslich im .knob-mod-ring.
+        expect(STYLES).toContain(".knob-mod-ring");
+    });
+});

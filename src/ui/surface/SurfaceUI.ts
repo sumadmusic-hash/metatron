@@ -213,6 +213,37 @@ private container!: HTMLElement;
     }
 
     /**
+     * Bug 2 — a routing edit (slot enabled/disabled, destination/source change)
+     * must reflect on the surface IMMEDIATELY, without a full surface re-render
+     * (which would destroy selection, DOM refs, gestures and live state).
+     * Recomputes the "modulation active" class for every rendered knob from the
+     * CURRENT persisted matrix — mirroring exactly what renderControl() does at
+     * initial render — and idles the live mod-ring arc for destinations that
+     * just lost their route.
+     */
+    public refreshModulationStates(): void {
+        const device = this.deviceLibrary.currentDevice;
+        if (!device) return;
+        this.container.querySelectorAll<HTMLElement>(".control-wrapper[data-ctl-id]").forEach((el) => {
+            const controlId = el.dataset.ctlId;
+            if (!controlId) return;
+            const knobBody = el.querySelector<HTMLElement>(".knob-body");
+            if (!knobBody) return; // only knobs carry the modulated visual state
+            const modulated = isModulated(device.modulation, controlId);
+            el.classList.toggle("modulated", modulated);
+            knobBody.classList.toggle("modulated", modulated);
+            // Route gone → the live amber RANGE arc must idle immediately too,
+            // even if the runner's next tick hasn't run yet (or is stopped).
+            if (!modulated) {
+                const ring = this.ctlElements.get(controlId)?.modRing;
+                if (ring && !ring.classList.contains("idle")) {
+                    this.applyModDisplay(controlId, null);
+                }
+            }
+        });
+    }
+
+    /**
      * USE-mode Group: a finished visual container that keeps its identity on
      * the performance surface (boundary, name, color) but carries NONE of the
      * editor affordances — no resize handle, no dashed selection border, no
@@ -646,6 +677,14 @@ private container!: HTMLElement;
 
     private attachSwitchClick(body: HTMLElement, control: any) {
         body.style.cursor = "pointer";
+        // Bug 4 — a switch press is a WIDGET interaction: it must toggle and
+        // NOT select the control (the wrapper's mousedown-listener would open
+        // the use-actions Learn/MIDI bar). Stop the pointer/mouse events at
+        // the switch so they never reach the wrapper; `click` (registered on
+        // the switch itself) still fires on the target and toggles the value.
+        // Switches are not draggable, so no gesture/pointer-capture is lost.
+        body.addEventListener("pointerdown", (e) => e.stopPropagation());
+        body.addEventListener("mousedown", (e) => e.stopPropagation());
         body.addEventListener("click", () => {
             const next = control.value > 0.5 ? 0 : 1;
             this.onLocalChange(control.id, next);
