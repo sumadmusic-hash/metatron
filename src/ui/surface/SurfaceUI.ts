@@ -782,16 +782,25 @@ private container!: HTMLElement;
         // pointerup/pointercancel/lostpointercapture käme nie mehr an — das
         // Modulations-Takeover bliebe hängen. Immer erst freigeben (auch bei
         // abgehängtem Subtree), dann evtl. neu rendern.
-        if (this.gestureControlId !== null) {
-            this.onGestureTakeover?.(this.gestureControlId, false);
-            this.gestureControlId = null;
-        }
+        this.cancelActiveGesture();
         // B7 — NUR rendern, solange die Fläche im live-Dokument hängt. Nach
         // Mode-/Device-Wechsel wurde der alte mountParent vom AppUI-Rebuild
         // verworfen (document.contains=false); ein blindes Re-Render würde auf
         // den abgehängten Subtree zugreifen und Legende/Oberfläche verfälschen.
         if (!this.mountParent || !document.contains(this.mountParent)) return;
         this.render(this.mountParent);
+    }
+
+    /** B7 — eine laufende USE-Knob-Geste (Modulations-Takeover) terminieren,
+     *  z.B. beim Mode-/View-Wechsel oder einem Rebuild der Surface. Nur das
+     *  Takeover freigeben und den Gesture-Zustand räumen — KEIN Snap-back,
+     *  KEIN Persist: der lose User-Griff soll nach dem Rebuild schlicht nicht
+     *  weiterblockieren. Idempotent. */
+    public cancelActiveGesture(): void {
+        if (this.gestureControlId !== null) {
+            this.onGestureTakeover?.(this.gestureControlId, false);
+            this.gestureControlId = null;
+        }
     }
 
     /** B7 — laufende Lernvorgänge (MIDI + Nexus) abbrechen und Overlays

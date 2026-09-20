@@ -87,6 +87,14 @@ export class NexusAdapter {
      *  reconnect must keep the user's active bindings (§40). */
     private lastProjectUrl?: string;
 
+    /** R5 — Monoton steigender openProject()-Request-Zähler. Konkurrierende
+     *  openProject()-Aufrufe identifizieren sich über ihre zum Start erfasste
+     *  Sequenznummer; nur der LETZTE Request (höchste Sequenz) übernimmt
+     *  this.document/bindingManager. Ein älterer, langsamer auflösender Request
+     *  verwirft sein frisch geöffnetes Dokument und räumt auf, statt den State
+     *  auf das alte Projekt zurückzusetzen. */
+    private openRequestSeq = 0;
+
     private STATUS_LOG = "[METATRON NEXUS]";
 
     // Callback when a value changes in Nexus, so Metatron can update the UI/Control
@@ -197,6 +205,7 @@ export class NexusAdapter {
         if (!this.client || this.client.status !== "authenticated") {
             throw new Error("Client not authenticated");
         }
+        const requestId = ++this.openRequestSeq;
         this.currentUser = resolveCurrentUser(this.client, () => this.lookupIdToken());
 
         // Cancel any in-progress Learn before opening a new project.
@@ -209,20 +218,39 @@ export class NexusAdapter {
         // a soft reconnect keeps the active bindings instead.
         const sameProject = this.lastProjectUrl !== undefined && projectUrl === this.lastProjectUrl;
 
-        // B5 — während des asynchronen open() darf weder das alte (gestoppte)
-        // Dokument noch der alte BindingManager sichtbar bleiben: parallele
-        // Aufrufe (updateBoundControl/subscribeBoundControl) würden sonst
-        // Bindings des VORHERIGEN Projekts gegen einen toten Document
-        // re-resolven. Erst nach erfolgreichem open werden beide frisch
-        // gesetzt — document zuerst, dann der neue bindingManager.
-        if (this.document) {
-            await this.document.stop();
-            this.clearAllListeners();
+        // R5 — das Vorbereiten des alten Dokuments (stop + Listener-Clear) darf
+        // nur der AKTUELL neueste Request tun. Wenn inzwischen ein neuerer
+        // openProject() gestartet ist, gehört die Bereinigung ihm (oder ist
+        // bereits erledigt) — ein veralteter Request würde sonst das frische
+        // Dokument/Listeners des neueren Requests knebeln.
+        if (requestId === this.openRequestSeq) {
+            // B5 — während des asynchronen open() darf weder das alte (gestoppte)
+            // Dokument noch der alte BindingManager sichtbar bleiben: parallele
+            // Aufrufe (updateBoundControl/subscribeBoundControl) würden sonst
+            // Bindings des VORHERIGEN Projekts gegen einen toten Document
+            // re-resolven. Erst nach erfolgreichem open werden beide frisch
+            // gesetzt — document zuerst, dann der neue bindingManager.
+            if (this.document) {
+                await this.document.stop();
+                this.clearAllListeners();
+            }
+            this.document = null;
+            this.bindingManager = null;
         }
-        this.document = null;
-        this.bindingManager = null;
 
-        this.document = await this.client.open(projectUrl);
+        const opened = await this.client.open(projectUrl);
+
+        // R5 — nur der neueste Request übernimmt. Ein veralteter verwirft sein
+        // frisch geöffnetes Dokument vollständig und rührt shared State nicht an.
+        if (requestId !== this.openRequestSeq) {
+            try {
+                await opened.stop?.();
+            } catch {
+                // best effort — das veraltete Dokument ist ohnehin verworfen
+            }
+            return;
+        }
+        this.document = opened;
         this.bindingManager = bindingManager;
 
         if (sameProject) {

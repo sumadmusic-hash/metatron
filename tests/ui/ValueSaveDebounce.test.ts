@@ -8,6 +8,7 @@ import { NexusAdapter } from "../../src/nexus/NexusAdapter";
 import { MidiAccess } from "../../src/midi/MidiAccess";
 import { BindingManager } from "../../src/core/BindingManager";
 import { AppUI } from "../../src/ui/AppUI";
+import { Storage } from "../../src/persistence/Storage";
 import type { MidiBindingDefinition } from "../../src/core/model/types";
 
 const settle = (ms = 150) => new Promise<void>((r) => setTimeout(r, ms));
@@ -52,7 +53,7 @@ describe("AppUI — VALUE-path saves are bundled during fast gestures (P4)", () 
         const device = new Device("T");
         const control = midiKnob(device, "c");
         const { lib, midi } = mount(device);
-        const saveSpy = vi.spyOn(lib, "saveCurrentDevice");
+        const saveSpy = vi.spyOn(lib, "saveDevice");
 
         midi.trigger(1, 20, 32);
         midi.trigger(1, 20, 64);
@@ -73,7 +74,7 @@ describe("AppUI — VALUE-path saves are bundled during fast gestures (P4)", () 
         const device = new Device("T2");
         midiKnob(device, "c2");
         const { lib, midi, app } = mount(device);
-        const saveSpy = vi.spyOn(lib, "saveCurrentDevice");
+        const saveSpy = vi.spyOn(lib, "saveDevice");
 
         midi.trigger(1, 20, 100);
         expect(saveSpy).not.toHaveBeenCalled();
@@ -90,7 +91,7 @@ describe("AppUI — VALUE-path saves are bundled during fast gestures (P4)", () 
         const { lib, midi, app } = mount(device);
 
         const saveSpy = vi
-            .spyOn(lib, "saveCurrentDevice")
+            .spyOn(lib, "saveDevice")
             .mockImplementationOnce(() => {
                 throw new StorageError("quota exceeded");
             });
@@ -110,5 +111,27 @@ describe("AppUI — VALUE-path saves are bundled during fast gestures (P4)", () 
         // The retry succeeds now: no second error toast for the same streak.
         expect(document.body.innerText).not.toContain("Speichern fehlgeschlagen\nSpeichern fehlgeschlagen");
         expect(saveSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("Bug 2 — ein vor dem Device-Wechsel eingestellter Wert wird dem ALTEN Gerät persistiert, nicht dem neuen", () => {
+        const deviceA = new Device("A");
+        midiKnob(deviceA, "cA");
+        const deviceB = new Device("B");
+        const { lib, midi, app } = mount(deviceA);
+
+        // Debounce-Save wird für deviceA eingeplant …
+        midi.trigger(1, 20, 100);
+        expect(deviceA.getControl("cA")!.value).toBeCloseTo(100 / 127, 5);
+
+        // … und VOR dem Flush wechselt currentDevice auf B.
+        // render() flusht die value-save-Queue: sie muss deviceA treffen,
+        // sonst wäre der eingestellte Wert verloren (oder landete als
+        // Vorbelegung unter B's Id).
+        lib.currentDevice = deviceB;
+        app.render();
+
+        const storedA = Storage.loadDevice(deviceA.id)!;
+        expect(storedA.getControl("cA")!.value).toBeCloseTo(100 / 127, 5);
+        expect(Storage.loadDevice(deviceB.id)).toBeUndefined();
     });
 });

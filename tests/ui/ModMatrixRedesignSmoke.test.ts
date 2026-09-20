@@ -21,7 +21,7 @@ const STYLES = readFileSync(join(process.cwd(), "src/ui/styles.css"), "utf8");
 
 function mount(): HTMLElement {
     const device = new Device("Redesign");
-    const deviceLibrary = { currentDevice: device, saveCurrentDevice: () => {} };
+    const deviceLibrary = { currentDevice: device, saveCurrentDevice: () => {}, saveDevice: () => {} };
     const ui = new ModMatrixUI({
         deviceLibrary,
         bindingManager: new BindingManager(device),
@@ -215,7 +215,7 @@ describe("Aufräum-Auftrag (1-20) — Captions, Label-Geometrie, Fader, Sticky, 
         const root = mount();
         const device = new Device("Travel");
         const ui = new ModMatrixUI({
-            deviceLibrary: { currentDevice: device, saveCurrentDevice: () => {} },
+            deviceLibrary: { currentDevice: device, saveCurrentDevice: () => {}, saveDevice: () => {} },
             bindingManager: new BindingManager(device),
             nexusAdapter: new NexusAdapter(),
             history: new DeviceHistory({ currentDevice: device, saveCurrentDevice: () => {} } as never),

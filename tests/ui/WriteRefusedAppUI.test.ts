@@ -68,7 +68,7 @@ describe("M6 — AppUI keeps local control value when the Nexus write returns fa
         const midi = new CapturingMidi();
         const adapter = new RefusingAdapter();
         const { lib } = mount(device, midi, adapter);
-        const saveSpy = vi.spyOn(lib, "saveCurrentDevice");
+        const saveSpy = vi.spyOn(lib, "saveDevice");
 
         midi.trigger(1, 20, 64);
 

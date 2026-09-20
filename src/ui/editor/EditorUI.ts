@@ -157,14 +157,30 @@ export class EditorUI {
         // (the onStateChanged closure above is destroyed-guarded).
         this.nexusLearnFlow?.cancel();
         if (this.midiLearningId !== null) { this.midiLearn?.cancelLearn(); this.midiLearningId = null; }
-        if (this.drag) {
-            document.removeEventListener("keydown", this.handleDragKeydown);
-            document.removeEventListener("pointermove", this.handlePointerMove);
-            document.removeEventListener("pointerup", this.handlePointerEnd);
-            document.removeEventListener("pointercancel", this.handlePointerEnd);
-            this.drag = null;
-        }
+        this.cancelActiveDrag();
         this.clearColorGesture();
+    }
+
+    /** B7 — eine laufende Edit-Drag-Geste ohne COMMIT und ohne PERSIST
+     *  terminieren (Mode-/View-Wechsel: der Builder wird ohnehin neu gebaut).
+     *  Nur Listener/Capture raus und Zustand auf IDLE setzen — der teile
+     *  Zustand bleibt unangetastet, kein saveCurrentDevice(), kein
+     *  history.record(). Idempotent. */
+    public cancelActiveDrag(): void {
+        const drag = this.drag;
+        if (!drag) return;
+        if (drag.captured) {
+            try {
+                drag.el.releasePointerCapture(drag.pointerId);
+            } catch {
+                // no-op
+            }
+        }
+        document.removeEventListener("keydown", this.handleDragKeydown);
+        document.removeEventListener("pointermove", this.handlePointerMove);
+        document.removeEventListener("pointerup", this.handlePointerEnd);
+        document.removeEventListener("pointercancel", this.handlePointerEnd);
+        this.drag = null;
     }
 
     /** B7 — laufende Lernvorgänge (MIDI + Nexus) abbrechen und Overlay-Zustand
@@ -183,6 +199,10 @@ export class EditorUI {
         // being rebuilt, so the next gesture must capture a fresh baseline
         // (never reuse one from a gesture that was destroyed mid-flight).
         this.clearColorGesture();
+        // B7 — ein Drag aus einer früheren Render-Instanz (z.B. nach dem
+        // AppUI-side rebasieren des Modes) darf keine Document-Events und
+        // keine Pointer-Capture mehr halten.
+        this.cancelActiveDrag();
 
         this.container = document.createElement("div");
         this.container.className = this.snapEnabled ? "editor-canvas" : "editor-canvas editor-canvas--nogrid";

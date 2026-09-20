@@ -142,6 +142,13 @@ export class AppUI {
     private valueSaveTimer?: ReturnType<typeof setTimeout>;
     private valueSavePending = false;
     private valueSaveFailureToastShown = false;
+    // Bug 2 — the device a pending value save was scheduled FOR (captured at
+    // schedule time). If the currentDevice switches before the debounce fires,
+    // the trailing save must persist THE CAPTURED device, never the new one —
+    // otherwise the old device's change is lost (or written onto the new
+    // device). `undefined` (e.g. after a failed undo that cleared the device)
+    // means "drop the pending save".
+    private valueSaveDevice?: Device;
 
     // M21.8 — pure UI-side state for the automation strip. `recordingStartPerf`
     // drives a cosmetic elapsed timer; none of it touches the recorder's clock.
@@ -355,8 +362,13 @@ export class AppUI {
     };
 
     private performUndoRedo(action: "undo" | "redo") {
-        const ok = action === "undo" ? this.history.undo() : this.history.redo();
-        if (ok) this.onDeviceChanged();
+        action === "undo" ? this.history.undo() : this.history.redo();
+        // Bug 5 — onDeviceChanged ist IMMER zu ziehen: Ein fehlgeschlagener
+        // Undo (guards/base-guard) kann die Library trotzdem kohärent gerollbackt
+        // haben (internal rollback) und jemand muss den BindingManager auf die
+        // (wiederhergestellte) Instanz umpointern und rendern. render() selbst
+        // persistiert nicht, solange kein Edit pending ist — sicher.
+        this.onDeviceChanged();
         this.syncHistoryButtons();
     }
 
@@ -369,9 +381,13 @@ export class AppUI {
         if (this.redoBtn) this.redoBtn.disabled = !this.history.canRedoOnCurrentDevice;
     }
 
-    /** P4 — schedule the trailing value-path save; only one timer ever runs. */
+    /** P4 — schedule the trailing value-path save; only one timer ever runs.
+     *  Bug 2 — der zu speichernde Device wird beim Einstellen erfasst, denn
+     *  zwischen schedule und flush (debounce/switch) kann sich currentDevice
+     *  geändert haben. */
     private scheduleValueSave = () => {
         this.valueSavePending = true;
+        this.valueSaveDevice = this.deviceLibrary.currentDevice;
         if (this.valueSaveTimer !== undefined) return;
         this.valueSaveTimer = setTimeout(() => this.flushValueSave(), VALUE_SAVE_DEBOUNCE_MS);
     };
@@ -380,19 +396,25 @@ export class AppUI {
      *  burst, render/switch, unload). Storage errors surface as a toast but
      *  never propagate into the gesture that triggered the value change. A
      *  failed save stays pending so the NEXT flush retries it instead of
-     *  silently dropping the trailing change. */
+     *  silently dropping the trailing change.
+     *  Bug 2 — persistiert wird der Device, für den der Save eingeplant war
+     *  (valueSaveDevice), nicht unbedingt currentDevice. saveDevice() fasst
+     *  den Last-Active-Hinweis nicht an. */
     private flushValueSave = () => {
         if (this.valueSaveTimer !== undefined) {
             clearTimeout(this.valueSaveTimer);
             this.valueSaveTimer = undefined;
         }
         if (!this.valueSavePending) return;
+        const target = this.valueSaveDevice;
+        this.valueSavePending = false;
+        this.valueSaveDevice = undefined;
         try {
-            this.deviceLibrary.saveCurrentDevice();
-            this.valueSavePending = false;
+            if (target) this.deviceLibrary.saveDevice(target);
             this.valueSaveFailureToastShown = false;
         } catch (e) {
             this.valueSavePending = true;
+            this.valueSaveDevice = target;
             if (!this.valueSaveFailureToastShown) {
                 this.valueSaveFailureToastShown = true;
                 console.warn("[METATRON STORAGE] value-path persistence failed — control layout unaffected, next save will retry.", e);
@@ -832,6 +854,13 @@ export class AppUI {
     }
 
     public render() {
+        // Bug 7 — ein Mode-Umschalt-Rebuild muss eine gerade laufende EDIT-Drag
+        // oder USE-Knob-Geste sauber terminieren: Der Drag hängt Document-Events
+        // und Pointer-Capture, die Takeover-Geste hält gestureTakeover belegt.
+        // Nur die eigene Mode-UI wird neu gerendert — deshalb kündigen BOTH
+        // explizit. Kein History-Commit, keine Persist in cancelActiveDrag.
+        this.editorUI.cancelActiveDrag();
+        this.surfaceUI.cancelActiveGesture();
         // P4 — a pending value-path save is flushed before the DOM is rebuilt
         // (covers mode switch + device switch, both surface changes here).
         this.flushValueSave();

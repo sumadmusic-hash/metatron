@@ -850,4 +850,101 @@ describe("ModulationRunner — Snap-back Generation Guard", () => {
             expect(lastCall[1]).not.toBe(0.5); // not the base value
         }
     });
+
+    // Regr/1a — ECHTE, nicht-vakuöse Fassung des Generation-Guards: der
+    // Snap-back des VORHERIGEN Laufs darf nach Restart + neuem Mod-Write
+    // keinen Basiswert hinterherschieben. Zugleich darf ein hängendes
+    // Alt-Write den Neustart nicht blockieren (stopping wird synchron frei).
+    it("Regr/1a — Snap-back vom VORHERIGEN Lauf wird per Generation-Guard verworfen; Restart schreibt weiter", async () => {
+        const device = makeModDevice();
+        let resolveModWrite: (v: boolean) => void = () => {};
+        const modWrite = new Promise<boolean>((resolve) => { resolveModWrite = resolve; });
+        const adapter = mockAdapter();
+        (adapter.updateBoundControl as any).mockReturnValueOnce(modWrite);
+
+        const { runner } = makeRunner(device, "IDLE");
+        (runner as any).nexusAdapter = adapter;
+
+        runner.start();
+        (runner as any).startTimeSec = 0;
+        // tSec=0.45 → LFO-Delta = sin(0.9π) ≈ 0.309 ≠ 0 → Write startet (hängend).
+        (runner as any).tick(450);
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(1);
+
+        // stop() → Snap-back hängt an der Generation 1. stopping wird SOFORT
+        // frei (kein async finally) — ein Neustart ist nie blockiert.
+        runner.stop();
+        expect((runner as any).stopping).toBe(false);
+
+        runner.start();
+        (runner as any).startTimeSec = 0;
+        // tSec=0.6 → mod = clamp01(0.5 + sin(1.2π)) = 0 ≠ Basis 0.5 → neuer
+        // Write (Generations-Inkrement 1→2). Der gestoppte-Lauf-Blocker
+        // (inFlight-Clear beim start) macht diesen Write überhaupt möglich.
+        (runner as any).tick(600);
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(2);
+
+        // Der Autopilot (rAF) feuert in happy-dom autonom mit realem now —
+        // für die manuellen tick()-Szenarien den Loop abklemmen, sonst
+        // schreibt ein Hintergrund-Tick einen undefinierten tSec-Wert.
+        cancelAnimationFrame((runner as any).rafId);
+        (runner as any).rafId = null;
+
+        // Das ALT-Write löst sich jetzt auf → Snap-back dürfte KEINEN
+        // (Basis-)Write nachlegen.
+        resolveModWrite(true);
+        await new Promise((r) => setTimeout(r, 0));
+
+        const cutoffCalls = adapter.updateBoundControl.mock.calls.filter((c: any[]) => c[0] === "cutoff");
+        expect(cutoffCalls).toHaveLength(2); // keine 3. Basis-Schreibung
+        expect(cutoffCalls.map((c: any[]) => c[1])).not.toContain(0.5);
+    });
+
+    // Regr/1b — Device-Identitäts-Guard: der Snap-back aus dem ALTEN Gerät
+    // hängt an einem hängenden Write. In der Zwischenzeit wird der Runner auf
+    // ein NEUES Device umgepointet — und weil NIE wieder getickt wird, bleibt
+    // die Generation UNVERÄNDERT (1): nur die Identitäts-Prüfung kann den
+    // stale Snap-back noch zuverlässig abfangen. Bewusst KEIN Neustart auf B:
+    // in happy-dom feuert requestAnimationFrame autonom (Macrotask, tSec
+    // nicht deterministisch) und würde das Premise (kein neuer Write) zerstören.
+    it("Regr/1b — Snap-back aus dem ALTEN Device schreibt nach Device-Wechsel NICHT ins Neue", async () => {
+        const deviceA = makeModDevice();
+        let resolveModWrite: (v: boolean) => void = () => {};
+        const modWrite = new Promise<boolean>((resolve) => { resolveModWrite = resolve; });
+        const adapter = mockAdapter();
+        (adapter.updateBoundControl as any).mockReturnValueOnce(modWrite);
+
+        let current: Device | null = deviceA;
+        const runner = new ModulationRunner(
+            () => current,
+            () => 120,
+            adapter,
+            mockBindingManager(),
+            mockRecorder("IDLE") as any,
+            mockSurfaceUI(),
+        );
+
+        runner.start();
+        (runner as any).startTimeSec = 0;
+        (runner as any).tick(450);
+        expect(adapter.updateBoundControl).toHaveBeenCalledTimes(1);
+
+        runner.stop(); // Snap-back (Gerät A) hängt — Generation bleibt 1
+        await Promise.resolve();
+
+        // Gerätewechsel A → B (B = neue Device-Instanz mit eigener auto-Id).
+        // resetForDeviceChange() pointet den Runner auf B um — aber es feuert
+        // kein neuer Tick: writeGeneration bleibt 1, der Generation-Guard
+        // kann den Snap-back also NICHT mehr abfangen.
+        current = makeModDevice();
+        runner.resetForDeviceChange();
+        expect((runner as any).getDevice().id).toBe(current!.id);
+
+        resolveModWrite(true);
+        await new Promise((r) => setTimeout(r, 0));
+
+        const cutoffCalls = adapter.updateBoundControl.mock.calls.filter((c: any[]) => c[0] === "cutoff");
+        expect(cutoffCalls).toHaveLength(1); // nur der ursprüngliche Mod-Write auf A
+        expect(cutoffCalls[0][1]).not.toBe(0.5); // kein Basiswert ins NEUE Gerät
+    });
 });

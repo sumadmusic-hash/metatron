@@ -124,6 +124,14 @@ export class ModulationRunner {
         // Laufs nutzen ihre beim Start erfasste Generation zum Vergleich.
         // Durch monoton steigende Generationszahlen über alle Läufe hinweg
         // sind Kollisionen zwischen altem Snap-back und neuem Mod-Write unmöglich.
+        // R4 — synchrones Abräumen der inFlight-Einträge des VORHERIGEN Laufs.
+        // Zwischen stop()/resetForDeviceChange() und diesem start() feuert kein
+        // rAF-Tick und damit KEIN neuer Write — dieses Clear entfernt also nur
+        // STALE Einträge und kann nie einen laufenden neuen Write beschädigen
+        // (keine Parallelwrites derselben Control). Ohne dieses Clear würde ein
+        // für immer hängendes Alt-Write denselben Control im neuen Lauf über den
+        // inFlight.has-Guard dauerhaft blockieren.
+        this.inFlight.clear();
         this.rafId = requestAnimationFrame(this.loop);
     }
 
@@ -140,8 +148,13 @@ export class ModulationRunner {
         // bleiben. Läuft VOR gestureTakeover.clear(), damit ein gerade vom
         // User gegriffener Regler nicht freigegeben wird (Takeover = User
         // hält ihn, kein Snap-back).
-        const snapbacks = [...this.activeDestinationIds]
-            .map((id) => this.writeBaseValueToNexus(id));
+        // R4 — die Snap-backs laufen unabhängig weiter: sie hängen an ihren
+        // hängenden Write-Promises und schreiben nach Auflösung erst nach den
+        // ECHTEN Guards (Generation + Device-Identität). Ein hängendes Alt-Write
+        // darf einen Neustart NICHT blockieren → stopping wird sofort frei.
+        for (const id of [...this.activeDestinationIds]) {
+            void this.writeBaseValueToNexus(id);
+        }
 
         // Synchronously clear gestureTakeover and activeDestinationIds so isModulated
         // returns false immediately and tests pass
@@ -150,13 +163,12 @@ export class ModulationRunner {
         this.activeDestinationIds.clear();
         this.lastModValue.clear();
 
-        // Asynchronously wait for snapbacks to complete, then clear inFlight
-        Promise.all(snapbacks).finally(() => {
-            this.inFlight.clear();
-            this.lastWriteMsByControl.clear();
-            this.lastProcessedDestinationIndex = 0;
-            this.stopping = false;
-        });
+        // R4 — KEIN async finales inFlight.clear()/lastWriteMsByControl.clear():
+        // ein blanket-Clear im finally würde einen bereits laufenden Write des
+        // NEUEN Laufs aus der Map reißen → Parallelwrites derselben Control.
+        // Geräumt wird per writeControl-eigenem Identitäts-Guard (löscht nur den
+        // eigenen Eintrag) und beim synchronen start()-Clear dieser Generation.
+        this.stopping = false;
     }
 
     /** Hard reset for device change: stops the runner WITHOUT running snap-backs.
@@ -176,11 +188,11 @@ export class ModulationRunner {
         this.lastWriteMsByControl.clear();
         this.lastProcessedDestinationIndex = 0;
 
-        // Wait for in-flight writes to complete, then clear inFlight and generation
-        Promise.all(this.inFlight.values()).finally(() => {
-            this.inFlight.clear();
-            this.writeGeneration.clear();
-        });
+        // R4 — KEINE asynchronen inFlight/writeGeneration-Clears. writeGeneration
+        // wächst monoton über alle Läufe hinweg und wird NIE geleert — sonst
+        // könnte sich die beim Snap-back-Start erfasste Generation mit einer
+        // Neuvergabe im nächsten Lauf kollidieren und der stale Snap-back liefe
+        // durch. inFlight-Einträge räumt der nächste start() synchron ab.
     }
 
     private loop = (now: number): void => {
@@ -311,8 +323,9 @@ export class ModulationRunner {
      *  Generation-Guard: nur schreiben, wenn keine neuere Mod-Write dazwischen-
      *  gekommen ist (gleiche Generation). */
     private async writeBaseValueToNexus(controlId: string): Promise<void> {
-        const device = this.getDevice();
-        const control = device?.getControl(controlId);
+        const deviceAtStart = this.getDevice();
+        const deviceIdAtStart = deviceAtStart?.id;
+        const control = deviceAtStart?.getControl(controlId);
         if (!control || control.archived) return;
         if (this.gestureTakeover.get(controlId)) return;
         if (!this.bindingManager.getActiveBinding(controlId)) return;
@@ -327,7 +340,18 @@ export class ModulationRunner {
             return;
         }
 
-        const baseValue = control.value;
+        // Device-Identitäts-Guard (R4): der Snap-back hängt evtl. lange an einem
+        // hängenden Write. In der Zwischenzeit kann der Runner auf ein NEUES
+        // Device umgezogen sein (resetForDeviceChange + start). Ohne Guard würde
+        // der Basiswert des ALTEN Geräts durch den BindingManager des NEUEN
+        // geschrieben — falscher Wert UND falscher Kontext. Erst nach dem await
+        // frisch prüfen: gleiche Device-Id, dann Control neu auflösen.
+        const current = this.getDevice();
+        if (!current || current.id !== deviceIdAtStart) return;
+        const currentControl = current.getControl(controlId);
+        if (!currentControl) return;
+
+        const baseValue = currentControl.value;
         this.nexusAdapter.beginSuppressEcho(controlId, baseValue);
         this.nexusAdapter.updateBoundControl(controlId, baseValue);
     }

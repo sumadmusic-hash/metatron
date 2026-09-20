@@ -3,6 +3,7 @@ import { Device } from "../../../src/core/model/Device";
 import { Control } from "../../../src/core/model/Control";
 import { DeviceLibrary } from "../../../src/core/DeviceLibrary";
 import { DeviceHistory } from "../../../src/core/history/DeviceHistory";
+import { BindingManager } from "../../../src/core/BindingManager";
 import { Storage } from "../../../src/persistence/Storage";
 
 // Minimal localStorage shim so Storage can persist between calls in Node.
@@ -114,6 +115,66 @@ describe("DeviceHistory — transactional apply() on StorageError (P2)", () => {
         expect(history.undo()).toBe(true);
         expect(lib.listDevices().map((d) => d.name)).toEqual(["A"]);
         expect(lib.currentDevice?.id).toBe(a.id);
+
+        spy.mockRestore();
+    });
+});
+
+describe("DeviceHistory — Bugs 5+6: Library-Undo pointet den BindingManager um und pflegt den Last-Active-Hinweis", () => {
+    it("erfolgreiches Undo eines device.create aktiviert A neu: bm.deviceRef === currentDevice UND Last-Active = A", () => {
+        const lib = new DeviceLibrary();
+        const a = lib.createNewDevice("A");
+        lib.saveCurrentDevice();
+        lib.markLastActiveDevice(a.id);
+        const bm = new BindingManager(a);
+        lib.bindingManager = bm;
+        const history = new DeviceHistory(lib);
+
+        const before = history.captureLibraryState();
+        const b = lib.createNewDevice("B");
+        lib.saveCurrentDevice();
+        const after = history.captureLibraryState();
+        history.record({ type: "device.create", scope: "library", deviceId: null, before, after });
+
+        expect(history.undo()).toBe(true);
+
+        // restoreLibraryState realisiert A als NEUE Instanz — der BindingManager
+        // muss auf genau diese Instanz umgepointet sein (nicht nur per Id passen).
+        expect(lib.currentDevice?.id).toBe(a.id);
+        expect(bm.deviceRef).toBe(lib.currentDevice!);
+        // Der Last-Active-Hinweis folgt dem neu aktivierten Gerät A.
+        expect(Storage.getLastActiveDeviceId()).toBe(a.id);
+    });
+
+    it("ROLLBACK nach StorageError stellt B aktiv her und hält bm.deviceRef + Last-Active konsistent", () => {
+        const lib = new DeviceLibrary();
+        const a = lib.createNewDevice("A");
+        lib.saveCurrentDevice();
+        lib.markLastActiveDevice(a.id);
+        const bm = new BindingManager(a);
+        lib.bindingManager = bm;
+        const history = new DeviceHistory(lib);
+
+        const before = history.captureLibraryState();
+        const b = lib.createNewDevice("B");
+        lib.saveCurrentDevice();
+        const after = history.captureLibraryState();
+        history.record({ type: "device.create", scope: "library", deviceId: null, before, after });
+
+        // Mirrors the existing transactional test: the SECOND write fails → the
+        // library-scope rollback must restore the pre-undo live scene.
+        const spy = failNthWrite(2);
+
+        expect(() => {
+            history.undo();
+        }).not.toThrow();
+        // Rollback stellt die vorherige Live-Szene wieder her …
+        expect(lib.currentDevice?.id).toBe(b.id);
+        expect(lib.listDevices().map((d) => d.name).sort()).toEqual(["A", "B"]);
+        // … und BindingManager + Last-Active-Hinweis folgen dem rollbackierten
+        // Aktiv-Gerät B (Instanz-Identität, nicht nur Id-Gleichheit).
+        expect(bm.deviceRef).toBe(lib.currentDevice!);
+        expect(Storage.getLastActiveDeviceId()).toBe(b.id);
 
         spy.mockRestore();
     });

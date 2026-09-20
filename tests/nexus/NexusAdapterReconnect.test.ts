@@ -196,3 +196,54 @@ describe("NexusAdapter — B5 Transition-Reinheit in openProject / onDocumentCon
         expect((adapter as any).connectionCleanup).toBeUndefined();
     });
 });
+
+describe("NexusAdapter — R5 konkurrierende openProject(): nur der NEUESTE Request übernimmt", () => {
+    function makeDoc(fieldValue = 0) {
+        const listeners = new Set<(v: number) => void>();
+        const field = { value: fieldValue, mutable: true, location: "L" };
+        const entity = { id: "e1", fields: { cutoff: field } };
+        return {
+            field,
+            entity,
+            events: {
+                onUpdate: (_f: unknown, cb: (v: number) => void) => {
+                    listeners.add(cb);
+                    return { terminate: () => listeners.delete(cb) };
+                },
+            },
+            queryEntities: { getEntity: (id: string) => (id === entity.id ? entity : undefined) },
+            stop: vi.fn(async () => {}),
+            start: vi.fn(async () => {}),
+        };
+    }
+
+    it("ein langsamer, VERALTETER open()-Request überschreibt das frisch geöffnete Projekt des neueren Requests nicht", async () => {
+        const docA = makeDoc(0.4);
+        const docB = makeDoc(0.6);
+        let resolveSlowOpen!: (d: any) => void;
+        const gate = new Promise<any>((r) => (resolveSlowOpen = r));
+
+        const adapter = new NexusAdapter();
+        (adapter as any).client = {
+            status: "authenticated",
+            open: vi.fn((url: string) => (url === "B" ? Promise.resolve(docB) : gate.then(() => docA))),
+        };
+        const manager = new BindingManager(new Device("A"));
+
+        // Request 1 (Projekt A) startet und hängt im asynchronen open() …
+        const openingA = adapter.openProject("A", manager);
+        // … bevor Request 2 (Projekt B) schnell durchläuft und den State übernimmt.
+        await adapter.openProject("B", manager);
+        expect(adapter.document).toBe(docB);
+        expect((adapter as any).bindingManager).toBe(manager);
+
+        // Der VERALTETE Request darf Identität und Manager nicht mehr anfassen:
+        resolveSlowOpen(docA);
+        await openingA;
+
+        expect(adapter.document).toBe(docB); // B bleibt das aktive Projekt
+        expect((adapter as any).bindingManager).toBe(manager);
+        expect(docA.stop).toHaveBeenCalled(); // A wurde entsorgt, nicht installiert
+        expect(docB.stop).not.toHaveBeenCalled();
+    });
+});

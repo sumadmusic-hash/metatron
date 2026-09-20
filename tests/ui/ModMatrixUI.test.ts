@@ -5,6 +5,8 @@ import { Control } from "../../src/core/model/Control";
 import { BindingManager } from "../../src/core/BindingManager";
 import { NexusAdapter } from "../../src/nexus/NexusAdapter";
 import { DeviceHistory } from "../../src/core/history/DeviceHistory";
+import { DeviceLibrary } from "../../src/core/DeviceLibrary";
+import { Storage } from "../../src/persistence/Storage";
 import { ModMatrixUI, sourceLabel } from "../../src/ui/modmatrix/ModMatrixUI";
 import { MAX_BAKE_BARS } from "../../src/modulation/BakeRenderer";
 import { Toast } from "../../src/ui/Toast";
@@ -21,7 +23,7 @@ function makeDevice(): Device {
 }
 
 function makeDeps(device: Device, opts: { onMatrixChange?: () => void } = {}) {
-    const deviceLibrary = { currentDevice: device, saveCurrentDevice: vi.fn() };
+    const deviceLibrary = { currentDevice: device, saveCurrentDevice: vi.fn(), saveDevice: vi.fn() };
     const history = new DeviceHistory(deviceLibrary as never);
     const ui = new ModMatrixUI({
         deviceLibrary,
@@ -784,13 +786,13 @@ describe("ModMatrixUI — Bug 5 Live-Slider (Echtzeit ohne Undo-Flut)", () => {
             slider.dispatchEvent(new Event("input", { bubbles: true }));
 
             expect(device.modulation.slots[0].amount).toBe(0.7);
-            expect(deviceLibrary.saveCurrentDevice).not.toHaveBeenCalled();
+            expect(deviceLibrary.saveDevice).not.toHaveBeenCalled();
 
             vi.advanceTimersByTime(99);
-            expect(deviceLibrary.saveCurrentDevice).not.toHaveBeenCalled();
+            expect(deviceLibrary.saveDevice).not.toHaveBeenCalled();
 
             vi.advanceTimersByTime(1);
-            expect(deviceLibrary.saveCurrentDevice).toHaveBeenCalledTimes(1);
+            expect(deviceLibrary.saveDevice).toHaveBeenCalledTimes(1);
         } finally {
             vi.useRealTimers();
         }
@@ -809,17 +811,17 @@ describe("ModMatrixUI — Bug 5 Live-Slider (Echtzeit ohne Undo-Flut)", () => {
             slider.value = "5";
             slider.dispatchEvent(new Event("input", { bubbles: true }));
             expect(device.modulation.sources[0].rateHz).toBe(5);
-            expect(deviceLibrary.saveCurrentDevice).not.toHaveBeenCalled();
+            expect(deviceLibrary.saveDevice).not.toHaveBeenCalled();
 
             slider.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
-            expect(deviceLibrary.saveCurrentDevice).toHaveBeenCalledTimes(1);
+            expect(deviceLibrary.saveDevice).toHaveBeenCalledTimes(1);
             expect(history.canUndoOnCurrentDevice).toBe(true);
 
             vi.advanceTimersByTime(200);
-            expect(deviceLibrary.saveCurrentDevice).toHaveBeenCalledTimes(1);
+            expect(deviceLibrary.saveDevice).toHaveBeenCalledTimes(1);
 
             slider.dispatchEvent(new Event("change", { bubbles: true }));
-            expect(deviceLibrary.saveCurrentDevice).toHaveBeenCalledTimes(1);
+            expect(deviceLibrary.saveDevice).toHaveBeenCalledTimes(1);
         } finally {
             vi.useRealTimers();
         }
@@ -835,10 +837,10 @@ describe("ModMatrixUI — Bug 5 Live-Slider (Echtzeit ohne Undo-Flut)", () => {
 
             slider.value = "35";
             slider.dispatchEvent(new Event("input", { bubbles: true }));
-            expect(deviceLibrary.saveCurrentDevice).not.toHaveBeenCalled();
+            expect(deviceLibrary.saveDevice).not.toHaveBeenCalled();
 
             ui.render();
-            expect(deviceLibrary.saveCurrentDevice).toHaveBeenCalledTimes(1);
+            expect(deviceLibrary.saveDevice).toHaveBeenCalledTimes(1);
         } finally {
             vi.useRealTimers();
         }
@@ -863,5 +865,35 @@ describe("ModMatrixUI — Bug 5 Live-Slider (Echtzeit ohne Undo-Flut)", () => {
         expect(device.modulation.slots[0].amount).toBe(-0.2);
         freshSlider.dispatchEvent(new Event("change", { bubbles: true }));
         expect(history.canUndoOnCurrentDevice).toBe(true); // still exactly one per gesture
+    });
+
+    it("Bug 3 — der Matrix-Debounce-Save wird nach einem Device-Wechsel dem GEMERKTEN Device zugespeichert", () => {
+        const deviceA = makeDevice();
+        const lib = new DeviceLibrary();
+        lib.currentDevice = deviceA;
+        const saveSpy = vi.spyOn(lib, "saveDevice");
+        const ui = new ModMatrixUI({
+            deviceLibrary: lib,
+            bindingManager: new BindingManager(deviceA),
+            nexusAdapter: new NexusAdapter(),
+            history: new DeviceHistory(lib),
+        });
+        const container = mount(ui);
+
+        const slider = container.querySelector<HTMLInputElement>("#mod-slot-amount-slider-slot1")!;
+        slider.value = "37";
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(deviceA.modulation.slots[0].amount).toBeCloseTo(0.37, 5);
+        expect(saveSpy).not.toHaveBeenCalled(); // debounced — noch nichts geschrieben
+
+        // Gerätewechsel VOR dem Debounce-Flush: der gemerkte pendingMatrixSave
+        // gehört weiterhin deviceA und MUSS unter dessen Id persistiert werden.
+        lib.currentDevice = new Device("ModMatrixB");
+        ui.flushMatrixSave();
+
+        expect(saveSpy).toHaveBeenCalledTimes(1);
+        expect(saveSpy).toHaveBeenCalledWith(deviceA);
+        expect(Storage.loadDevice(deviceA.id)!.modulation.slots[0].amount).toBeCloseTo(0.37, 5);
+        expect(Storage.loadDevice(lib.currentDevice.id)).toBeUndefined();
     });
 });

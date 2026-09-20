@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Device } from "../../src/core/model/Device";
 import { Control } from "../../src/core/model/Control";
 import { Group } from "../../src/core/model/Group";
@@ -289,5 +289,31 @@ describe("C1 follow-up FIX C — toolbar reflects per-device undo executability"
         expect(undoBtn(root).disabled).toBe(false);
         undoBtn(root).click();
         expect(lib.currentDevice!.getControl(a1.id)!.position).toEqual({ x: 100, y: 100 });
+    });
+});
+
+describe("Bug 5 — performUndoRedo zieht onDeviceChanged auch bei fehlgeschlagenem Undo", () => {
+    it("ein Undo-Button-Click, dessen undo() false liefert, rendert trotzdem (BindingManager-Umpunktierung + Rebuild)", () => {
+        const device = new Device("T");
+        const a = addKnob(device, "A", 100, 100);
+        const { app, root } = mountApp(device);
+
+        // Ein echter Drag macht den Undo-Button aktiv …
+        dragKnob(root, a.id);
+        expect(undoBtn(root).disabled).toBe(false);
+
+        // … jetzt schlägt der eigentliche undo() trotzdem fehl (z.B. Guard/
+        // base-guard nach internem Rollback): die View MUSS trotzdem neu
+        // gerendert werden, sonst bleibt der BindingManager auf der alten,
+        // rollbackierten Instanz hängen.
+        const onDeviceChanged = vi.spyOn(app as any, "onDeviceChanged");
+        const undoSpy = vi.spyOn((app as any).history, "undo").mockReturnValue(false);
+
+        undoBtn(root).click();
+
+        expect(undoSpy.mock.results[0].value).toBe(false);
+        expect(onDeviceChanged).toHaveBeenCalled();
+        onDeviceChanged.mockRestore();
+        undoSpy.mockRestore();
     });
 });

@@ -43,6 +43,26 @@ export class DeviceLibrary {
         }
     }
 
+    /** Persist an EXACT device instance — not the current one. Used by the
+     *  trailing value/matrix save queues: after a device switch, a pending
+     *  save captured BEFORE the switch must persist THAT device, never the new
+     *  currentDevice (otherwise the old device's change is lost or written
+     *  onto the new one). Deliberately does NOT touch the last-active note. */
+    public saveDevice(device: Device) {
+        Storage.saveDevice(device);
+    }
+
+    /** Public, observable last-active note (Bug: library undo/redo must keep
+     *  `metatron_last_device_id` consistent with the device actually activated
+     *  by the history layer, e.g. after undo of a device delete). */
+    public markLastActiveDevice(id: string) {
+        this.markLastActive(id);
+    }
+
+    public clearLastActiveDevice() {
+        this.clearLastActive();
+    }
+
     public listDevices(): { id: string, name: string }[] {
         return Storage.listDevices();
     }

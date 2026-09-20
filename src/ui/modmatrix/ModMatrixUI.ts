@@ -11,7 +11,13 @@ import { Toast } from "../Toast";
 const MATRIX_SAVE_DEBOUNCE_MS = 100;
 
 export interface ModMatrixUIDeps {
-    deviceLibrary: { currentDevice?: Device; saveCurrentDevice(): void };
+    deviceLibrary: {
+        currentDevice?: Device;
+        saveCurrentDevice(): void;
+        /** Bug 3 — persist einer BELIEBIGEN Device-Instanz (die, der eine
+         *  pendingMatrixSave gehört), nicht nur currentDevice. */
+        saveDevice(device: Device): void;
+    };
     bindingManager: BindingManager;
     nexusAdapter: NexusAdapter;
     history: DeviceHistory;
@@ -61,7 +67,11 @@ function escapeCssId(id: string): string {
 }
 
 export class ModMatrixUI {
-    private readonly deviceLibrary: { currentDevice?: Device; saveCurrentDevice(): void };
+    private readonly deviceLibrary: {
+        currentDevice?: Device;
+        saveCurrentDevice(): void;
+        saveDevice(device: Device): void;
+    };
     private readonly history: DeviceHistory;
     private readonly bindingManager: BindingManager;
     private readonly nexusAdapter: NexusAdapter;
@@ -968,9 +978,13 @@ export class ModMatrixUI {
         this.highlightCrossColumn();
     }
 
+    /** Bug 3 — persistiert wird IMMER das zugewiesene device, nie currentDevice.
+     *  Der alte Guard (activeId !== device.id → return) verwarf genau den
+     *  gemerkten pendingMatrixSaveDevice, sobald zwischen schedule und flush
+     *  currentDevice umgeschaltet war — die Matrix-Edits des VORHERIGEN Geräts
+     *  gingen verloren. saveDevice() (ohne Last-Active-Fußabdruck) trifft den
+     *  richtigen Storage-Slot. */
     private persist(device: Device): void {
-        const activeId = this.deviceLibrary.currentDevice?.id;
-        if (activeId !== device.id) return;
-        this.deviceLibrary.saveCurrentDevice();
+        this.deviceLibrary.saveDevice(device);
     }
 }

@@ -141,3 +141,62 @@ describe("B7 — Mode switch cancels pending learns and respects detached subtre
         });
     });
 });
+
+describe("Bug 7 — AppUI.render() bricht eine aktive EDIT-Drag- und eine USE-Knob-Geste ohne COMMIT/PERSIST ab", () => {
+    function pd(el: HTMLElement, x: number, y: number, id = 1) {
+        el.dispatchEvent(new PointerEvent("pointerdown", { pointerId: id, clientX: x, clientY: y, button: 0, bubbles: true, cancelable: true }));
+    }
+    function pm(x: number, y: number, id = 1) {
+        document.dispatchEvent(new PointerEvent("pointermove", { pointerId: id, clientX: x, clientY: y, bubbles: true, cancelable: true }));
+    }
+
+    it("EDIT: ein laufender Drag wird beim Rebuild verworfen — kein Commit, kein Persist, Folgemoves inert", () => {
+        const { app } = mount();
+        const editor: any = (app as any).editorUI;
+        const root = (app as any).root as HTMLElement;
+        const lib: DeviceLibrary = (app as any).deviceLibrary;
+        const el = root.querySelector<HTMLElement>(`[data-ctl-id="c1"]`)!;
+
+        pd(el, 400, 300);
+        pm(440, 360); // → Drag aktiv, Modell live verschoben
+        const control = lib.currentDevice!.getControl("c1")!;
+        const dragged = { ...control.position };
+        expect(dragged).not.toEqual({ x: 0, y: 0 });
+        expect((app as any).history.undoLength).toBe(0);
+
+        // Mode-/Device-initiiertes Re-Render: die alte Gesten-Instanz (und ihre
+        // Document-Listener/Capture) muss sterben, OHNE commit/persist zu ziehen.
+        app.render();
+
+        expect(editor.drag).toBeNull();
+        expect((app as any).history.undoLength).toBe(0); // kein history.record()
+        expect(lib.currentDevice!.getControl("c1")!.position).toEqual(dragged); // Modell unangetastet
+        // Listeners sind entfernt: eine weitere Bewegung ändert NICHTS mehr.
+        pm(600, 500);
+        expect(lib.currentDevice!.getControl("c1")!.position).toEqual(dragged);
+    });
+
+    it("USE: der Knob-Takeover einer laufenden Geste wird beim Rebuild freigegeben, Folgemoves inert", () => {
+        const { app } = mount();
+        const surface: any = (app as any).surfaceUI;
+        const root = (app as any).root as HTMLElement;
+        const lib: DeviceLibrary = (app as any).deviceLibrary;
+        const takeover = vi.fn();
+        surface.onGestureTakeover = takeover as any;
+        surface.render(root);
+
+        const body = surface.container.querySelector<HTMLElement>(".knob-body")!;
+        pd(body, 100, 100);
+        expect(takeover).toHaveBeenCalledWith("c1", true);
+        expect(surface.gestureControlId).toBe("c1");
+        const control = lib.currentDevice!.getControl("c1")!;
+        const before = control.value;
+
+        // Ein Rebuild (Mode-/View-Wechsel) muss das Takeover freigeben …
+        app.render();
+
+        expect(takeover).toHaveBeenCalledWith("c1", false);
+        expect(surface.gestureControlId).toBeNull();
+        expect(control.value).toBe(before); // kein Snap-back, kein Persist
+    });
+});

@@ -272,11 +272,17 @@ export class DeviceHistory {
         }
 
         // Activate the recorded active device (values kept in memory).
+        // Bug 5+6 — auch den BindingManager (falls vorhanden) auf die neue
+        // Device-Instanz umpointern (nie currentDevice !== deviceRef) und den
+        // Last-Active-Hinweis dem neu aktivierten Geraet nachfuehren.
         if (activeId && patch.devices[activeId]) {
             this.library.currentDevice = realizeDevice(activeId, patch.devices[activeId]);
             this.library.saveCurrentDevice();
+            this.library.markLastActiveDevice(activeId);
+            if (this.library.currentDevice) this.library.bindingManager?.setDevice(this.library.currentDevice);
         } else {
             this.library.currentDevice = undefined;
+            this.library.clearLastActiveDevice();
         }
     }
 
@@ -444,8 +450,11 @@ export class DeviceHistory {
             const activeId = beforeLive.activeDeviceId;
             if (activeId && beforeLive.devices[activeId]) {
                 this.library.currentDevice = realizeDevice(activeId, beforeLive.devices[activeId]);
+                this.library.markLastActiveDevice(activeId);
+                if (this.library.currentDevice) this.library.bindingManager?.setDevice(this.library.currentDevice);
             } else {
                 this.library.currentDevice = undefined;
+                this.library.clearLastActiveDevice();
             }
         } catch (e) {
             console.warn("[METATRON HISTORY] library rollback incomplete:", e);

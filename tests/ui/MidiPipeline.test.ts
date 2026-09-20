@@ -94,7 +94,7 @@ describe("Midi→AppUI pipeline — single normalization point via applyMidiScal
         const target = addKnob(device, "a", { channel: 1, cc: 23 });
         addKnob(device, "b", { channel: 1, cc: 24 });
         const { midi, lib } = mount(device);
-        const saveSpy = vi.spyOn(lib, "saveCurrentDevice");
+        const saveSpy = vi.spyOn(lib, "saveDevice");
 
         midi.trigger(1, 24, 64);
         expect(target.value).toBe(0); // sibling untouched
