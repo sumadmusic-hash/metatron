@@ -386,8 +386,14 @@ export async function writeAutomationRecording(
         };
     }
 
+    let failingCreate = "unknown";
+
     try {
         await document.modify((t: any) => {
+            const C = (label: string, data: any) => {
+                failingCreate = label;
+                return data;
+            };
             const orderBase = maxOrderAmongTracks(t.entities);
             for (let i = 0; i < attempts.length; i++) {
                 const a = attempts[i];
@@ -396,7 +402,7 @@ export async function writeAutomationRecording(
                 // Switches are stepped; every other control is sloped (M21.2 §8).
                 const interpolation = a.controlType === "switch" ? 1 : 2;
 
-                const track = t.create("automationTrack", {
+                const track = t.create("automationTrack", C("track", {
                     // M23.3 — kein `a.field.location` direkt weiterreichen: der
                     // SDK-Protobuf-Converter `Un` macht auf dem autoParam-Pointer
                     // `a.fieldIndex.slice()` und crasht, wenn die Location im
@@ -409,10 +415,10 @@ export async function writeAutomationRecording(
                     // tatsächlichen Klassen-/Form der Location.
                     automatedParameter: canonicalPointerForLocation(a.field.location),
                     orderAmongTracks: orderBase + 1 + i,
-                });
-                const collection = t.create("automationCollection", {});
+                }));
+                const collection = t.create("automationCollection", C("collection", {}));
                 for (const ev of events) {
-                    t.create("automationEvent", {
+                    t.create("automationEvent", C("event", {
                         // Beide Pointer durch `canonicalPointerForLocation` —
                         // der SDK-Konverter (`fieldIndex.slice()`) darf nie ein
                         // undefined sehen (Connected-Doc kann Entity-Locations
@@ -422,12 +428,12 @@ export async function writeAutomationRecording(
                         value: ev.value,
                         interpolation,
                         slope: 0,
-                    });
+                    }));
                 }
                 // M22.0 — region duration matches takeTicks for Bake (exact).
                 // Only if a Live Recording has an event exactly at durationSeconds
                 // we add minimal 1-tick headroom so the end event sits strictly inside.
-                const region = t.create("automationRegion", {
+                const region = t.create("automationRegion", C("region", {
                     region: {
                         // M23.0 — startTick defensiv auf uint32 gerundet
                         // (recorder floor-t bereits; Reste aus anderen Pfaden koennen fluessig sein).
@@ -442,7 +448,7 @@ export async function writeAutomationRecording(
                     },
                     track: canonicalPointerForLocation(track.location),
                     collection: canonicalPointerForLocation(collection.location),
-                });
+                }));
                 created.push({
                     controlId: a.controlId,
                     trackId: track.id,
@@ -472,7 +478,7 @@ export async function writeAutomationRecording(
             .join(" ");
         console.error(
             `[METATRON AUTOMATION WRITE] transaction failed: ${reason} ` +
-                `connected=${document.connected?.getValue?.()} [${shapeInfo}]`
+                `connected=${document.connected?.getValue?.()} failingCreate=${failingCreate} [${shapeInfo}]`
         );
         if (e instanceof Error && e.stack) {
             console.error(`[METATRON AUTOMATION WRITE] stack:`, e.stack);
