@@ -249,6 +249,11 @@ export async function writeAutomationRecording(
     document: SyncedDocument,
     bindings: BindingManager
 ): Promise<AutomationWriteResult> {
+    // M23.5 — Einsatz-Marker: beweist, welcher Bundle tatsaechlich im Browser
+    // laeuft (Cache-Fall: alte Datei unter gleichem Namen). Jeder Commit erzeugt
+    // einen neuen Marker-String — taucht er nicht im Console-Log auf, laeuft ein
+    // veraltetes Asset.
+    console.log(`[METATRON WRITER] init build=156aec7 marker=fff8b52a1`);
     const failures: { controlId: string; reason: AutomationWriteFailureReason }[] = [];
     const attempts: WriteAttempt[] = [];
 
