@@ -13,7 +13,7 @@ if (!existsSync(target)) {
   process.exit(0);
 }
 
-const src = readFileSync(target, "utf8");
+let src = readFileSync(target, "utf8");
 
 const needle = `      if (t.T.name === q.name) {
         const a = n;
@@ -24,6 +24,39 @@ const needle = `      if (t.T.name === q.name) {
       }`;
 
 const replacement = `      if (t.T.name === q.name) {
+        const a = n;
+        const fi = a && a.fieldIndex;
+        if (fi === void 0) {
+          console.error(
+            "[METATRON SDKI] pointer converter received value without fieldIndex; field=",
+            t.localName,
+            "in=",
+            t.parent && t.parent.typeName,
+            "value=",
+            a,
+            "keys=",
+            a ? Object.keys(a) : null
+          );
+          if (a && a.entityId !== void 0) {
+            return new q({
+              fieldIndex: [],
+              entityId: a.entityId
+            });
+          }
+          return ri(
+            i,
+            e,
+            a
+          ), e;
+        }
+        return new q({
+          fieldIndex: fi.slice(),
+          entityId: a.entityId
+        });
+      }`;
+
+// an older generation of the guard (86c1003) may already be applied; revert it
+const oldGeneration = `      if (t.T.name === q.name) {
         const a = n;
         const fi = a && a.fieldIndex;
         if (fi === void 0) {
@@ -48,9 +81,21 @@ const replacement = `      if (t.T.name === q.name) {
         });
       }`;
 
-if (src.includes("pointer converter received value without fieldIndex")) {
+const finalMarker = "return ri(\n            i,\n            e,\n            a\n          ), e;";
+
+if (src.includes(finalMarker)) {
   console.log("[postinstall] pointer guard already applied, skipping");
   process.exit(0);
+}
+
+if (src.includes("METATRON SDKI")) {
+  if (!src.includes(oldGeneration)) {
+    console.warn("[postinstall] existing pointer patch has an unknown shape, cannot revert cleanly");
+    process.exit(1);
+  }
+  src = src.replace(oldGeneration, needle);
+  writeFileSync(target, src, "utf8");
+  console.log("[postinstall] reverted prior pointer guard patch");
 }
 
 if (!src.includes(needle)) {
