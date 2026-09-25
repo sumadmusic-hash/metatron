@@ -38,6 +38,7 @@ export type AutomationWriteFailureReason =
     | "field-not-found"
     | "field-immutable"
     | "not-automatable"
+    | "stale-location"
     | "transaction-failed";
 
 export type AutomationTrackWriteResult =
@@ -275,6 +276,21 @@ export async function writeAutomationRecording(
         }
         if (!isAutomatableField(field)) {
             fail("not-automatable");
+            continue;
+        }
+        // M23.2 — Die `automatedParameter`-Location muss ins DAS offene Dokument
+        // zeigen. Eine stale/dangling Location (z.B. aus einer frühheren Session
+        // oder einem anderen Projekt) lässt `t.create("automationTrack", …)`
+        // intern mit `Cannot read properties of undefined (reading 'slice')`
+        // werfen — und über den SDK-Lock-Leak wird daraus ein permanenter Freeze.
+        // Hier sauber pro Track scheitern statt zu crashen (siehe Fehlerbild online).
+        const locationTargetId = (field as any)?.location?.entityId;
+        const locationTargetResolves =
+            typeof locationTargetId === "string" &&
+            locationTargetId !== "" &&
+            !!document.queryEntities.getEntity(locationTargetId);
+        if (!locationTargetResolves) {
+            fail("stale-location");
             continue;
         }
         // B68 — Registry-Lookup pro Attempt. Key muss EXAKT der Probe-Kennung

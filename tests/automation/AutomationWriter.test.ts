@@ -964,4 +964,28 @@ describe("M23.0 — live takes with fractional durations (uint32 region ticks)",
         const region = (doc.queryEntities.ofTypes("automationRegion").get()[0] as any).fields.region.fields;
         expect(region.durationTicks.value).toBe(1);
     });
+
+    it("stale/dangling bound location → per-track 'stale-location', document stays writable (no crash, no wedge)", async () => {
+        const doc = await newDoc();
+        const basslineId = await addBassline(doc);
+        const cutoff = basslineField(doc, basslineId, "cutoffFrequencyHz");
+
+        // Field from ANOTHER document instance: entityId exists in the shape-
+        // checks but targets an entity that the CURRENT document does not know.
+        const staleField = { value: 0.5, location: { entityId: "11111111-1111-1111-1111-111111111111", fieldIndex: [1] }, mutable: true };
+        // fieldPath does NOT resolve on the live bassline → writer falls back to the stale field.
+        const bindings = makeBindings([
+            { controlId: "c1", entityId: basslineId, fieldPath: "addressTranslator.left", field: staleField },
+        ]);
+
+        const result = await writeAutomationRecording(rec([{ controlId: "c1", controlType: "knob", samples: KNOWN_SAMPLES }]), doc, bindings);
+
+        // Must NOT throw/crash — clean per-track skip instead.
+        expect(result.ok).toBe(true);
+        expect(result.createdTracks).toBe(0);
+        expect(result.perTrack[0]).toMatchObject({ ok: false, reason: "stale-location" });
+
+        // And the failed attempt must NOT have leaked the SDK transaction lock.
+        await expect(doc.modify((t: any) => t.update(cutoff, 8000))).resolves.toBeUndefined();
+    });
 });

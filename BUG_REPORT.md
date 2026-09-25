@@ -106,6 +106,16 @@ A rejected `modify()` (or `send()` failure) must not corrupt the document instan
 
 4. Consider exposing a non-throwing validation path (`throwIfInvalid: false` already exists internally) so callers can pre-validate without risking a leak.
 
+## Related finding — unresolvable pointer locations crash with a misleading TypeError
+
+`t.create("automationTrack", { automatedParameter: location })` (and any other pointer-field create) whose `location` cannot be resolved in the document — e.g. `entityId` is `undefined` (empty/`isEmpty()` location from a stale binding) or points to an entity absent from the document — throws
+
+```
+TypeError: Cannot read properties of undefined (reading 'slice')
+```
+
+instead of a clean schema validation error. Combined with the lock leak above, one such stale binding turns a routine bake into a permanent document freeze. A missing/dangling pointer target should fail validation with a descriptive message, not a TypeError.
+
 ## Impact observed in our integration (Metatron)
 
 One failed automation write (a schema validation error in a single `t.create`) rejected `modify()` and thereafter every parameter write, re-learn, and reconnect `stop()` blocked forever — bindings showed as connected ("green") but were silently dead; only discarding the document (page reload) recovered. From the API surface the wedge is a *pending* promise with no error event, making it extremely hard for downstream code to even detect it. This SDK behavior turns one routine validation error into a permanent document outage.
