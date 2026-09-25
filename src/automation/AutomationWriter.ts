@@ -64,6 +64,55 @@ export interface WriteEvent {
     value: number;
 }
 
+/** Mindestens ein fehlgeschlagener `document.modify(...)` leakt im
+ *  @audiotool/nexus SDK dauerhaft den Document-Transaction-Lock
+ *  (`modify` = `await createTransaction(); await fn(tx); tx.send()` — OHNE
+ *  try/finally; wirft der Callback oder sendet der Gateway-Fehler, wird der
+ *  Lock nie freigegeben). Folge: ALLE weiteren `modify`/`createTransaction`
+ *  Aufrufe — Parameter-Writes, Re-Learn, sogar `document.stop()` beim
+ *  Reconnect — blockieren für immer. Hier wird ein als wedged erkanntes
+ *  Dokument markiert, damit die App statt eines stillen Einfrierens schnell
+ *  und sichtbar refusiert (Recovery = Seiten-Reload, da das SDK kein
+ *  Abort-Ohne-Send-API bietet). */
+const wedgedDocuments = new WeakSet<object>();
+
+/** True, wenn dieses Dokument nach einem fehlgeschlagenen Transaction-Write
+ *  als unbenutzbar (Socket-Lock geleakt) markiert wurde. */
+export function isDocumentWedged(document: object | null | undefined): boolean {
+    return !!document && wedgedDocuments.has(document);
+}
+
+/** Prüft, ob der Document-Transaction-Lock noch reagiert: ein No-op-`modify`
+ *  muss innerhalb des Timeouts aufgelöst sein, sonst ist der Lock geleakt
+ *  (jeder weitere Write würde für immer hängen). Nur im Fehlerpfad aufgerufen. */
+async function probeDocumentLock(document: object, timeoutMs = 400): Promise<boolean> {
+    try {
+        const responds = await Promise.race([
+            (document as any).modify(() => {}).then(
+                () => true,
+                () => true // Reject (z.B. "Document stopped") = Lock war frei/sichtbar — kein Hang
+            ),
+            new Promise<boolean>((resolve) => setTimeout(() => resolve(false), timeoutMs)),
+        ]);
+        return responds;
+    } catch {
+        return true;
+    }
+}
+
+/** Markiert ein Dokument nach einem gemeldeten Transaction-Fehler, falls sein
+ *  Lock tatsächlich nicht mehr freikommt. */
+async function markDocumentIfWedged(document: object): Promise<void> {
+    if (wedgedDocuments.has(document)) return;
+    if (!(await probeDocumentLock(document))) {
+        wedgedDocuments.add(document);
+        console.error(
+            "[METATRON AUTOMATION WRITE] SDK transaction lock leaked after failed write — " +
+                "document wedged, further writes refused until reload/reconnect"
+        );
+    }
+}
+
 /** Reads the project BPM from the document's Config entity (documented field
  *  `Config.tempoBpm`); returns undefined when unavailable or malformed. */
 export function readTempoBpm(document: SyncedDocument | null | undefined): number | undefined {
@@ -255,11 +304,29 @@ export async function writeAutomationRecording(
         };
     }
 
+    // M23.0 — Nach einem fehlgeschlagenen Write kann der SDK-Transaction-Lock
+    // geleakt sein (siehe wedgedDocuments). Ein weiterer Write würde sonst
+    // für immer hängen — hier schnell und sichtbar refusieren.
+    if (isDocumentWedged(document)) {
+        return {
+            ok: false,
+            error: "Transaction lock leaked — document is wedged (connect again / reload the page to recover)",
+            perTrack: attempts.map((a) => ({ controlId: a.controlId, ok: false, reason: "transaction-failed" })),
+            createdTracks: 0,
+        };
+    }
+
     const created: { controlId: string; trackId: string; collectionId: string; regionId: string; eventCount: number }[] = [];
     // M22.0 — shared region duration for all tracks in this take.
     // For Bake: exact takeTicks (no extra beat). For Live Recording with
     // an event exactly at durationSeconds: minimal 1-tick headroom.
-    const takeTicks = Math.max(0, secondsToTicks(recording.durationSeconds, recording.projectBpm));
+    // M23.0 — `secondsToTicks` liefert Floats; die Region-Tick-Felder sind im
+    // Schema uint32. Ein Bruchteil wie `durationTicks: 191.73` wuerde die
+    // Validierung kippen ("invalid uint 32") und via SDK-Lock-Leak alle
+    // Folge-Writes blockieren (Live-Takes haben reale, nicht-takt-aligned
+    // Dauer-Sekunden). Deshalb: aufgerundet auf den naechsten Integer.
+    const rawTicks = secondsToTicks(recording.durationSeconds, recording.projectBpm);
+    const takeTicks = Math.max(0, Math.ceil(Number.isFinite(rawTicks) ? rawTicks : 0));
 
     // Check if any track has a sample exactly at durationSeconds (Live Recording end event)
     const hasEndEvent = recording.tracks.some((track) =>
@@ -269,8 +336,13 @@ export async function writeAutomationRecording(
         ? Math.max(1, takeTicks + 1) // minimal 1-tick headroom for end event
         : Math.max(1, takeTicks); // exact duration for Bake
 
-    // Check document connection before starting transaction
-    if (!document.connected) {
+    // Check document connection before starting transaction. `document.connected`
+    // ist im SDK ein reaktiver Wert (mit getValue()), kein roher Boolean — die
+    // alte `!document.connected`-Prufung griff nie. Wenn der Gateway blockiert
+    // ist, haelt das SDK selbst den Lock; ohne diese Prufung wuerde `modify`
+    // dann rueckstandslos haengen.
+    const connectedValue = (document as any)?.connected?.getValue?.();
+    if (connectedValue === false) {
         return {
             ok: false,
             error: "Document not connected",
@@ -308,7 +380,9 @@ export async function writeAutomationRecording(
                 // we add minimal 1-tick headroom so the end event sits strictly inside.
                 const region = t.create("automationRegion", {
                     region: {
-                        positionTicks: recording.startTick,
+                        // M23.0 — startTick defensiv auf uint32 gerundet
+                        // (recorder floor-t bereits; Reste aus anderen Pfaden koennen fluessig sein).
+                        positionTicks: Math.max(0, Math.floor(recording.startTick)),
                         durationTicks: regionTicks,
                         collectionOffsetTicks: 0,
                         loopOffsetTicks: 0,
@@ -335,6 +409,11 @@ export async function writeAutomationRecording(
             }
         });
     } catch (e) {
+        // M23.0 — Das SDK laesst den Transaction-Lock auf jedem fehlgeschlagenen
+        // Write liegen (kein try/finally in `modify`). Nach dem Fehler pruefen,
+        // ob der Lock noch reagiert, und das Dokument als wedged markieren,
+        // damit nachfolgende Writes schnell scheitern statt fuer immer zu haengen.
+        await markDocumentIfWedged(document);
         return {
             ok: false,
             error: e instanceof Error ? e.message : String(e),

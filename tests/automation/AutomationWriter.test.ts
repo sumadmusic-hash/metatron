@@ -870,3 +870,98 @@ describe("B68/F5 — sampled values are converted into the Audiotool-tapered aut
         }
     });
 });
+
+describe("M23.0 — live takes with fractional durations (uint32 region ticks)", () => {
+    it("fractional durationSeconds → integer region ticks, document stays writable (no SDK lock leak)", async () => {
+        const doc = await newDoc();
+        const basslineId = await addBassline(doc);
+        const cutoff = basslineField(doc, basslineId, "cutoffFrequencyHz");
+        const bindings = makeBindings([
+            { controlId: "c1", entityId: basslineId, fieldPath: "cutoffFrequencyHz", field: cutoff },
+        ]);
+
+        // Live recordings capture real-world seconds — rarely tick-aligned.
+        // 2.37s at 120 BPM → secondsToTicks = 2275.2 (fractional).
+        const liveRec = rec([{ controlId: "c1", controlType: "knob", samples: KNOWN_SAMPLES }], {
+            durationSeconds: 2.37,
+        });
+
+        const result = await writeAutomationRecording(liveRec, doc, bindings);
+        expect(result.ok).toBe(true);
+        expect(result.createdTracks).toBe(1);
+
+        const regions = doc.queryEntities.ofTypes("automationRegion").get();
+        expect(regions).toHaveLength(1);
+        const region = (regions[0] as any).fields.region.fields;
+        for (const tickField of ["positionTicks", "durationTicks", "collectionOffsetTicks", "loopOffsetTicks", "loopDurationTicks"]) {
+            const v = region[tickField].value;
+            expect(Number.isInteger(v)).toBe(true);
+            expect(v).toBeGreaterThanOrEqual(0);
+        }
+        // ceil(18201.6) = 18202, no end event → exact duration
+        expect(region.durationTicks.value).toBe(18202);
+        expect(region.loopDurationTicks.value).toBe(18202);
+
+        // CRITICAL: the failed-write scenario must NOT have leaked the lock —
+        // a follow-up transaction must still resolve.
+        await expect(doc.modify((t: any) => t.update(cutoff, 5000))).resolves.toBeUndefined();
+    });
+
+    it("end event exactly at a fractional durationSeconds still lands on an integer region (+1 headroom)", async () => {
+        const doc = await newDoc();
+        const basslineId = await addBassline(doc);
+        const cutoff = basslineField(doc, basslineId, "cutoffFrequencyHz");
+        const bindings = makeBindings([
+            { controlId: "c1", entityId: basslineId, fieldPath: "cutoffFrequencyHz", field: cutoff },
+        ]);
+
+        const endAtExact = rec([{ controlId: "c1", controlType: "knob", samples: [...KNOWN_SAMPLES, { timeSeconds: 2.37, normalizedValue: 1 }] }], {
+            durationSeconds: 2.37,
+        });
+
+        const result = await writeAutomationRecording(endAtExact, doc, bindings);
+        expect(result.ok).toBe(true);
+        expect(result.createdTracks).toBe(1);
+
+        const region = (doc.queryEntities.ofTypes("automationRegion").get()[0] as any).fields.region.fields;
+        expect(region.durationTicks.value).toBe(18203);
+        expect(region.loopDurationTicks.value).toBe(18203);
+    });
+
+    it("fractional startTick is snapped to an integer uint32 positionTicks", async () => {
+        const doc = await newDoc();
+        const basslineId = await addBassline(doc);
+        const cutoff = basslineField(doc, basslineId, "cutoffFrequencyHz");
+        const bindings = makeBindings([
+            { controlId: "c1", entityId: basslineId, fieldPath: "cutoffFrequencyHz", field: cutoff },
+        ]);
+
+        const fracStart = rec([{ controlId: "c1", controlType: "knob", samples: KNOWN_SAMPLES }], {
+            startTick: 1234.9,
+        });
+
+        const result = await writeAutomationRecording(fracStart, doc, bindings);
+        expect(result.ok).toBe(true);
+
+        const region = (doc.queryEntities.ofTypes("automationRegion").get()[0] as any).fields.region.fields;
+        expect(region.positionTicks.value).toBe(1234);
+    });
+
+    it("a recording with zero/finite guard still writes (duration NaN degrades to 0 ticks)", async () => {
+        const doc = await newDoc();
+        const basslineId = await addBassline(doc);
+        const cutoff = basslineField(doc, basslineId, "cutoffFrequencyHz");
+        const bindings = makeBindings([
+            { controlId: "c1", entityId: basslineId, fieldPath: "cutoffFrequencyHz", field: cutoff },
+        ]);
+
+        const bad = rec([{ controlId: "c1", controlType: "knob", samples: KNOWN_SAMPLES }], {
+            durationSeconds: NaN,
+        });
+
+        const result = await writeAutomationRecording(bad, doc, bindings);
+        expect(result.ok).toBe(true);
+        const region = (doc.queryEntities.ofTypes("automationRegion").get()[0] as any).fields.region.fields;
+        expect(region.durationTicks.value).toBe(1);
+    });
+});

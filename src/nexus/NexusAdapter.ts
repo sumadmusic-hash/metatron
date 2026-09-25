@@ -5,6 +5,7 @@ import { createNexusValueMapping, mapNormalizedToNexus, mapNexusToNormalized } f
 import { resolveFieldByPath } from "./ChainPath";
 import { taperKey } from "./CurveRegistry";
 import { getParameterUICurve, uiToNexusNorm, nexusNormToUi } from "./ParameterUICurve";
+import { isDocumentWedged } from "../automation/AutomationWriter";
 import { resolveCurrentUser, type CurrentUser } from "./CurrentUser";
 
 /** B9 — Verbose-Gate für die Hot-Path-Logs. Jeder erfolgreiche Modulations-
@@ -305,6 +306,14 @@ export class NexusAdapter {
 
         if (!this.isDocumentConnected()) {
             console.warn(`[METATRON NEXUS WRITE] refused control=${controlId} field=${binding.fieldPath ?? binding.fieldName} reason=document-disconnected`);
+            return false;
+        }
+
+        // M23.0 — Nach einem fehlgeschlagenen Automation-Write kann der
+        // SDK-Transaction-Lock geleakt sein (siehe AutomationWriter.isDocumentWedged).
+        // `document.modify` wuerde sonst für immer haengen — hier schnell refusieren.
+        if (isDocumentWedged(this.document)) {
+            console.warn(`[METATRON NEXUS WRITE] refused control=${controlId} field=${binding.fieldPath ?? binding.fieldName} reason=document-wedged-sdk-lock-leak`);
             return false;
         }
 
