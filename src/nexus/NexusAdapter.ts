@@ -272,6 +272,20 @@ export class NexusAdapter {
 
         await this.document!.start();
 
+        // Bug 2 (P1) — auch NACH dem asynchronen start() kann ein NEUERER
+        // Request übernommen haben. Ein veralteter Request darf lastProjectUrl
+        // nicht mehr schreiben und muss sein eigenes (evtl. bereits gestartetes)
+        // Dokument stoppen — NIE this.document, das ist inzwischen das frische
+        // Projekt B des neueren Requests.
+        if (requestId !== this.openRequestSeq) {
+            try {
+                await opened.stop?.();
+            } catch {
+                // best effort — das veraltete Dokument ist ohnehin verworfen
+            }
+            return;
+        }
+
         this.lastProjectUrl = projectUrl;
     }
 

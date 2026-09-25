@@ -246,4 +246,44 @@ describe("NexusAdapter — R5 konkurrierende openProject(): nur der NEUESTE Requ
         expect(docA.stop).toHaveBeenCalled(); // A wurde entsorgt, nicht installiert
         expect(docB.stop).not.toHaveBeenCalled();
     });
+
+    it("P1 — ein langsames start() eines VERALTETEN Requests darf lastProjectUrl und Dokument nicht überschreiben", async () => {
+        const docA = makeDoc(0.4);
+        const docB = makeDoc(0.6);
+        let resolveStartA!: () => void;
+        const startGate = new Promise<void>((r) => (resolveStartA = r));
+        docA.start.mockImplementationOnce(() => startGate);
+
+        const adapter = new NexusAdapter();
+        (adapter as any).client = {
+            status: "authenticated",
+            open: vi.fn((url: string) => Promise.resolve(url === "B" ? docB : docA)),
+        };
+        const manager = new BindingManager(new Device("A"));
+
+        // Request 1 (Projekt A): open() ist schnell, ERST das start() hängt.
+        const openingA = adapter.openProject("A", manager);
+        // Mikrotask-Flush: A ist installiert (document=docA) und wartet im start().
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(adapter.document).toBe(docA);
+        expect(docA.start).toHaveBeenCalled();
+
+        // Erst JETZT läuft Request 2 (Projekt B) komplett durch (open + start + URL).
+        await adapter.openProject("B", manager);
+        expect(adapter.document).toBe(docB);
+        expect((adapter as any).lastProjectUrl).toBe("B");
+
+        // A's start() löst erst NACH B spät auf. Vor P1 schrieb der veraltete
+        // Request noch this.lastProjectUrl = "A" — das aktive Projekt B wurde
+        // als "zuletzt geöffnet" verdrängt.
+        resolveStartA();
+        await openingA;
+
+        expect(adapter.document).toBe(docB); // B bleibt das aktive Projekt
+        expect((adapter as any).bindingManager).toBe(manager);
+        expect((adapter as any).lastProjectUrl).toBe("B"); // A überschreibt NICHT
+        expect(docB.stop).not.toHaveBeenCalled(); // das aktive Dokument bleibt unangetastet
+    });
 });

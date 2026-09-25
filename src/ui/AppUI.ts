@@ -362,13 +362,22 @@ export class AppUI {
     };
 
     private performUndoRedo(action: "undo" | "redo") {
+        // Bug 1 (P1) — Der HISTORY-Lifecycle pointe den BindingManager bereits
+        // um, bevor onDeviceChanged() läuft: restoreLibraryState()/rollback-
+        // LibraryState() rufen bindingManager.setDevice() mit der wiederherge-
+        // stellten Instanz auf. onDeviceChanged liest deviceRef als "oldDevice"
+        // — es SÄHE den A→B-Sprung nicht mehr und ließe die Nexus-Subscriptions
+        // des alten Geräts weiterleben (Events des alten Projekts beeinflussen
+        // das neue Gerät). Das VOR dem Undo/Redo aktive Gerät wird deshalb hier
+        // festgehalten und als Basis für die Wechsel-Erkennung übergeben.
+        const previousDevice = this.bindingManager.deviceRef;
         action === "undo" ? this.history.undo() : this.history.redo();
         // Bug 5 — onDeviceChanged ist IMMER zu ziehen: Ein fehlgeschlagener
         // Undo (guards/base-guard) kann die Library trotzdem kohärent gerollbackt
         // haben (internal rollback) und jemand muss den BindingManager auf die
         // (wiederhergestellte) Instanz umpointern und rendern. render() selbst
         // persistiert nicht, solange kein Edit pending ist — sicher.
-        this.onDeviceChanged();
+        this.onDeviceChanged(previousDevice);
         this.syncHistoryButtons();
     }
 
@@ -783,7 +792,7 @@ export class AppUI {
         }
     }
 
-    private onDeviceChanged() {
+    private onDeviceChanged(previousDeviceRef?: Device | null) {
         const device = this.deviceLibrary.currentDevice;
         
         // Cancel any pending learns on BOTH surfaces before device state changes.
@@ -793,7 +802,12 @@ export class AppUI {
         // 1. If there's a real device switch, hard-reset the runner FIRST
         // (before changing the device reference) so its state doesn't leak
         // to the new device. Uses a dedicated method that stops WITHOUT snap-backs.
-        const oldDevice = this.bindingManager.deviceRef;
+        // Bug 1 (P1) — der History-Lifecycle (restoreLibraryState/rollback) hat
+        // deviceRef bereits auf die Ziel-Instanz umgepointet; für die Wechsel-
+        // Erkennung gilt deshalb das vom Aufrufer übergebene VOR-Device, sonst
+        // bleibt der Fallback auf deviceRef (normale Wechsel, z. B. via
+        // DeviceLibraryUI.setActiveDevice, laufen unverändert).
+        const oldDevice = previousDeviceRef ?? this.bindingManager.deviceRef;
         const deviceChanged = device && oldDevice && oldDevice.id !== device.id;
         if (deviceChanged) {
             this.modRunner.resetForDeviceChange();
