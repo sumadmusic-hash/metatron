@@ -413,7 +413,11 @@ export async function writeAutomationRecording(
                 const collection = t.create("automationCollection", {});
                 for (const ev of events) {
                     t.create("automationEvent", {
-                        collection: collection.location,
+                        // Beide Pointer durch `canonicalPointerForLocation` —
+                        // der SDK-Konverter (`fieldIndex.slice()`) darf nie ein
+                        // undefined sehen (Connected-Doc kann Entity-Locations
+                        // ohne echte fieldIndex-Repräsentation liefern).
+                        collection: canonicalPointerForLocation(collection.location),
                         positionTicks: ev.positionTicks,
                         value: ev.value,
                         interpolation,
@@ -436,8 +440,8 @@ export async function writeAutomationRecording(
                         // minimal 1-tick headroom so the end event sits strictly inside.
                         loopDurationTicks: regionTicks,
                     },
-                    track: track.location,
-                    collection: collection.location,
+                    track: canonicalPointerForLocation(track.location),
+                    collection: canonicalPointerForLocation(collection.location),
                 });
                 created.push({
                     controlId: a.controlId,
