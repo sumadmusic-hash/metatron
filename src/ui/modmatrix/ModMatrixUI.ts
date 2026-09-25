@@ -386,6 +386,12 @@ export class ModMatrixUI {
         }
 
         const result = await writeAutomationRecording(recording, this.nexusAdapter.document, this.bindingManager);
+        // M23.1 — Diagnose: volles Ergebnis ins Log, damit der exakte Fehler auch
+        // bei schnell verschwindendem Toast im Konsolenausschnitt landet.
+        console.log(
+            `[METATRON BAKE] ok=${result.ok} created=${result.createdTracks} error=${result.error ?? "-"} ` +
+                `perTrack=${JSON.stringify(result.perTrack)} durationSeconds=${recording.durationSeconds}`
+        );
 
         const failed = result.perTrack.filter((track) => !track.ok);
         if (result.ok && failed.length === 0) {

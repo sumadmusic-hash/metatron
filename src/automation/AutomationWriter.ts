@@ -413,10 +413,15 @@ export async function writeAutomationRecording(
         // Write liegen (kein try/finally in `modify`). Nach dem Fehler pruefen,
         // ob der Lock noch reagiert, und das Dokument als wedged markieren,
         // damit nachfolgende Writes schnell scheitern statt fuer immer zu haengen.
+        const reason = e instanceof Error ? e.message : String(e);
+        console.error(
+            `[METATRON AUTOMATION WRITE] transaction failed: ${reason} ` +
+                `connected=${document.connected?.getValue?.()}`
+        );
         await markDocumentIfWedged(document);
         return {
             ok: false,
-            error: e instanceof Error ? e.message : String(e),
+            error: reason,
             perTrack: attempts.map((a) => ({ controlId: a.controlId, ok: false, reason: "transaction-failed" })),
             createdTracks: 0,
         };
