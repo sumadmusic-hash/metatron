@@ -216,6 +216,16 @@ function maxOrderAmongTracks(entities: any): number {
     return max;
 }
 
+/** M23.3 — normalisiert eine beliebige Location-Form zu dem kanonischen
+ *  {entityId, fieldIndex: number[]}-Objekt, das der SDK-Protobuf-Converter
+ *  (`a.fieldIndex.slice()`) gefahrlos verarbeitet. Ein `fieldIndex`-Array wird
+ *  garantiert neu aufgebaut, damit `slice` nie auf undefined trifft. */
+const canonicalPointerForLocation = (location: any): { entityId: string | undefined; fieldIndex: number[] } => {
+    const fi = location?.fieldIndex;
+    const fieldIndex = fi == null ? [] : Array.isArray(fi) ? Array.from(fi as number[]) : [fi as number];
+    return { entityId: typeof location?.entityId === "string" ? location.entityId : undefined, fieldIndex };
+};
+
 interface WriteAttempt {
     controlId: string;
     controlType?: string;
@@ -291,6 +301,15 @@ export async function writeAutomationRecording(
             !!document.queryEntities.getEntity(locationTargetId);
         if (!locationTargetResolves) {
             fail("stale-location");
+            continue;
+        }
+        // M23.3 — Eine Location OHNE fieldIndex (Entity-Location, z.B. ganzes
+        // Device statt einzelner Parameter) ist kein automatisierbarer Parameter.
+        // Ungefiltert würde sie vom SDK als Entity-Pointer akzeptiert, aber die
+        // Validierung lehnt sie ab — und jede Validierungs-Ablehnung leakt den
+        // Transaction-Lock (kein try/finally im SDK). Darum VOR dem SDK abfangen.
+        if (canonicalPointerForLocation((field as any)?.location).fieldIndex.length === 0) {
+            fail("not-automatable");
             continue;
         }
         // B68 — Registry-Lookup pro Attempt. Key muss EXAKT der Probe-Kennung
@@ -378,7 +397,17 @@ export async function writeAutomationRecording(
                 const interpolation = a.controlType === "switch" ? 1 : 2;
 
                 const track = t.create("automationTrack", {
-                    automatedParameter: a.field.location,
+                    // M23.3 — kein `a.field.location` direkt weiterreichen: der
+                    // SDK-Protobuf-Converter `Un` macht auf dem autoParam-Pointer
+                    // `a.fieldIndex.slice()` und crasht, wenn die Location im
+                    // CONNECTED-Dokument kein echtes `NexusLocation` ist bzw.
+                    // fieldIndex nicht als Array vorliegt („Cannot read properties
+                    // of undefined (reading 'slice')“ — genau das Online-Fehlerbild).
+                    // Hier wird die Location zu einem kanonischen
+                    // {entityId, fieldIndex: number[]}-Objekt normalisiert, das
+                    // der Converter gefahrlos verarbeitet — unabhängig von der
+                    // tatsächlichen Klassen-/Form der Location.
+                    automatedParameter: canonicalPointerForLocation(a.field.location),
                     orderAmongTracks: orderBase + 1 + i,
                 });
                 const collection = t.create("automationCollection", {});
@@ -430,10 +459,20 @@ export async function writeAutomationRecording(
         // ob der Lock noch reagiert, und das Dokument als wedged markieren,
         // damit nachfolgende Writes schnell scheitern statt fuer immer zu haengen.
         const reason = e instanceof Error ? e.message : String(e);
+        const shapeInfo = attempts
+            .map((a) => {
+                const p = canonicalPointerForLocation(a.field.location);
+                const l = a.field.location as any;
+                return `${a.controlId}:loc=${a.field.location?.constructor?.name ?? "plain-obj"}/fName=${typeof l?.fieldName === "string" ? "yes" : "no"}/fi=${p.fieldIndex.length}/entity=${p.entityId}`;
+            })
+            .join(" ");
         console.error(
             `[METATRON AUTOMATION WRITE] transaction failed: ${reason} ` +
-                `connected=${document.connected?.getValue?.()}`
+                `connected=${document.connected?.getValue?.()} [${shapeInfo}]`
         );
+        if (e instanceof Error && e.stack) {
+            console.error(`[METATRON AUTOMATION WRITE] stack:`, e.stack);
+        }
         await markDocumentIfWedged(document);
         return {
             ok: false,

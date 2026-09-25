@@ -988,4 +988,30 @@ describe("M23.0 — live takes with fractional durations (uint32 region ticks)",
         // And the failed attempt must NOT have leaked the SDK transaction lock.
         await expect(doc.modify((t: any) => t.update(cutoff, 8000))).resolves.toBeUndefined();
     });
+
+    it("plain-object field location (entityId+fieldIndex) is canonicalized to a valid Pointer — no slice crash", async () => {
+        const doc = await newDoc();
+        const basslineId = await addBassline(doc);
+        const cutoff = basslineField(doc, basslineId, "cutoffFrequencyHz");
+        const cutoffIndex = Array.from((cutoff as any).location.fieldIndex as number[]);
+        // EXACTLY the online failure shape class-wise: raw location object, NOT a
+        // NexusLocation-Instanz. Der SDK-Converter darf hier nicht crashen.
+        const plainLocField = { value: 0.5, location: { entityId: basslineId, fieldIndex: cutoffIndex }, mutable: true };
+        const bindings = makeBindings([
+            { controlId: "c1", entityId: basslineId, fieldPath: "addressTranslator.left", field: plainLocField },
+        ]);
+
+        const result = await writeAutomationRecording(
+            rec([{ controlId: "c1", controlType: "knob", samples: KNOWN_SAMPLES }]),
+            doc,
+            bindings
+        );
+
+        expect(result.ok).toBe(true);
+        expect(result.createdTracks).toBe(1);
+        expect(result.perTrack[0]).toMatchObject({ ok: true });
+        const tracks = doc.queryEntities.ofTypes("automationTrack").get();
+        expect(tracks[0].id).toBeTruthy();
+        await expect(doc.modify((t: any) => t.update(cutoff, 8000))).resolves.toBeUndefined();
+    });
 });
