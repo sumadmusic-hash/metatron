@@ -454,6 +454,19 @@ export async function writeAutomationRecording(
                 // M22.0 — region duration matches takeTicks for Bake (exact).
                 // Only if a Live Recording has an event exactly at durationSeconds
                 // we add minimal 1-tick headroom so the end event sits strictly inside.
+                // M23.5 — Werte VOR dem Create vorberechnen + Selfcheck: beweist,
+                // dass exakt diese Objekte (mit garantiertem fieldIndex-Array) an
+                // den SDK-Pointer-Converter gehen. Bricht hier nichts, liegt der
+                // Poison sicher NICHT an unserer Werteform.
+                const regionTrack = canonicalPointerForLocation(track.location);
+                const regionCollection = canonicalPointerForLocation(collection.location);
+                try {
+                    regionTrack.fieldIndex.slice();
+                    regionCollection.fieldIndex.slice();
+                } catch (selfErr: any) {
+                    selfErr.message = `SELFCHECK-FAIL pre region create: ${selfErr?.message ?? selfErr}`;
+                    throw selfErr;
+                }
                 const region = t.create("automationRegion", C("region", {
                     region: {
                         // M23.0 — startTick defensiv auf uint32 gerundet
@@ -467,8 +480,8 @@ export async function writeAutomationRecording(
                         // minimal 1-tick headroom so the end event sits strictly inside.
                         loopDurationTicks: regionTicks,
                     },
-                    track: canonicalPointerForLocation(track.location),
-                    collection: canonicalPointerForLocation(collection.location),
+                    track: regionTrack,
+                    collection: regionCollection,
                 }));
                 created.push({
                     controlId: a.controlId,
