@@ -430,6 +430,22 @@ export async function writeAutomationRecording(
                         slope: 0,
                     }));
                 }
+                // M23.5 — Preflight-Beweis vor dem Region-Create: zeige die EXAKTEN
+                // Formen der Pointer-Werte, die der SDK-Converter (`fieldIndex.slice()`)
+                // verarbeitet. Wenn fieldIndex hier NICHT als Array ankommt, ist das
+                // die Ursache des Online-Crashes (Connected-Doc liefert dann eine
+                // abweichende Location-Form).
+                const trackLoc = (track as any)?.location;
+                const collLoc = (collection as any)?.location;
+                const shapeOf = (l: any) =>
+                    `${l?.constructor?.name ?? typeof l} fi=${typeof l?.fieldIndex} arr=${Array.isArray(l?.fieldIndex)}` +
+                    ` own=${Object.prototype.hasOwnProperty.call(l ?? {}, "fieldIndex")} keys=${JSON.stringify(Object.keys(l ?? {}))}`;
+                console.log(
+                    `[METATRON AUTOMATION WRITE] region ptr preflight|` +
+                        `trackLoc=${shapeOf(trackLoc)} trackCanon=${JSON.stringify(canonicalPointerForLocation(trackLoc))}|` +
+                        `collLoc=${shapeOf(collLoc)} collCanon=${JSON.stringify(canonicalPointerForLocation(collLoc))}|` +
+                        `regionTicks=${regionTicks} startTick=${recording.startTick}`
+                );
                 // M22.0 — region duration matches takeTicks for Bake (exact).
                 // Only if a Live Recording has an event exactly at durationSeconds
                 // we add minimal 1-tick headroom so the end event sits strictly inside.
